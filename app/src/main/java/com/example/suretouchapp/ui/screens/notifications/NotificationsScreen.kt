@@ -181,6 +181,7 @@ fun NotificationsScreen(
                     if (notifications.any { !it.isRead }) {
                         IconButton(onClick = {
                             notifications = notifications.map { it.copy(isRead = true) }
+                            SureProEdNotificationManager.dismissAll(context)
                             scope.launch {
                                 runCatching { ApiClient.getService(tokenManager).markAllNotificationsRead() }
                             }
@@ -234,6 +235,7 @@ fun NotificationsScreen(
                                     notifications = notifications.map {
                                         if (it.id == remote.id) it.copy(isRead = true) else it
                                     }
+                                    SureProEdNotificationManager.dismissNotification(context, remote.id)
                                     scope.launch {
                                         runCatching {
                                             ApiClient.getService(tokenManager).markNotificationRead(remote.id)

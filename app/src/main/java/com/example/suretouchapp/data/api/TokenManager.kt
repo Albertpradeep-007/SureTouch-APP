@@ -191,6 +191,29 @@ class TokenManager(context: Context) {
 
     fun needsCourseSelection(): Boolean = prefs.getBoolean("needs_course_selection", false)
 
+    fun getReadNoticeIds(): Set<String> = prefs.getStringSet("read_notice_ids", emptySet()) ?: emptySet()
+
+    fun markNoticeRead(id: String) {
+        if (id.isBlank()) return
+        val current = getReadNoticeIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet("read_notice_ids", current).apply()
+    }
+
+    fun markAllNoticesRead(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        val current = getReadNoticeIds().toMutableSet()
+        current.addAll(ids.filter { it.isNotBlank() })
+        prefs.edit().putStringSet("read_notice_ids", current).apply()
+    }
+
+    fun isNoticeRead(id: String): Boolean = getReadNoticeIds().contains(id)
+
+    fun getUnreadNoticeCount(noticeIds: Collection<String>): Int {
+        val read = getReadNoticeIds()
+        return noticeIds.count { it.isNotBlank() && !read.contains(it) }
+    }
+
     fun markCourseApplied() {
         prefs.edit().putBoolean("needs_course_selection", false).apply()
     }

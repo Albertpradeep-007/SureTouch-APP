@@ -74,6 +74,7 @@ fun NoticesScreen(
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var showPublishDialog by remember { mutableStateOf(false) }
+    var readNoticeIds by remember { mutableStateOf(tokenManager.getReadNoticeIds()) }
 
     val userRole = tokenManager.getUserRole().trim().uppercase()
     val canPublish = tokenManager.isVolunteerTrustee() || tokenManager.isMentor() || userRole == "ADMIN" || userRole == "TRUSTEE" || userRole == "VOLUNTEER"
@@ -140,6 +141,15 @@ fun NoticesScreen(
                 },
                 actions = {
                     if (selectedNotice == null) {
+                        if (remoteNotices.any { it.id !in readNoticeIds }) {
+                            IconButton(onClick = {
+                                tokenManager.markAllNoticesRead(remoteNotices.map { it.id })
+                                readNoticeIds = tokenManager.getReadNoticeIds()
+                                remoteNotices.forEach { SureProEdNotificationManager.dismissAnnouncement(context, it.id) }
+                            }) {
+                                Icon(Icons.Default.DoneAll, "Mark all as read", tint = Color.White)
+                            }
+                        }
                         if (canPublish) {
                             IconButton(onClick = { showPublishDialog = true }) {
                                 Icon(Icons.Default.AddCircleOutline, "Add Announcement", tint = Color.White)
@@ -299,7 +309,14 @@ fun NoticesScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedNotice = item },
+                                .clickable {
+                                selectedNotice = item
+                                if (item.id !in readNoticeIds) {
+                                    tokenManager.markNoticeRead(item.id)
+                                    readNoticeIds = tokenManager.getReadNoticeIds()
+                                    SureProEdNotificationManager.dismissAnnouncement(context, item.id)
+                                }
+                            },
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             border = BorderStroke(1.dp, ColorBorderHairline),
@@ -349,11 +366,28 @@ fun NoticesScreen(
                                         }
                                     }
 
-                                    Text(
-                                        text = item.dateStr,
-                                        fontSize = 11.sp,
-                                        color = ColorTextSub
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (item.id !in readNoticeIds) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFDC2626)
+                                            ) {
+                                                Text(
+                                                    text = "NEW",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                        }
+                                        Text(
+                                            text = item.dateStr,
+                                            fontSize = 11.sp,
+                                            color = ColorTextSub
+                                        )
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(10.dp))

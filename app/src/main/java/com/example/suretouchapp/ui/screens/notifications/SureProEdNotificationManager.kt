@@ -144,6 +144,24 @@ object SureProEdNotificationManager {
         } catch (_: Exception) {}
     }
 
+    fun dismissNotification(context: Context, notificationId: String) {
+        try {
+            NotificationManagerCompat.from(context).cancel(notificationId.hashCode())
+        } catch (_: Exception) {}
+    }
+
+    fun dismissAnnouncement(context: Context, announcementId: String) {
+        try {
+            NotificationManagerCompat.from(context).cancel(("announcement_" + announcementId).hashCode())
+        } catch (_: Exception) {}
+    }
+
+    fun dismissAll(context: Context) {
+        try {
+            NotificationManagerCompat.from(context).cancelAll()
+        } catch (_: Exception) {}
+    }
+
     fun syncAnnouncements(context: Context, announcements: List<AnnouncementDto>) {
         if (!canPost(context) || announcements.isEmpty()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
