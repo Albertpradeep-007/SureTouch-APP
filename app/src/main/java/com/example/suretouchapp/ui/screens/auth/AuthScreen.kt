@@ -1482,13 +1482,18 @@ fun AuthScreen(
                                         onAuthSuccess()
                                     }
                                 } else {
-                                    errorMessage = "LinkedIn authentication failed on server. Please log in directly."
+                                    val errText = res.errorBody()?.string().orEmpty()
+                                    errorMessage = if (errText.isNotBlank()) {
+                                        errText.replace("\"", "").replace("{", "").replace("}", "").replace("error:", "").trim()
+                                    } else {
+                                        "LinkedIn authentication failed on server. Please try logging in with email and password."
+                                    }
                                 }
                             } else {
                                 errorMessage = "LinkedIn authentication completed without code."
                             }
                         } catch (e: Exception) {
-                            errorMessage = "Error during LinkedIn verification."
+                            errorMessage = "Error during LinkedIn verification: ${e.localizedMessage ?: "Network error"}"
                         } finally {
                             isLoading = false
                         }
@@ -1613,14 +1618,40 @@ private fun checkAndIntercept(
 ): Boolean {
     if (url.isNullOrBlank()) return false
     val uri = Uri.parse(url)
-    val code = uri.getQueryParameter("code")
     val access = uri.getQueryParameter("access") ?: uri.getQueryParameter("access_token") ?: uri.getQueryParameter("token")
     val refresh = uri.getQueryParameter("refresh") ?: uri.getQueryParameter("refresh_token")
+    val code = uri.getQueryParameter("code")
 
-    if (!code.isNullOrBlank() || !access.isNullOrBlank() || url.contains("/callback/") || uri.scheme == "suretrust") {
+    // 1. If redirected with tokens (either via suretrust:// deep link or frontend redirect)
+    if (!access.isNullOrBlank()) {
+        onCodeReceived(null, access, refresh)
+        return true
+    }
+
+    // 2. If it is the suretrust:// custom scheme deep link
+    if (uri.scheme.equals("suretrust", ignoreCase = true)) {
         onCodeReceived(code, access, refresh)
         return true
     }
+
+    // 3. Do not intercept server callback GET request — let the WebView load it so backend exchanges code cleanly!
+    if (url.contains("/api/auth/linkedin/callback") && !code.isNullOrBlank()) {
+        return false
+    }
+
+    // 4. If intercepted on custom frontend redirect that has error
+    val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
+    if (!error.isNullOrBlank() && (url.contains("error=") || uri.scheme == "suretrust")) {
+        onCodeReceived(null, null, null)
+        return true
+    }
+
+    // 5. Fallback for external oauth callback
+    if (!code.isNullOrBlank() && !url.contains("/api/auth/")) {
+        onCodeReceived(code, access, refresh)
+        return true
+    }
+
     return false
 }
 
