@@ -1,6 +1,7 @@
 package com.example.suretouchapp.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,14 +30,19 @@ fun SureTrustLoadingIndicator(
                 color = spinnerColor,
                 strokeWidth = if (size <= 36.dp) 2.dp else 3.dp
             )
-            SureTrustLogo(size = logoSize, showSubtext = false)
+            SureTrustLogo(
+                size = logoSize,
+                showSubtext = false,
+                shape = CircleShape,
+                elevation = 0.dp
+            )
         }
         if (!message.isNullOrBlank()) {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
                 text = message,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium
             )
         }

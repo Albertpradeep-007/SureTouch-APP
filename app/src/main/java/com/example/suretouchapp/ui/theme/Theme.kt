@@ -15,7 +15,7 @@ import androidx.core.view.WindowCompat
 private val DarkColorScheme = darkColorScheme(
     primary = SurePurpleLight,
     onPrimary = Color.White,
-    primaryContainer = SureSurfaceVariantDark,
+    primaryContainer = SurePurpleDark,
     onPrimaryContainer = SurePurpleContainer,
     secondary = SureLimeSecondary,
     onSecondary = Color.Black,
@@ -23,11 +23,13 @@ private val DarkColorScheme = darkColorScheme(
     onSecondaryContainer = SureLimeContainer,
     tertiary = SurePinkAccent,
     background = SureBackgroundDark,
-    onBackground = Color.White,
+    onBackground = Color(0xFFF8FAFC),
     surface = SureSurfaceDark,
-    onSurface = Color.White,
+    onSurface = Color(0xFFF8FAFC),
     surfaceVariant = SureSurfaceVariantDark,
-    onSurfaceVariant = Color(0xFFD8D2EC)
+    onSurfaceVariant = Color(0xFFCBD5E1),
+    outline = Color(0xFF64748B),
+    outlineVariant = Color(0xFF334155)
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -41,11 +43,13 @@ private val LightColorScheme = lightColorScheme(
     onSecondaryContainer = SureOnLimeContainer,
     tertiary = SurePinkAccent,
     background = SureBackgroundLight,
-    onBackground = Color(0xFF1E1535),
+    onBackground = Color(0xFF0F172A),
     surface = SureSurfaceLight,
-    onSurface = Color(0xFF1E1535),
+    onSurface = Color(0xFF0F172A),
     surfaceVariant = SureSurfaceVariantLight,
-    onSurfaceVariant = Color(0xFF4C3E75)
+    onSurfaceVariant = Color(0xFF475569),
+    outline = Color(0xFFCBD5E1),
+    outlineVariant = Color(0xFFE2E8F0)
 )
 
 @Composable

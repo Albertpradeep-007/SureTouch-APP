@@ -139,15 +139,20 @@ private fun BrandedAppEntry(
             otaPreviewRequested = otaPreviewRequested
         )
     } else {
-        Box(
+        Surface(
             modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+            color = MaterialTheme.colorScheme.background
         ) {
-            SureTrustLoadingIndicator(
-                size = 82.dp,
-                logoSize = 52.dp,
-                message = "Loading SURE ProEd"
-            )
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                SureTrustLoadingIndicator(
+                    size = 82.dp,
+                    logoSize = 52.dp,
+                    message = "Loading SURE ProEd"
+                )
+            }
         }
     }
 }
