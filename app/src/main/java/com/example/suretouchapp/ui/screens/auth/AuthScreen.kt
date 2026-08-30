@@ -210,6 +210,7 @@ fun AuthScreen(
 
             Card(
                 modifier = Modifier
+                    .widthIn(max = 480.dp)
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
                 elevation = CardDefaults.cardElevation(12.dp),
