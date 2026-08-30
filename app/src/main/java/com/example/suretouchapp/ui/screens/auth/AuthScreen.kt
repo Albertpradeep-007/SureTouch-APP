@@ -49,6 +49,9 @@ import com.example.suretouchapp.ui.components.SureTrustLogo
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.theme.SureBackgroundDark
 import com.example.suretouchapp.ui.theme.SurePurpleDark
+import com.example.suretouchapp.data.ota.AppUpdateManager
+import com.example.suretouchapp.data.ota.UpdateState
+import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 
 private fun signupGenderApiValue(value: String): String? = when (value.trim()) {
@@ -118,6 +121,12 @@ fun AuthScreen(
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+
+    val updateState by AppUpdateManager.updateState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        AppUpdateManager.checkForUpdates(context, tokenManager)
+    }
 
     val calendar = Calendar.getInstance()
     val datePickerDialog = DatePickerDialog(
@@ -1201,10 +1210,81 @@ fun AuthScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+
+                    // Dynamic Update Banner on Login/Signup Card
+                    if (updateState is UpdateState.UpdateAvailable) {
+                        val updateInfo = (updateState as UpdateState.UpdateAvailable).info
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF3E8FF),
+                            border = BorderStroke(1.dp, Color(0xFFA855F7)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp)
+                                .clickable {
+                                    scope.launch {
+                                        AppUpdateManager.checkForUpdates(context, tokenManager)
+                                    }
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = "Update Available",
+                                    tint = Color(0xFF7E22CE),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "New Update Available: v${updateInfo.versionName}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF581C87)
+                                    )
+                                    Text(
+                                        text = "Tap to install the latest version now",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF7E22CE)
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.ArrowForward,
+                                    contentDescription = null,
+                                    tint = Color(0xFF7E22CE),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            // Version Footer
+            Row(
+                modifier = Modifier.padding(top = 14.dp, bottom = 28.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = Color.White.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = if (updateState is UpdateState.UpdateAvailable) {
+                            "⚠️ Installed: v${AppUpdateManager.currentVersionName} • Latest: v${(updateState as UpdateState.UpdateAvailable).info.versionName}"
+                        } else {
+                            "SURE ProEd v${AppUpdateManager.currentVersionName} • Latest version"
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFE2E8F0),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                    )
+                }
+            }
         }
 
         if (showForgotPassword) {
