@@ -91,6 +91,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
     var linkedinUrl by remember { mutableStateOf(tokenManager.getLinkedinUrl()) }
 
     var coverPhotoUri by remember { mutableStateOf(tokenManager.getCoverPhotoUrl()) }
+    var showCoverOptionsDialog by remember { mutableStateOf(false) }
     var profilePhotoUri by remember { mutableStateOf(tokenManager.getProfilePhotoUrl()) }
 
     val formattedId = profile?.id
@@ -549,6 +550,18 @@ fun VolunteerTrusteeProfessionalProfileScreen(
             }
 
             // Edit Bottom Sheet
+            if (showCoverOptionsDialog) {
+                CoverPhotoOptionDialog(
+                    hasCustomCover = !coverPhotoUri.isNullOrBlank(),
+                    onUploadNew = { coverLauncher.launch("image/*") },
+                    onRemoveCover = {
+                        coverPhotoUri = null
+                        tokenManager.saveCoverPhotoUrl(null)
+                        Toast.makeText(context, "Cover photo removed. Default banner restored.", Toast.LENGTH_SHORT).show()
+                    },
+                    onDismiss = { showCoverOptionsDialog = false }
+                )
+            }
             if (showEditSheet) {
                 ModalBottomSheet(
                     onDismissRequest = { showEditSheet = false },

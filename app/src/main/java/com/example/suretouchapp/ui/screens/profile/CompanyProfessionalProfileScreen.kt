@@ -81,6 +81,7 @@ fun CompanyProfessionalProfileScreen(
     val formattedId = "ST-CP-$rawId"
 
     var coverPhotoUri by remember { mutableStateOf(tokenManager.getCoverPhotoUrl()) }
+    var showCoverOptionsDialog by remember { mutableStateOf(false) }
     var profilePhotoUri by remember { mutableStateOf(tokenManager.getProfilePhotoUrl()) }
 
     val coverLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -469,6 +470,18 @@ fun CompanyProfessionalProfileScreen(
             }
 
             // Edit Bottom Sheet
+            if (showCoverOptionsDialog) {
+                CoverPhotoOptionDialog(
+                    hasCustomCover = !coverPhotoUri.isNullOrBlank(),
+                    onUploadNew = { coverLauncher.launch("image/*") },
+                    onRemoveCover = {
+                        coverPhotoUri = null
+                        tokenManager.saveCoverPhotoUrl(null)
+                        Toast.makeText(context, "Cover photo removed. Default banner restored.", Toast.LENGTH_SHORT).show()
+                    },
+                    onDismiss = { showCoverOptionsDialog = false }
+                )
+            }
             if (showEditSheet) {
                 ModalBottomSheet(
                     onDismissRequest = { showEditSheet = false },

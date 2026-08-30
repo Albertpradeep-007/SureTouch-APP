@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -417,4 +418,61 @@ fun saveBitmapToGalleryHelper(context: Context, bitmap: Bitmap, filename: String
             Toast.makeText(context, "Saved.", Toast.LENGTH_SHORT).show()
         }
     }
+}
+
+
+@Composable
+fun CoverPhotoOptionDialog(
+    hasCustomCover: Boolean,
+    onUploadNew: () -> Unit,
+    onRemoveCover: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cover Banner Options", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (hasCustomCover) "You can change your profile banner or remove it to restore the default theme banner."
+                    else "Choose a cover banner photo from your gallery to customize your profile.",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onDismiss()
+                    onUploadNew()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (hasCustomCover) "Change Photo" else "Upload Photo")
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (hasCustomCover) {
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            onRemoveCover()
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFDC2626))
+                    ) {
+                        Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Remove (Default)")
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        }
+    )
 }

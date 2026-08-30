@@ -436,8 +436,12 @@ class TokenManager(context: Context) {
 
     fun getProfilePhotoUrl(): String? = prefs.getString("profile_photo_url", null)?.takeIf(String::isNotBlank)
 
-    fun saveCoverPhotoUrl(url: String) {
-        prefs.edit().putString("mentor_cover_photo_url", url.trim()).apply()
+    fun saveCoverPhotoUrl(url: String?) {
+        if (url.isNullOrBlank()) {
+            prefs.edit().remove("mentor_cover_photo_url").apply()
+        } else {
+            prefs.edit().putString("mentor_cover_photo_url", url.trim()).apply()
+        }
     }
 
     fun getCoverPhotoUrl(): String? = prefs.getString("mentor_cover_photo_url", null)?.takeIf(String::isNotBlank)

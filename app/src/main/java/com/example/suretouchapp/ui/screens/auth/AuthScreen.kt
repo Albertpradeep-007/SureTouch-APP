@@ -13,6 +13,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -111,7 +112,7 @@ private fun signupDateApiValue(value: String): String? {
     }.getOrNull()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AuthScreen(
     tokenManager: TokenManager,
@@ -179,6 +180,16 @@ fun AuthScreen(
         }
     }
 
+    val scrollState = rememberScrollState()
+    val isImeVisible = WindowInsets.isImeVisible
+
+    LaunchedEffect(isImeVisible) {
+        if (isImeVisible) {
+            kotlinx.coroutines.delay(100L)
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -197,16 +208,16 @@ fun AuthScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 20.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Top
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(if (isImeVisible) 12.dp else 24.dp))
 
             // SURE TRUST Official Logo Header
-            SureTrustLogo(size = 110.dp, showSubtext = true)
+            SureTrustLogo(size = if (isImeVisible) 76.dp else 110.dp, showSubtext = true)
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(if (isImeVisible) 12.dp else 20.dp))
 
             Card(
                 modifier = Modifier

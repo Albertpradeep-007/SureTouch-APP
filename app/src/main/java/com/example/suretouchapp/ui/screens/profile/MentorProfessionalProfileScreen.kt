@@ -1332,6 +1332,7 @@ private fun MentorProfileMainView(
     var coverPhotoUri by remember {
         mutableStateOf(tokenManager.getCoverPhotoUrl())
     }
+    var showCoverOptionsDialog by remember { mutableStateOf(false) }
     var profilePhotoUri by remember {
         mutableStateOf(tokenManager.getProfilePhotoUrl() ?: profile?.profilePhoto)
     }
@@ -2437,6 +2438,18 @@ private fun MentorProfileMainView(
         }
 
         // ── 9. Edit Profile Modal BottomSheet ────────────────────────
+        if (showCoverOptionsDialog) {
+            CoverPhotoOptionDialog(
+                hasCustomCover = !coverPhotoUri.isNullOrBlank(),
+                onUploadNew = { coverLauncher.launch("image/*") },
+                onRemoveCover = {
+                    coverPhotoUri = null
+                    tokenManager.saveCoverPhotoUrl(null)
+                    Toast.makeText(context, "Cover photo removed. Default banner restored.", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { showCoverOptionsDialog = false }
+            )
+        }
         if (showEditSheet) {
             EditMentorProfileBottomSheet(
                 name = currentName,

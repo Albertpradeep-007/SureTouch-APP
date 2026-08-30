@@ -266,6 +266,7 @@ private fun StudentProfileContent(
 
     // Cover and Avatar
     var coverPhotoUri by remember { mutableStateOf(tokenManager.getCoverPhotoUrl()) }
+    var showCoverOptionsDialog by remember { mutableStateOf(false) }
     var profilePhotoUri by remember {
         mutableStateOf(tokenManager.getProfilePhotoUrl() ?: profile?.effectiveProfilePhoto)
     }
@@ -493,7 +494,7 @@ private fun StudentProfileContent(
                                 .padding(end = 16.dp, bottom = 16.dp)
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .clickable { coverLauncher.launch("image/*") },
+                                .clickable { showCoverOptionsDialog = true },
                             shape = CircleShape,
                             color = Color.Black.copy(alpha = 0.50f),
                             shadowElevation = 2.dp
@@ -1289,6 +1290,18 @@ private fun StudentProfileContent(
         }
 
         // Edit Profile Bottom Sheet
+        if (showCoverOptionsDialog) {
+            CoverPhotoOptionDialog(
+                hasCustomCover = !coverPhotoUri.isNullOrBlank(),
+                onUploadNew = { coverLauncher.launch("image/*") },
+                onRemoveCover = {
+                    coverPhotoUri = null
+                    tokenManager.saveCoverPhotoUrl(null)
+                    Toast.makeText(context, "Cover photo removed. Default banner restored.", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { showCoverOptionsDialog = false }
+            )
+        }
         if (showEditSheet) {
             EditStudentProfileBottomSheet(
                 tokenManager = tokenManager,
@@ -1530,12 +1543,14 @@ fun EditStudentProfileBottomSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp)
         ) {

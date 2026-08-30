@@ -1067,9 +1067,18 @@ private fun ProfileEditSheet(
     var saveError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
         Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),
+            Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("Edit Profile", fontSize = 22.sp, fontWeight = FontWeight.Black, color = ProfileInk)
