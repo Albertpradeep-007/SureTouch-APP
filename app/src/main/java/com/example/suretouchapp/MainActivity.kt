@@ -491,8 +491,18 @@ fun AppNavigation(
         composable(Screen.Courses.route) {
             CoursesScreen(
                 tokenManager = tokenManager,
-                onBack = { navController.popBackStack() },
-                onApplicationSubmitted = { navController.navigate(Screen.ApplicationTracker.route) }
+                onBack = {
+                    tokenManager.markCourseApplied()
+                    if (!navController.popBackStack()) {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                },
+                onApplicationSubmitted = {
+                    tokenManager.markCourseApplied()
+                    navController.navigate(Screen.ApplicationTracker.route)
+                }
             )
         }
 
@@ -565,7 +575,13 @@ fun AppNavigation(
         composable(Screen.ApplicationTracker.route) {
             com.example.suretouchapp.ui.screens.screening.ApplicationTrackerScreen(
                 tokenManager = tokenManager,
-                onBack = { navController.popBackStack() },
+                onBack = {
+                    if (!navController.popBackStack()) {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                },
                 onNavigateToTimetable = { navController.navigate(Screen.Timetable.route) },
                 onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
             )

@@ -54,6 +54,35 @@ import com.example.suretouchapp.data.ota.UpdateState
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 
+private fun formatApiErrorMessage(raw: String, fallback: String = "Could not send verification OTP. Check details and try again."): String {
+    if (raw.isBlank()) return fallback
+    val trimmed = raw.trim()
+    return try {
+        val json = org.json.JSONObject(trimmed)
+        val messages = mutableListOf<String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val optVal = json.opt(key)
+            val fieldName = key.replace("_", " ").replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            when (optVal) {
+                is org.json.JSONArray -> {
+                    val items = (0 until optVal.length()).map { optVal.getString(it) }
+                    messages.add("$fieldName: ${items.joinToString(", ")}")
+                }
+                is String -> {
+                    if (key == "detail" || key == "error") messages.add(optVal)
+                    else messages.add("$fieldName: $optVal")
+                }
+                else -> messages.add("$fieldName: $optVal")
+            }
+        }
+        if (messages.isNotEmpty()) messages.joinToString("\n") else fallback
+    } catch (_: Exception) {
+        trimmed.replace('"', ' ').replace('{', ' ').replace('}', ' ').replace('[', ' ').replace(']', ' ').replace("error:", "").replace("detail:", "").trim().ifBlank { fallback }
+    }
+}
+
 private fun signupGenderApiValue(value: String): String? = when (value.trim()) {
     "Male" -> "MALE"
     "Female" -> "FEMALE"
@@ -865,7 +894,7 @@ fun AuthScreen(
                                                         errorMessage = if (errorText.contains("already verified", ignoreCase = true)) {
                                                             "An account with this email is already verified and registered. Please log in."
                                                         } else {
-                                                            "Could not send verification OTP. Check details and try again."
+                                                            formatApiErrorMessage(errorText, "Could not send verification OTP. Check details and try again.")
                                                         }
                                                     }
                                                 } catch (e: Exception) {
@@ -1198,7 +1227,7 @@ fun AuthScreen(
                                                     errorMessage = if (errorText.contains("already verified", ignoreCase = true)) {
                                                         "An account with this email is already verified and registered. Please log in."
                                                     } else {
-                                                        "Could not send verification OTP. Check details and try again."
+                                                        formatApiErrorMessage(errorText, "Could not send verification OTP. Check details and try again.")
                                                     }
                                                 }
                                             } catch (e: Exception) {
