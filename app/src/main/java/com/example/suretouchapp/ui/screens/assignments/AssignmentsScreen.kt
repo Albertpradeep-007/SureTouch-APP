@@ -1,0 +1,665 @@
+package com.example.suretouchapp.ui.screens.assignments
+
+import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.suretouchapp.data.api.ApiClient
+import com.example.suretouchapp.data.api.NetworkUtils
+import com.example.suretouchapp.data.api.TokenManager
+import com.example.suretouchapp.data.model.AssignmentSubmissionRequest
+import com.example.suretouchapp.ui.components.BackendConnectionGate
+import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
+import kotlinx.coroutines.launch
+
+// =======================================================
+// ELEGANT COLOR TOKENS (MATCHING SURE TRUST THEME)
+// =======================================================
+private val ColorDarkHeader = Color(0xFF262626)
+private val ColorCanvasBg = Color(0xFFFAFAFA)
+private val ColorPrimaryPurple = Color(0xFF6821A8)
+private val ColorPurpleLight = Color(0xFFF3E8FF)
+private val ColorTextDark = Color(0xFF1E293B)
+private val ColorTextSub = Color(0xFF475569)
+private val ColorBorderHairline = Color(0xFFE2E8F0)
+
+enum class AssignmentStatus {
+    PENDING, SUBMITTED, GRADED
+}
+
+data class AssignmentItem(
+    val id: String,
+    val courseCode: String,
+    val title: String,
+    val description: String,
+    val dueDate: String,
+    val maxMarks: Int,
+    var status: AssignmentStatus,
+    var submittedLink: String? = null,
+    val score: Int? = null,
+    val grade: String? = null,
+    val feedback: String? = null
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AssignmentsScreen(
+    tokenManager: TokenManager,
+    onBack: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var selectedFilter by remember { mutableStateOf("All") }
+    var selectedAssignmentForSubmission by remember { mutableStateOf<AssignmentItem?>(null) }
+    var selectedAssignmentForFeedback by remember { mutableStateOf<AssignmentItem?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var submissionInputLink by remember { mutableStateOf("") }
+    var isSubmitting by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
+    var isConnected by remember { mutableStateOf(false) }
+    var hasLoadedOnce by remember { mutableStateOf(false) }
+    var isOffline by remember { mutableStateOf(false) }
+    var errorTitle by remember { mutableStateOf<String?>(null) }
+    var connectionError by remember { mutableStateOf<String?>(null) }
+
+    val assignmentList = remember { mutableStateListOf<AssignmentItem>() }
+
+    suspend fun loadAssignments() {
+        isLoading = true
+        connectionError = null
+        errorTitle = null
+        try {
+            val response = ApiClient.getService(tokenManager).getAssignments()
+            if (response.isSuccessful) {
+                val rawAssignments = response.body()?.results.orEmpty()
+                SureProEdNotificationManager.syncAssignments(context, rawAssignments)
+                SureProEdNotificationManager.syncSubmissionsAndGrades(context, emptyList(), rawAssignments)
+                assignmentList.clear()
+                assignmentList.addAll(response.body()?.results.orEmpty().map { assignment ->
+                    val status = when (assignment.status?.uppercase()) {
+                        "GRADED", "EVALUATED" -> AssignmentStatus.GRADED
+                        "SUBMITTED" -> AssignmentStatus.SUBMITTED
+                        else -> AssignmentStatus.PENDING
+                    }
+                    AssignmentItem(
+                        id = assignment.id,
+                        courseCode = assignment.cohort ?: "Assigned cohort",
+                        title = assignment.title,
+                        description = assignment.description,
+                        dueDate = assignment.dueDate,
+                        maxMarks = assignment.maxMarks.toDoubleOrNull()?.toInt() ?: 100,
+                        status = status,
+                        submittedLink = assignment.submittedLink,
+                        score = assignment.score,
+                        grade = assignment.grade
+                    )
+                })
+                isConnected = true
+                hasLoadedOnce = true
+                isOffline = false
+                connectionError = null
+                errorTitle = null
+            } else {
+                val errorInfo = NetworkUtils.getNetworkErrorInfo(context, null)
+                isConnected = false
+                isOffline = errorInfo.isOffline
+                errorTitle = errorInfo.title
+                connectionError = errorInfo.message
+            }
+        } catch (e: Exception) {
+            val errorInfo = NetworkUtils.getNetworkErrorInfo(context, e)
+            isConnected = false
+            isOffline = errorInfo.isOffline
+            errorTitle = errorInfo.title
+            connectionError = errorInfo.message
+            assignmentList.clear()
+        } finally {
+            isLoading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { loadAssignments() }
+
+    val filteredAssignments = remember(selectedFilter, assignmentList.toList()) {
+        when (selectedFilter) {
+            "Pending" -> assignmentList.filter { it.status == AssignmentStatus.PENDING }
+            "Submitted" -> assignmentList.filter { it.status == AssignmentStatus.SUBMITTED }
+            "Graded" -> assignmentList.filter { it.status == AssignmentStatus.GRADED }
+            else -> assignmentList
+        }
+    }
+
+    val pendingCount = assignmentList.count { it.status == AssignmentStatus.PENDING }
+    val submittedCount = assignmentList.count { it.status == AssignmentStatus.SUBMITTED }
+    val gradedCount = assignmentList.count { it.status == AssignmentStatus.GRADED }
+
+    BackendConnectionGate(
+        isLoading = isLoading,
+        isConnected = isConnected,
+        hasData = hasLoadedOnce,
+        isOffline = isOffline,
+        errorTitle = errorTitle,
+        errorMessage = connectionError,
+        loadingMessage = "Connecting to SURE Trust Assignment Portal...",
+        onRetry = { scope.launch { loadAssignments() } },
+        onLogout = null
+    ) {
+        Scaffold(
+            topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Assignments & Tasks",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = ColorDarkHeader
+                )
+            )
+        },
+        containerColor = ColorCanvasBg
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // Translucent SURE TRUST Logo Background Watermark
+            Image(
+                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(280.dp)
+                    .align(Alignment.Center)
+                    .padding(top = 40.dp)
+                    .graphicsLayer { alpha = 0.08f }
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // =======================================================
+                // 1. HERO METRICS STATS BAR
+                // =======================================================
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Metric 1: Pending
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, ColorBorderHairline),
+                            elevation = CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("Pending", fontSize = 11.5.sp, color = ColorTextSub, fontWeight = FontWeight.Medium)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$pendingCount Due",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFD97706)
+                                )
+                            }
+                        }
+
+                        // Metric 2: Submitted
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, ColorBorderHairline),
+                            elevation = CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("Submitted", fontSize = 11.5.sp, color = ColorTextSub, fontWeight = FontWeight.Medium)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$submittedCount Review",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF2563EB)
+                                )
+                            }
+                        }
+
+                        // Metric 3: Graded
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, ColorBorderHairline),
+                            elevation = CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("Graded", fontSize = 11.5.sp, color = ColorTextSub, fontWeight = FontWeight.Medium)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$gradedCount Done",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF16A34A)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // =======================================================
+                // 2. FILTER TABS ROW
+                // =======================================================
+                item {
+                    val filters = listOf("All", "Pending", "Submitted", "Graded")
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filters) { filter ->
+                            val isSelected = filter == selectedFilter
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) ColorPurpleLight else Color.White)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) ColorPrimaryPurple else ColorBorderHairline,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { selectedFilter = filter }
+                                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = filter,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) ColorPrimaryPurple else ColorTextSub
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // =======================================================
+                // 3. ASSIGNMENT CARDS LIST
+                // =======================================================
+                if (isLoading) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            SureTrustLoadingIndicator(message = "Loading assignments")
+                        }
+                    }
+                } else if (filteredAssignments.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Assignment, null, tint = ColorPrimaryPurple, modifier = Modifier.size(34.dp))
+                                Spacer(Modifier.height(8.dp))
+                                Text("No assignments from the backend", fontWeight = FontWeight.Bold, color = ColorTextDark)
+                                Text("New cohort tasks will appear here automatically.", fontSize = 12.sp, color = ColorTextSub)
+                            }
+                        }
+                    }
+                }
+                items(filteredAssignments, key = { it.id }) { item ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, ColorBorderHairline),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Header Row: Course Tag & Status Pill
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = ColorPurpleLight
+                                ) {
+                                    Text(
+                                        text = item.courseCode,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorPrimaryPurple,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                val (statusBg, statusFg, statusText) = when (item.status) {
+                                    AssignmentStatus.PENDING -> Triple(Color(0xFFFEF3C7), Color(0xFFD97706), "PENDING")
+                                    AssignmentStatus.SUBMITTED -> Triple(Color(0xFFDBEAFE), Color(0xFF2563EB), "SUBMITTED")
+                                    AssignmentStatus.GRADED -> Triple(Color(0xFFDCFCE7), Color(0xFF16A34A), "GRADED")
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = statusBg
+                                ) {
+                                    Text(
+                                        text = statusText,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = statusFg,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Assignment Title
+                            Text(
+                                text = item.title,
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorTextDark
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Description
+                            Text(
+                                text = item.description,
+                                fontSize = 12.5.sp,
+                                color = ColorTextSub,
+                                lineHeight = 17.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            HorizontalDivider(color = ColorBorderHairline, thickness = 0.8.dp)
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Footer Row: Due Date & Action Button
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Event,
+                                        contentDescription = null,
+                                        tint = ColorTextSub,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = item.dueDate,
+                                        fontSize = 11.5.sp,
+                                        color = ColorTextSub,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+
+                                when (item.status) {
+                                    AssignmentStatus.PENDING -> {
+                                        Button(
+                                            onClick = {
+                                                selectedAssignmentForSubmission = item
+                                                submissionInputLink = item.submittedLink ?: ""
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ColorPrimaryPurple),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Upload,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Submit Work", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                    AssignmentStatus.SUBMITTED -> {
+                                        OutlinedButton(
+                                            onClick = {
+                                                selectedAssignmentForSubmission = item
+                                                submissionInputLink = item.submittedLink ?: ""
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, ColorPrimaryPurple),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("Edit Link", fontSize = 12.sp, color = ColorPrimaryPurple, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                    AssignmentStatus.GRADED -> {
+                                        Button(
+                                            onClick = { selectedAssignmentForFeedback = item },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Grade: ${item.score}/${item.maxMarks} (${item.grade})",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // =======================================================
+        // SUBMISSION LINK DIALOG MODAL
+        // =======================================================
+        selectedAssignmentForSubmission?.let { target ->
+            AlertDialog(
+                onDismissRequest = { selectedAssignmentForSubmission = null },
+                title = {
+                    Text(
+                        text = if (target.status == AssignmentStatus.SUBMITTED) "Edit Submission" else "Submit Assignment",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = target.title,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.5.sp,
+                            color = ColorTextDark
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = submissionInputLink,
+                            onValueChange = { submissionInputLink = it },
+                            label = { Text("Submission Link (GitHub / Google Drive)") },
+                            placeholder = { Text("https://github.com/username/project") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    val isConnected = com.example.suretouchapp.ui.components.LocalBackendConnected.current
+                    Button(
+                        onClick = {
+                            if (!isConnected) return@Button
+                            if (submissionInputLink.isBlank()) return@Button
+                            isSubmitting = true
+                            scope.launch {
+                                try {
+                                    val api = ApiClient.getService(tokenManager)
+                                    api.submitAssignment(
+                                        AssignmentSubmissionRequest(
+                                            submissionLink = submissionInputLink,
+                                            assignment = target.id
+                                        )
+                                    )
+                                } catch (_: Exception) { }
+                                finally {
+                                    target.submittedLink = submissionInputLink
+                                    target.status = AssignmentStatus.SUBMITTED
+                                    isSubmitting = false
+                                    selectedAssignmentForSubmission = null
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = ColorPrimaryPurple),
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = !isSubmitting && isConnected
+                    ) {
+                        Text(if (!isConnected) "Submit (Offline)" else "Submit Link", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { selectedAssignmentForSubmission = null }) {
+                        Text("Cancel", color = ColorTextSub)
+                    }
+                }
+            )
+        }
+
+        // =======================================================
+        // GRADED FEEDBACK DIALOG MODAL
+        // =======================================================
+        selectedAssignmentForFeedback?.let { graded ->
+            AlertDialog(
+                onDismissRequest = { selectedAssignmentForFeedback = null },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF16A34A),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Evaluation & Feedback", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    }
+                },
+                text = {
+                    Column {
+                        Text(graded.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ColorTextDark)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFDCFCE7),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Final Score", fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Color(0xFF15803D))
+                                Text(
+                                    "${graded.score} / ${graded.maxMarks} (${graded.grade})",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF15803D)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Mentor Feedback:", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = ColorTextDark)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = graded.feedback ?: "Great effort!",
+                            fontSize = 13.sp,
+                            color = ColorTextSub,
+                            lineHeight = 18.sp
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { selectedAssignmentForFeedback = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = ColorPrimaryPurple),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Close")
+                    }
+                }
+            )
+        }
+    }
+}
+}
