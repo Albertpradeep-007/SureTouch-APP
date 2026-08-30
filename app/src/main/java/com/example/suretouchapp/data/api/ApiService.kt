@@ -70,6 +70,11 @@ interface ApiService {
     @POST("applications/{id}/assign-cohort/") suspend fun assignApplicationCohort(@Path("id") id: String, @Body body: ApiBody): Response<ApplicationDto>
     @POST("applications/{id}/check-completion/") suspend fun checkApplicationCompletion(@Path("id") id: String): Response<ApplicationDto>
     @GET("applications/{id}/journey/") suspend fun getApplicationJourney(@Path("id") id: String): Response<StudentJourneyDto>
+    @POST("applications/{id}/send-discontinue-otp/")
+    suspend fun sendDiscontinueOtp(
+        @Path("id") id: String
+    ): Response<ApiBody>
+
     @POST("applications/{id}/discontinue/") suspend fun discontinueCourse(
         @Path("id") id: String,
         @Body body: ApiBody = emptyMap()

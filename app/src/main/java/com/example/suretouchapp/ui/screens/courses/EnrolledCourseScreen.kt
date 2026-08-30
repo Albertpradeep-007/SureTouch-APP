@@ -56,6 +56,10 @@ fun EnrolledCourseScreen(
     var showDiscontinueDialog by remember { mutableStateOf(false) }
     var discontinuing by remember { mutableStateOf(false) }
     var discontinueError by remember { mutableStateOf<String?>(null) }
+    var discontinueOtpSent by remember { mutableStateOf(false) }
+    var discontinueOtp by remember { mutableStateOf("") }
+    var isSendingOtp by remember { mutableStateOf(false) }
+    var otpCountdown by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
     suspend fun loadCourseData() {
@@ -98,20 +102,138 @@ fun EnrolledCourseScreen(
 
     LaunchedEffect(tokenManager) { loadCourseData() }
 
+    LaunchedEffect(otpCountdown) {
+        if (otpCountdown > 0) {
+            kotlinx.coroutines.delay(1000L)
+            otpCountdown -= 1
+        }
+    }
+
     if (showDiscontinueDialog) {
+        val isConnected = com.example.suretouchapp.ui.components.LocalBackendConnected.current
+        val userEmail = tokenManager.getUserEmail()
+
         AlertDialog(
-            onDismissRequest = { if (!discontinuing) showDiscontinueDialog = false },
-            title = { Text("Discontinue this course?", fontWeight = FontWeight.Bold) },
-            text = {
+            onDismissRequest = {
+                if (!discontinuing && !isSendingOtp) {
+                    showDiscontinueDialog = false
+                    discontinueOtpSent = false
+                    discontinueOtp = ""
+                    discontinueError = null
+                }
+            },
+            title = {
                 Text(
-                    "Your current application/enrolment will be closed. After confirmation, you can select one published course again."
+                    text = if (discontinueOtpSent) "Enter Confirmation OTP" else "Discontinue Course / Cohort?",
+                    fontWeight = FontWeight.Bold
                 )
             },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!discontinueOtpSent) {
+                        Text(
+                            "Discontinuing this course will unenroll you from your assigned cohort and close this enrolment. After confirmation, you may choose any other published course.",
+                            fontSize = 13.sp,
+                            color = Color(0xFF475569)
+                        )
+                        Text(
+                            "To ensure security, a 6-digit confirmation OTP will be sent to your registered email ($userEmail).",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF1E293B)
+                        )
+                    } else {
+                        Text(
+                            "We sent a 6-digit confirmation code to $userEmail. Please enter it below to confirm discontinuation.",
+                            fontSize = 13.sp,
+                            color = Color(0xFF475569)
+                        )
+                        OutlinedTextField(
+                            value = discontinueOtp,
+                            onValueChange = { if (it.length <= 6) discontinueOtp = it.filter(Char::isDigit) },
+                            label = { Text("6-Digit OTP") },
+                            placeholder = { Text("e.g. 123456") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFFDC2626),
+                                cursorColor = Color(0xFFDC2626)
+                            )
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val applicationId = application?.id ?: return@TextButton
+                                    scope.launch {
+                                        isSendingOtp = true
+                                        discontinueError = null
+                                        val response = runCatching {
+                                            ApiClient.getService(tokenManager).sendDiscontinueOtp(applicationId)
+                                        }.getOrNull()
+                                        if (response?.isSuccessful == true) {
+                                            otpCountdown = 60
+                                        } else {
+                                            discontinueError = "Failed to resend OTP. Please try again."
+                                        }
+                                        isSendingOtp = false
+                                    }
+                                },
+                                enabled = !isSendingOtp && otpCountdown == 0
+                            ) {
+                                Text(
+                                    if (otpCountdown > 0) "Resend OTP in ${otpCountdown}s"
+                                    else if (isSendingOtp) "Sending..."
+                                    else "Resend OTP",
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                    discontinueError?.let { err ->
+                        Text(err, color = Color(0xFFDC2626), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            },
             confirmButton = {
-                    val isConnected = com.example.suretouchapp.ui.components.LocalBackendConnected.current
+                if (!discontinueOtpSent) {
                     Button(
                         onClick = {
                             if (!isConnected) return@Button
+                            val applicationId = application?.id ?: return@Button
+                            scope.launch {
+                                isSendingOtp = true
+                                discontinueError = null
+                                val response = runCatching {
+                                    ApiClient.getService(tokenManager).sendDiscontinueOtp(applicationId)
+                                }.getOrNull()
+                                if (response?.isSuccessful == true) {
+                                    discontinueOtpSent = true
+                                    otpCountdown = 60
+                                } else {
+                                    val errBody = response?.errorBody()?.string().orEmpty()
+                                    discontinueError = if (errBody.contains("error", ignoreCase = true)) {
+                                        errBody.replace('"', ' ').replace('{', ' ').replace('}', ' ').replace("error:", "").trim()
+                                    } else {
+                                        "Could not send confirmation OTP. Please check your connection."
+                                    }
+                                }
+                                isSendingOtp = false
+                            }
+                        },
+                        enabled = !isSendingOtp && isConnected,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        if (isSendingOtp) CircularProgressIndicator(Modifier.size(17.dp), color = Color.White, strokeWidth = 2.dp)
+                        else Text("Send Confirmation OTP")
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            if (!isConnected || discontinueOtp.length < 6) return@Button
                             val applicationId = application?.id ?: return@Button
                             scope.launch {
                                 discontinuing = true
@@ -119,27 +241,50 @@ fun EnrolledCourseScreen(
                                 val response = runCatching {
                                     ApiClient.getService(tokenManager).discontinueCourse(
                                         applicationId,
-                                        mapOf("reason" to "Student discontinued from the Android app.")
+                                        mapOf(
+                                            "otp" to discontinueOtp.trim(),
+                                            "reason" to "Student confirmed course discontinuation via OTP."
+                                        )
                                     )
                                 }.getOrNull()
                                 if (response?.isSuccessful == true) {
                                     application = response.body()?.application ?: application?.copy(status = "DROPPED")
                                     showDiscontinueDialog = false
+                                    discontinueOtpSent = false
+                                    discontinueOtp = ""
                                     onBrowseCourses()
                                 } else {
-                                    discontinueError = "The course could not be discontinued. Please try again or contact support."
+                                    val errBody = response?.errorBody()?.string().orEmpty()
+                                    discontinueError = if (errBody.contains("error", ignoreCase = true)) {
+                                        errBody.replace('"', ' ').replace('{', ' ').replace('}', ' ').replace("error:", "").trim()
+                                    } else {
+                                        "Invalid or expired OTP code. Please verify and try again."
+                                    }
                                 }
                                 discontinuing = false
                             }
                         },
-                        enabled = !discontinuing && isConnected,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C))
+                        enabled = !discontinuing && isConnected && discontinueOtp.length == 6,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
                     ) {
                         if (discontinuing) CircularProgressIndicator(Modifier.size(17.dp), color = Color.White, strokeWidth = 2.dp)
-                        else Text(if (!isConnected) "Discontinue (Offline)" else "Confirm Discontinue")
+                        else Text("Verify & Confirm Discontinue")
                     }
+                }
             },
-            dismissButton = { TextButton(onClick = { showDiscontinueDialog = false }, enabled = !discontinuing) { Text("Keep Course") } }
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDiscontinueDialog = false
+                        discontinueOtpSent = false
+                        discontinueOtp = ""
+                        discontinueError = null
+                    },
+                    enabled = !discontinuing && !isSendingOtp
+                ) {
+                    Text("Keep Enrolment")
+                }
+            }
         )
     }
 
