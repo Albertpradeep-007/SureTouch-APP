@@ -107,7 +107,9 @@ fun AuthScreen(
     var phoneNumber by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("Select Gender") }
     var dob by remember { mutableStateOf("") }
+    var education by remember { mutableStateOf("Select Education / Degree") }
     var isGenderDropdownExpanded by remember { mutableStateOf(false) }
+    var isEducationDropdownExpanded by remember { mutableStateOf(false) }
     var isEmailVerified by remember { mutableStateOf(false) }
     var showLinkedInWebSheet by remember { mutableStateOf(false) }
     var linkedInAuthUrl by remember { mutableStateOf<String?>(null) }
@@ -572,6 +574,9 @@ fun AuthScreen(
                                                     if (cleanPhone.isNotBlank()) tokenManager.savePhone(cleanPhone)
                                                     if (gender.isNotBlank() && gender != "Select Gender") tokenManager.saveGender(gender)
                                                     if (cleanDob.isNotBlank()) tokenManager.saveDob(cleanDob)
+                                                    if (education.isNotBlank() && education != "Select Education / Degree") {
+                                                        tokenManager.saveStudentProfileDetails(qualification = education)
+                                                    }
                                                     onAuthSuccess()
                                                 } else {
                                                     // Fallback: Login via password
@@ -821,6 +826,10 @@ fun AuthScreen(
                                                 errorMessage = "Please enter a valid Date of Birth in dd-mm-yyyy format."
                                                 return@OutlinedButton
                                             }
+                                            if (education == "Select Education / Degree" || education.isBlank()) {
+                                                errorMessage = "Please select your Highest Education / Degree."
+                                                return@OutlinedButton
+                                            }
                                             if (cleanPass.length < 8) {
                                                 errorMessage = "Password must be at least 8 characters long."
                                                 return@OutlinedButton
@@ -978,6 +987,53 @@ fun AuthScreen(
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
+                            // Education / Highest Degree * (Dropdown Menu)
+                            ExposedDropdownMenuBox(
+                                expanded = isEducationDropdownExpanded,
+                                onExpandedChange = { isEducationDropdownExpanded = !isEducationDropdownExpanded },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                OutlinedTextField(
+                                    value = education,
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Highest Education / Degree *") },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isEducationDropdownExpanded) },
+                                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                                    modifier = Modifier
+                                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                                        .fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                ExposedDropdownMenu(
+                                    expanded = isEducationDropdownExpanded,
+                                    onDismissRequest = { isEducationDropdownExpanded = false }
+                                ) {
+                                    listOf(
+                                        "Select Education / Degree",
+                                        "B.Tech / B.E (Engineering)",
+                                        "B.Sc / BCA (Computer Science / IT)",
+                                        "B.Com / BBA / BBM",
+                                        "B.A / Humanities",
+                                        "M.Tech / M.E / MS",
+                                        "MCA / M.Sc",
+                                        "MBA / PGDM",
+                                        "Diploma / Polytechnic",
+                                        "Intermediate / 12th Grade",
+                                        "Other Degree / Graduate"
+                                    ).forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option) },
+                                            onClick = {
+                                                education = option
+                                                isEducationDropdownExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+
                             // Password *
                             OutlinedTextField(
                                 value = regPassword,
@@ -1101,6 +1157,10 @@ fun AuthScreen(
                                         errorMessage = "Please enter a valid Date of Birth in dd-mm-yyyy format."
                                         return@Button
                                     }
+                                    if (education == "Select Education / Degree" || education.isBlank()) {
+                                        errorMessage = "Please select your Highest Education / Degree."
+                                        return@Button
+                                    }
                                     if (cleanPass.length < 8) {
                                         errorMessage = "Password must be at least 8 characters long."
                                         return@Button
@@ -1165,6 +1225,9 @@ fun AuthScreen(
                                                     if (cleanPhone.isNotBlank()) tokenManager.savePhone(cleanPhone)
                                                     if (gender.isNotBlank() && gender != "Select Gender") tokenManager.saveGender(gender)
                                                     if (cleanDob.isNotBlank()) tokenManager.saveDob(cleanDob)
+                                                    if (education.isNotBlank() && education != "Select Education / Degree") {
+                                                        tokenManager.saveStudentProfileDetails(qualification = education)
+                                                    }
                                                     onAuthSuccess()
                                                 } else {
                                                     errorMessage = "Could not sign in automatically. Please log in with your credentials."
