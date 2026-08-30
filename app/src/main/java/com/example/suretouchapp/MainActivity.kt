@@ -271,7 +271,7 @@ fun AppNavigation(
                             val profileApi = ApiClient.getService(tokenManager)
                             val usersList = profileApi.getUsers().body()?.results.orEmpty()
                             val cleanEmail = tokenManager.getUserEmail()
-                            val me = usersList.find { it.email.equals(cleanEmail, ignoreCase = true) } ?: usersList.firstOrNull()
+                            val me = usersList.find { it.email.equals(cleanEmail, ignoreCase = true) }
                             if (me != null) {
                                 val role = me.role ?: "STUDENT"
                                 val fullName = listOfNotNull(me.firstName, me.lastName)

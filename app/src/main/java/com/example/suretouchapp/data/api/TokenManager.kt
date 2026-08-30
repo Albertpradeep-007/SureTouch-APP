@@ -26,6 +26,11 @@ class TokenManager(context: Context) {
     }
 
     fun logout() {
+        clearUserSessionAndProfile()
+        sessionExpiredFlow.tryEmit(Unit)
+    }
+
+    fun clearUserSessionAndProfile() {
         prefs.edit()
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
@@ -34,6 +39,7 @@ class TokenManager(context: Context) {
             .remove(KEY_USER_ROLE)
             .remove("offline_session")
             .remove("cohort_code")
+            .remove("student_code")
             .remove("profile_phone")
             .remove("profile_qualification")
             .remove("profile_college")
@@ -56,6 +62,14 @@ class TokenManager(context: Context) {
             .remove("profile_languages")
             .remove("profile_portfolio")
             .remove("profile_photo_url")
+            .remove("profile_resume_url")
+            .remove("profile_resume_name")
+            .remove("mentor_cover_photo_url")
+            .remove("profile_designation")
+            .remove("profile_company")
+            .remove("profile_location")
+            .remove("profile_experience")
+            .remove("mentor_id")
             .remove("new_account_welcome")
             .remove("needs_course_selection")
             .remove(KEY_APPLICATION_NOTICE_COURSE)
@@ -68,7 +82,6 @@ class TokenManager(context: Context) {
             .remove("last_application_cohort_id")
             .remove("last_application_qualified")
             .apply()
-        sessionExpiredFlow.tryEmit(Unit)
     }
 
     fun clear() {
@@ -99,6 +112,43 @@ class TokenManager(context: Context) {
             .putString(KEY_USER_EMAIL, normalizedEmail)
         if (previousEmail.isNotBlank() && previousEmail != normalizedEmail) {
             editor.remove("cohort_code")
+                .remove("student_code")
+                .remove("profile_phone")
+                .remove("profile_qualification")
+                .remove("profile_college")
+                .remove("profile_bio")
+                .remove("profile_github")
+                .remove("profile_linkedin")
+                .remove("profile_tagline")
+                .remove("profile_specialization")
+                .remove("profile_graduation_year")
+                .remove("profile_city")
+                .remove("profile_state")
+                .remove("profile_country")
+                .remove("profile_gender")
+                .remove("profile_dob")
+                .remove("profile_permanent_address")
+                .remove("profile_father_name")
+                .remove("profile_mother_name")
+                .remove("profile_skills")
+                .remove("profile_hobbies")
+                .remove("profile_languages")
+                .remove("profile_portfolio")
+                .remove("profile_photo_url")
+                .remove("profile_resume_url")
+                .remove("profile_resume_name")
+                .remove("mentor_cover_photo_url")
+                .remove("profile_designation")
+                .remove("profile_company")
+                .remove("profile_location")
+                .remove("profile_experience")
+                .remove("mentor_id")
+                .remove("last_application_number")
+                .remove("last_application_status")
+                .remove("last_application_course_id")
+                .remove("last_application_course_title")
+                .remove("last_application_cohort_id")
+                .remove("last_application_qualified")
         }
         editor.apply()
     }
@@ -325,6 +375,13 @@ class TokenManager(context: Context) {
         prefs.edit()
             .putString("profile_resume_url", resumeUrl.trim())
             .putString("profile_resume_name", fileName.trim())
+            .apply()
+    }
+
+    fun clearResumeDetails() {
+        prefs.edit()
+            .remove("profile_resume_url")
+            .remove("profile_resume_name")
             .apply()
     }
 

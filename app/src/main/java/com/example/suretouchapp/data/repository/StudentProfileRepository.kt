@@ -45,12 +45,14 @@ class StudentProfileRepository(private val tokenManager: TokenManager) {
             if (!photo.isNullOrBlank()) {
                 tokenManager.saveProfilePhotoUrl(photo)
             }
-            // Persist server resume URL
+            // Persist server resume URL if present, or clear stale previous account resume
             val serverResumeUrl = matchedProfile.resumeUrl?.takeIf(String::isNotBlank)
                 ?: matchedProfile.resume?.takeIf(String::isNotBlank)
             if (serverResumeUrl != null) {
                 val existingName = tokenManager.getResumeName().ifBlank { "Student_Resume_CV.pdf" }
                 tokenManager.saveResumeDetails(serverResumeUrl, existingName)
+            } else {
+                tokenManager.clearResumeDetails()
             }
 
             tokenManager.saveStudentProfileDetails(

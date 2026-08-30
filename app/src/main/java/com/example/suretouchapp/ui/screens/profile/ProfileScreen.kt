@@ -1253,7 +1253,7 @@ private fun ProfileEditSheet(
                             if (userId.isNullOrBlank()) {
                                 val userRes = runCatching { service.getUsers() }.getOrNull()
                                 val userList = userRes?.body()?.results.orEmpty()
-                                val meUser = userList.find { it.email.trim().equals(email, ignoreCase = true) } ?: userList.firstOrNull()
+                                val meUser = userList.find { it.email.trim().equals(email, ignoreCase = true) }
                                 userId = meUser?.id
                             }
 
