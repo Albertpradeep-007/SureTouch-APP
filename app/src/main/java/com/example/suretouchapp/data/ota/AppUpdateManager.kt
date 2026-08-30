@@ -38,6 +38,8 @@ object AppUpdateManager {
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
+    private var userDismissedVersionCode: Int = -1
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -89,6 +91,11 @@ object AppUpdateManager {
             val targetInfo = info
             if (targetInfo != null) {
                 if (targetInfo.versionCode > currentVersionCode) {
+                    if (!targetInfo.isMandatory && targetInfo.versionCode == userDismissedVersionCode) {
+                        val state = UpdateState.UpToDate
+                        _updateState.value = state
+                        return@withContext state
+                    }
                     val state = UpdateState.UpdateAvailable(targetInfo)
                     _updateState.value = state
                     return@withContext state
@@ -217,7 +224,10 @@ object AppUpdateManager {
         }
     }
 
-    fun dismissUpdate() {
+    fun dismissUpdate(versionCode: Int? = null) {
+        if (versionCode != null) {
+            userDismissedVersionCode = versionCode
+        }
         _updateState.value = UpdateState.Idle
     }
 }

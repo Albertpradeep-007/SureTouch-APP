@@ -622,7 +622,9 @@ fun AppNavigation(
             if (otaPreviewRequested && BuildConfig.DEBUG) {
                 otaPreviewDismissed = true
             } else {
-                AppUpdateManager.dismissUpdate()
+                val availableCode = (displayedUpdateState as? UpdateState.UpdateAvailable)?.info?.versionCode
+                    ?: (displayedUpdateState as? UpdateState.ReadyToInstall)?.info?.versionCode
+                AppUpdateManager.dismissUpdate(availableCode)
             }
         }
     )
