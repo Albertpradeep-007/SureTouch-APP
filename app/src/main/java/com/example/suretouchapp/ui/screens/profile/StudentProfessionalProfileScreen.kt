@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
@@ -60,9 +61,9 @@ import java.util.Locale
 private val PrimaryPurple = Color(0xFF6D28D9)
 private val DeepPurple = Color(0xFF4C1D95)
 private val VerifiedGreen = Color(0xFF059669)
-private val ScreenBg = Color(0xFFF8FAFC)
-private val TextMain = Color(0xFF0F172A)
-private val TextMuted = Color(0xFF64748B)
+private val ScreenBg @Composable get() = MaterialTheme.colorScheme.background
+private val TextMain @Composable get() = MaterialTheme.colorScheme.onSurface
+private val TextMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -435,18 +436,20 @@ private fun StudentProfileContent(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(185.dp)
+                            .height(215.dp)
                     ) {
                         ProfileCoverBanner(
                             coverUri = coverPhotoUri,
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // Top Controls: Back Arrow (Top Left) & Edit Profile Pencil (Top Right)
+                        // Top Controls: Back Arrow (Top Left) & Edit Profile Pencil (Top Right) - Safe from camera notch
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 10.dp, start = 14.dp, end = 14.dp),
+                                .statusBarsPadding()
+                                .padding(top = 8.dp, start = 14.dp, end = 14.dp)
+                                .zIndex(5f),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -515,7 +518,7 @@ private fun StudentProfileContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp)
-                            .padding(top = 137.dp),
+                            .padding(top = 155.dp),
                         verticalAlignment = Alignment.Bottom
                     ) {
                         StudentProfileAvatar(

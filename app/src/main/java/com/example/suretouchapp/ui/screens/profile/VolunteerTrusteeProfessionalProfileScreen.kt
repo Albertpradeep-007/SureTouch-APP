@@ -47,8 +47,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 private val PrimaryTeal = Color(0xFF0D9488)
 private val ScreenBg = Color(0xFFF8FAFC)
-private val TextMain = Color(0xFF0F172A)
-private val TextMuted = Color(0xFF64748B)
+private val TextMain @Composable get() = MaterialTheme.colorScheme.onSurface
+private val TextMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -212,7 +212,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(185.dp)
+                                .height(215.dp)
                         ) {
                             ProfileCoverBanner(
                                 coverUri = coverPhotoUri,
@@ -283,7 +283,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 20.dp)
-                                .padding(top = 137.dp),
+                                .padding(top = 155.dp),
                             verticalAlignment = Alignment.Bottom
                         ) {
                             StudentProfileAvatar(

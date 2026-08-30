@@ -36,6 +36,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -78,8 +79,8 @@ private val PrimarySurePurple = Color(0xFF5422D8)
 private val CardVibrantPurple = Color(0xFF6430EE)
 private val CardLavender      = Color(0xFFF2EDFF)
 private val PanelBg           = Color(0xFFF8F5FF)
-private val ScreenBg          = Color(0xFFF8FAFC)
-private val CardInk           = Color(0xFF0F172A)
+private val ScreenBg @Composable get() = MaterialTheme.colorScheme.background
+private val CardInk @Composable get() = MaterialTheme.colorScheme.onSurface
 private val CardMuted         = Color(0xFF334155)
 private val CardSupporting    = Color(0xFF1E293B)
 private val CardBorder        = Color(0xFFCBD5E1)
@@ -1414,18 +1415,20 @@ private fun MentorProfileMainView(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(185.dp)
+                            .height(215.dp)
                     ) {
                         ProfileCoverBanner(
                             coverUri = coverPhotoUri,
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // Top Controls: Back Arrow (Top Left) & Edit Profile Pencil (Top Right)
+                        // Top Controls: Back Arrow (Top Left) & Edit Profile Pencil (Top Right) - Safe from camera notch
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 10.dp, start = 14.dp, end = 14.dp),
+                                .statusBarsPadding()
+                                .padding(top = 8.dp, start = 14.dp, end = 14.dp)
+                                .zIndex(5f),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1494,7 +1497,7 @@ private fun MentorProfileMainView(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp)
-                            .padding(top = 137.dp),
+                            .padding(top = 155.dp),
                         verticalAlignment = Alignment.Bottom
                     ) {
                         MentorProfileAvatar(

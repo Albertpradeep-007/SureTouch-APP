@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -38,8 +39,8 @@ import com.example.suretouchapp.ui.components.StudentProfileImage
 private val PrimaryBlue = Color(0xFF0284C7)
 private val DeepBlue = Color(0xFF0369A1)
 private val ScreenBg = Color(0xFFF8FAFC)
-private val TextMain = Color(0xFF0F172A)
-private val TextMuted = Color(0xFF64748B)
+private val TextMain @Composable get() = MaterialTheme.colorScheme.onSurface
+private val TextMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -122,7 +123,7 @@ fun CompanyProfessionalProfileScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(185.dp)
+                                .height(215.dp)
                         ) {
                             ProfileCoverBanner(
                                 coverUri = coverPhotoUri,
@@ -189,7 +190,7 @@ fun CompanyProfessionalProfileScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 20.dp)
-                                .padding(top = 137.dp),
+                                .padding(top = 155.dp),
                             verticalAlignment = Alignment.Bottom
                         ) {
                             StudentProfileAvatar(

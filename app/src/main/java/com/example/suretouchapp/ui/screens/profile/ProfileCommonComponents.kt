@@ -38,10 +38,10 @@ import com.example.suretouchapp.ui.components.StudentProfileImage
 
 val SharedPrimaryPurple = Color(0xFF6D28D9)
 val SharedDeepIndigo = Color(0xFF4C1D95)
-val SharedBorderColor = Color(0xFFE2E8F0)
-val SharedCardBg = Color(0xFFFFFFFF)
-val SharedTextMain = Color(0xFF0F172A)
-val SharedTextMuted = Color(0xFF64748B)
+val SharedBorderColor @Composable get() = MaterialTheme.colorScheme.outlineVariant
+val SharedCardBg @Composable get() = MaterialTheme.colorScheme.surface
+val SharedTextMain @Composable get() = MaterialTheme.colorScheme.onSurface
+val SharedTextMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
 @Composable
 fun ProfileSectionCard(
