@@ -504,23 +504,33 @@ private fun OperationsCard(summary: VolunteerDashboardSummary, isLoading: Boolea
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Box(Modifier.background(Brush.linearGradient(listOf(Color(0xFF7027E5), DeepPurple)))) {
-            Box(
+            // Translucent SURE Trust logo watermark in background
+            androidx.compose.foundation.Image(
+                painter = painterResource(R.drawable.sure_trust_official_logo),
+                contentDescription = null,
                 modifier = Modifier
+                    .size(220.dp)
                     .align(Alignment.CenterEnd)
-                    .offset(x = 8.dp)
-                    .size(160.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.08f))
+                    .offset(x = 30.dp)
+                    .graphicsLayer { alpha = 0.12f }
             )
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(54.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.VolunteerActivism, null, tint = Purple, modifier = Modifier.size(31.dp))
+                    // SURE Trust logo in white circle
+                    Box(
+                        Modifier.size(54.dp).background(Color.White, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(R.drawable.sure_trust_official_logo),
+                            contentDescription = "SURE Trust Logo",
+                            modifier = Modifier.size(38.dp)
+                        )
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Volunteer overview", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                        Text("Here’s your snapshot for today.", color = Color.White.copy(.9f), fontSize = 13.sp)
+                        Text("Here's your snapshot for today.", color = Color.White.copy(.9f), fontSize = 13.sp)
                     }
                 }
                 Spacer(Modifier.height(18.dp))
@@ -561,17 +571,21 @@ private fun VolunteerScheduleCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text("Today’s Timetable", color = Ink, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CalendarMonth, null, tint = Purple, modifier = Modifier.size(13.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = nextSession?.date?.takeIf(String::isNotBlank) ?: todayDateStr,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Purple
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SureTrustLogo(size = 34.dp, showSubtext = false)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Today’s Timetable", color = Ink, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = Purple, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = nextSession?.date?.takeIf(String::isNotBlank) ?: todayDateStr,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Purple
+                        )
+                    }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
