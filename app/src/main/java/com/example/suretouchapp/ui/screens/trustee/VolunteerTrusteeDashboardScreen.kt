@@ -561,21 +561,17 @@ private fun VolunteerScheduleCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SureTrustLogo(size = 34.dp, showSubtext = false)
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text("Today’s Timetable", color = Ink, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CalendarMonth, null, tint = Purple, modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = nextSession?.date?.takeIf(String::isNotBlank) ?: todayDateStr,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Purple
-                        )
-                    }
+            Column {
+                Text("Today’s Timetable", color = Ink, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.CalendarMonth, null, tint = Purple, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = nextSession?.date?.takeIf(String::isNotBlank) ?: todayDateStr,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Purple
+                    )
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
