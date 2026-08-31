@@ -297,7 +297,6 @@ fun VolunteerTrusteeDashboardScreen(
                             )
                         }
                         item { OperationsCard(summary, isLoading, onNavigateToProgrammes) }
-                        item { VolunteerScheduleCard(summary.upcomingSessions, onAttendance = onNavigateToAttendance, onRecurringSchedule = { showRecurringScheduleDialog = true }) }
                         item {
                             QuickAccess(
                                 onAttendance = onNavigateToAttendance,
