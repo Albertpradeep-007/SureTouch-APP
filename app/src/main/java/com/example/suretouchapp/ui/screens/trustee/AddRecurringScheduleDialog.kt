@@ -29,6 +29,9 @@ import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.CohortDto
 import com.example.suretouchapp.data.model.CourseDto
+import com.example.suretouchapp.data.repository.ClassSchedulePolicy
+import com.example.suretouchapp.data.repository.isCancelledSession
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -37,11 +40,11 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private val PurplePrimary = Color(0xFF6821A8)
-private val PurpleSoft = Color(0xFFF3E8FF)
-private val DarkText = Color(0xFF1E293B)
-private val SubText = Color(0xFF64748B)
-private val BorderColor = Color(0xFFE2E8F0)
+private val PurplePrimary @Composable get() = MaterialTheme.colorScheme.primary
+private val PurpleSoft @Composable get() = MaterialTheme.colorScheme.primaryContainer
+private val DarkText @Composable get() = MaterialTheme.colorScheme.onSurface
+private val SubText @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val BorderColor @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 enum class ClassTypeOption(val value: String, val label: String) {
     DOMAIN("DOMAIN", "Domain Class"),
@@ -155,7 +158,7 @@ fun AddRecurringScheduleDialog(
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.94f),
             shape = RoundedCornerShape(20.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp
         ) {
             Column(
@@ -221,19 +224,19 @@ fun AddRecurringScheduleDialog(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFFFEE2E2),
-                            border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.ErrorOutline, null, tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = errorMessage!!,
                                     fontSize = 12.5.sp,
-                                    color = Color(0xFFB91C1C),
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -291,10 +294,7 @@ fun AddRecurringScheduleDialog(
                                     .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                     .fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PurplePrimary,
-                                    unfocusedBorderColor = BorderColor
-                                )
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             ExposedDropdownMenu(
                                 expanded = courseDropdownExpanded,
@@ -342,10 +342,7 @@ fun AddRecurringScheduleDialog(
                                     .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                     .fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PurplePrimary,
-                                    unfocusedBorderColor = BorderColor
-                                )
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             ExposedDropdownMenu(
                                 expanded = cohortDropdownExpanded,
@@ -393,10 +390,7 @@ fun AddRecurringScheduleDialog(
                                     .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                     .fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PurplePrimary,
-                                    unfocusedBorderColor = BorderColor
-                                )
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             ExposedDropdownMenu(
                                 expanded = lstBatchDropdownExpanded,
@@ -453,10 +447,7 @@ fun AddRecurringScheduleDialog(
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PurplePrimary,
-                                    unfocusedBorderColor = BorderColor
-                                )
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                         }
 
@@ -493,10 +484,7 @@ fun AddRecurringScheduleDialog(
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PurplePrimary,
-                                    unfocusedBorderColor = BorderColor
-                                )
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                         }
                     }
@@ -543,10 +531,7 @@ fun AddRecurringScheduleDialog(
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = PurplePrimary,
-                                        unfocusedBorderColor = BorderColor
-                                    )
+                                    colors = SureFormDefaults.outlinedTextFieldColors()
                                 )
                             }
 
@@ -583,10 +568,7 @@ fun AddRecurringScheduleDialog(
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = PurplePrimary,
-                                        unfocusedBorderColor = BorderColor
-                                    )
+                                    colors = SureFormDefaults.outlinedTextFieldColors()
                                 )
                             }
                         }
@@ -605,10 +587,7 @@ fun AddRecurringScheduleDialog(
                             leadingIcon = { Icon(Icons.Default.Repeat, null, tint = PurplePrimary, modifier = Modifier.size(18.dp)) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = PurplePrimary,
-                                unfocusedBorderColor = BorderColor
-                            )
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -637,7 +616,7 @@ fun AddRecurringScheduleDialog(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFF8FAFC),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
                         border = BorderStroke(1.dp, BorderColor)
                     ) {
                         Row(
@@ -681,6 +660,10 @@ fun AddRecurringScheduleDialog(
                                 errorMessage = "Please provide start and end times."
                                 return@Button
                             }
+                            if (!ClassSchedulePolicy.isValidTimeRange(startTime, endTime)) {
+                                errorMessage = "End time must be after start time."
+                                return@Button
+                            }
                             if (nextRunDate.isBlank() || nextRunTime.isBlank()) {
                                 errorMessage = "Please provide next run date and time."
                                 return@Button
@@ -709,11 +692,43 @@ fun AddRecurringScheduleDialog(
                                         onDismiss()
                                         return@launch
                                     }
+                                    errorMessage = res?.errorBody()?.string()
+                                        ?: "Unable to configure the LST recurring schedule. Please try again."
+                                    isSubmitting = false
+                                    return@launch
                                 }
 
                                 // General Class schedule record creation for upcoming session
+                                val sessionTitle = "${classType.label}: ${selectedCourse?.name ?: selectedCohort?.name ?: "Recurring Session"}"
+                                val latestResponse = runCatching { api.getAttendance() }.getOrNull()
+                                if (latestResponse?.isSuccessful != true) {
+                                    errorMessage = "Could not verify the latest timetable. Refresh and try again."
+                                    isSubmitting = false
+                                    return@launch
+                                }
+                                val latestSessions = latestResponse.body()?.results.orEmpty()
+                                val conflict = selectedCohort?.let { cohort ->
+                                    ClassSchedulePolicy.findConflict(
+                                        latestSessions,
+                                        cohort.id,
+                                        nextRunDate,
+                                        startTime,
+                                        endTime
+                                    )
+                                } ?: latestSessions.firstOrNull { session ->
+                                    !session.isCancelledSession() &&
+                                        session.sessionTitle.equals(sessionTitle, ignoreCase = true) &&
+                                        session.date.take(10) == nextRunDate.take(10) &&
+                                        session.startTime?.take(5) == startTime.take(5) &&
+                                        session.endTime?.take(5) == endTime.take(5)
+                                }
+                                if (conflict != null) {
+                                    errorMessage = "A matching class already exists on $nextRunDate from ${startTime.take(5)} to ${endTime.take(5)}. Choose another slot."
+                                    isSubmitting = false
+                                    return@launch
+                                }
                                 val sessionPayload = mutableMapOf<String, Any?>(
-                                    "title" to "${classType.label}: ${selectedCourse?.name ?: selectedCohort?.name ?: "Recurring Session"}",
+                                    "title" to sessionTitle,
                                     "class_date" to nextRunDate,
                                     "start_time" to startTime.take(5),
                                     "end_time" to endTime.take(5),
@@ -730,10 +745,8 @@ fun AddRecurringScheduleDialog(
                                     onSaved()
                                     onDismiss()
                                 } else {
-                                    val err = res?.errorBody()?.string() ?: "Schedule configured for recurring triggers."
-                                    Toast.makeText(context, "Recurring schedule updated!", Toast.LENGTH_SHORT).show()
-                                    onSaved()
-                                    onDismiss()
+                                    errorMessage = res?.errorBody()?.string()
+                                        ?: "The backend rejected this schedule. Check the details and try again."
                                 }
                                 isSubmitting = false
                             }

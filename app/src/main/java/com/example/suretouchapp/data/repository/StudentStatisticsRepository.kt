@@ -24,11 +24,18 @@ class StudentStatisticsRepository(private val tokenManager: TokenManager) {
             val githubUrl = primary.githubUrl ?: tokenManager.getGithubUrl().takeIf { it.isNotBlank() }
             val isGithub = primary.isGithubLinked || localGithub || !githubUrl.isNullOrBlank()
 
+            // The backend aggregate currently counts every `conducted=true` row,
+            // including future schedules. AttendanceSerializer already provides the
+            // authoritative student-scoped READY/NOT_READY result for each session,
+            // so use that source whenever the detailed request succeeds.
+            val reconciledAttendance = loadDetailedAttendancePercentage()
+                ?: primary.attendancePercentage
             val resolved = primary.copy(
                 isLinkedinConnected = isLinkedin,
                 githubUrl = githubUrl,
                 isGithubLinked = isGithub,
-                studentRoleVerified = primary.studentRoleVerified || (isLinkedin && isGithub)
+                studentRoleVerified = primary.studentRoleVerified || (isLinkedin && isGithub),
+                attendancePercentage = reconciledAttendance
             )
             val cached = tokenManager.getApplicationSnapshot()
             tokenManager.saveApplicationSnapshot(
@@ -45,6 +52,30 @@ class StudentStatisticsRepository(private val tokenManager: TokenManager) {
         return loadCompatibilityFallback()
     }
 
+    private suspend fun loadDetailedAttendancePercentage(): Double? = coroutineScope {
+        val api = ApiClient.getService(tokenManager)
+        val attendanceRead = async {
+            runCatching { api.getAttendance() }.getOrNull()
+                ?.takeIf { it.isSuccessful }
+                ?.body()
+                ?.results
+        }
+        val profileRead = async {
+            runCatching { api.getStudentProfileById("me") }.getOrNull()
+                ?.takeIf { it.isSuccessful }
+                ?.body()
+        }
+        val attendanceResponse = attendanceRead.await() ?: return@coroutineScope null
+        val profile = profileRead.await()
+        val identifiers = setOfNotNull(
+            profile?.id?.takeIf(String::isNotBlank),
+            profile?.userId?.takeIf(String::isNotBlank),
+            profile?.studentCode?.takeIf(String::isNotBlank),
+            tokenManager.getStudentCode().takeIf(String::isNotBlank)
+        )
+        calculateStudentAttendancePercentage(attendanceResponse, identifiers) ?: 0.0
+    }
+
     private suspend fun loadCompatibilityFallback(): StudentStatisticsDto? = coroutineScope {
         val api = ApiClient.getService(tokenManager)
         val applicationsRaw = async { runCatching { api.getMyApplications() }.getOrNull() }
@@ -53,6 +84,7 @@ class StudentStatisticsRepository(private val tokenManager: TokenManager) {
         val examsRead = async { runCatching { api.getScreeningResults() }.getOrNull()?.takeIf { it.isSuccessful }?.body()?.results }
         val interviewsRead = async { runCatching { api.getPreScreeningInterviews() }.getOrNull()?.takeIf { it.isSuccessful }?.body()?.results }
         val cohortsRead = async { runCatching { api.getCohorts() }.getOrNull()?.takeIf { it.isSuccessful }?.body()?.results }
+        val attendanceRead = async { runCatching { api.getAttendance() }.getOrNull()?.takeIf { it.isSuccessful }?.body()?.results }
 
         val applicationsResponse = applicationsRaw.await()
         if (applicationsResponse != null && applicationsResponse.code() in listOf(401, 403)) {
@@ -66,6 +98,7 @@ class StudentStatisticsRepository(private val tokenManager: TokenManager) {
         val exams = examsRead.await()
         val interviews = interviewsRead.await()
         val cohorts = cohortsRead.await()
+        val attendance = attendanceRead.await().orEmpty()
         val cached = tokenManager.getApplicationSnapshot()
 
         val application = applications?.firstOrNull()
@@ -93,6 +126,14 @@ class StudentStatisticsRepository(private val tokenManager: TokenManager) {
                     applicationStatus?.uppercase(Locale.US) in setOf("QUALIFIED", "WAITLISTED")
                 )
 
+        val attendanceIdentifiers = setOfNotNull(
+            profile?.id?.takeIf(String::isNotBlank),
+            profile?.userId?.takeIf(String::isNotBlank),
+            profile?.studentCode?.takeIf(String::isNotBlank),
+            tokenManager.getStudentCode().takeIf(String::isNotBlank)
+        )
+        val attendancePercentage = calculateStudentAttendancePercentage(attendance, attendanceIdentifiers) ?: 0.0
+
         if (application == null && profile == null && cached == null) return@coroutineScope null
 
         tokenManager.saveApplicationSnapshot(
@@ -119,6 +160,7 @@ class StudentStatisticsRepository(private val tokenManager: TokenManager) {
                 )
             },
             examsTaken = if (exam == null) 0 else 1,
+            attendancePercentage = attendancePercentage,
             applicationStatus = applicationStatus,
             applicationNumber = applicationNumber,
             applicationCourseTitle = courseTitle,

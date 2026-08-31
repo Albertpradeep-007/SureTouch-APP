@@ -35,10 +35,11 @@ import com.example.suretouchapp.data.api.TokenManager
 import kotlinx.coroutines.launch
 import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.StudentProfileImage
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 
 private val PrimaryBlue = Color(0xFF0284C7)
 private val DeepBlue = Color(0xFF0369A1)
-private val ScreenBg = Color(0xFFF8FAFC)
+private val ScreenBg @Composable get() = MaterialTheme.colorScheme.background
 private val TextMain @Composable get() = MaterialTheme.colorScheme.onSurface
 private val TextMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -240,8 +241,8 @@ fun CompanyProfessionalProfileScreen(
                                     .clip(CircleShape)
                                     .clickable { showEditSheet = true },
                                 shape = CircleShape,
-                                color = Color.White,
-                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 shadowElevation = 1.dp
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -256,7 +257,7 @@ fun CompanyProfessionalProfileScreen(
                             text = industry,
                             fontSize = 14.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF334155),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 20.sp
                         )
 
@@ -281,7 +282,7 @@ fun CompanyProfessionalProfileScreen(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                                 border = BorderStroke(1.2.dp, PrimaryBlue),
                                 shadowElevation = 1.dp
                             ) {
@@ -297,8 +298,8 @@ fun CompanyProfessionalProfileScreen(
 
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color.White,
-                                border = BorderStroke(1.2.dp, Color(0xFFCBD5E1)),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.outlineVariant),
                                 shadowElevation = 1.dp
                             ) {
                                 Row(
@@ -333,7 +334,7 @@ fun CompanyProfessionalProfileScreen(
                                 onClick = { showIdModal = true },
                                 modifier = Modifier.height(42.dp),
                                 shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
                             ) {
                                 Icon(Icons.Default.QrCode, null, modifier = Modifier.size(16.dp))
@@ -406,7 +407,7 @@ fun CompanyProfessionalProfileScreen(
                         Text(
                             text = aboutCompany,
                             fontSize = 14.sp,
-                            color = Color(0xFF334155),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 22.sp
                         )
                     }
@@ -423,14 +424,14 @@ fun CompanyProfessionalProfileScreen(
                             hiringStack.forEach { skill ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFF0F9FF),
-                                    border = BorderStroke(1.dp, Color(0xFFBAE6FD))
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                                 ) {
                                     Text(
                                         text = skill,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = DeepBlue,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                     )
                                 }
@@ -486,7 +487,7 @@ fun CompanyProfessionalProfileScreen(
             if (showEditSheet) {
                 ModalBottomSheet(
                     onDismissRequest = { showEditSheet = false },
-                    containerColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 ) {
                     Column(
@@ -506,28 +507,32 @@ fun CompanyProfessionalProfileScreen(
                             value = companyName,
                             onValueChange = { companyName = it },
                             label = { Text("Company Name") },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
                             value = industry,
                             onValueChange = { industry = it },
                             label = { Text("Industry / Domain") },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
                             value = recruiterName,
                             onValueChange = { recruiterName = it },
                             label = { Text("Recruiter Representative Name") },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
                             value = phone,
                             onValueChange = { phone = it },
                             label = { Text("Contact Phone") },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
@@ -535,14 +540,16 @@ fun CompanyProfessionalProfileScreen(
                             onValueChange = { aboutCompany = it },
                             label = { Text("Company Mission & Overview") },
                             minLines = 3,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
                             value = websiteUrl,
                             onValueChange = { websiteUrl = it },
                             label = { Text("Official Website URL") },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Spacer(Modifier.height(16.dp))
                         Row(

@@ -25,6 +25,8 @@ import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.StudentProfileDto
 import com.example.suretouchapp.data.model.UserResponse
 import com.example.suretouchapp.data.repository.VolunteerRepository
+import com.example.suretouchapp.ui.theme.SureFormDefaults
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import java.io.IOException
 
 private data class AssignedPerson(
@@ -48,6 +50,7 @@ fun TrusteePeopleScreen(
     var selectedFilter by remember { mutableStateOf(initialFilter.uppercase()) }
     var searchQuery by remember { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
+    val semanticColors = sureSemanticColors()
 
     LaunchedEffect(refresh) {
         loading = true
@@ -145,7 +148,7 @@ fun TrusteePeopleScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFFF8FAFC),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -159,13 +162,13 @@ fun TrusteePeopleScreen(
                                 else -> "${people.size} total network members"
                             },
                             fontSize = 11.sp,
-                            color = Color(0xFF64748B)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color(0xFF6726D9)) } },
                 actions = { IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Refresh", tint = Color(0xFF6726D9)) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { padding ->
@@ -209,11 +212,7 @@ fun TrusteePeopleScreen(
                         }
                     },
                     shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF6726D9),
-                        unfocusedContainerColor = Color.White,
-                        focusedContainerColor = Color.White
-                    ),
+                    colors = SureFormDefaults.outlinedTextFieldColors(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -273,32 +272,32 @@ fun TrusteePeopleScreen(
 
             when {
                 loading -> item { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color(0xFF6726D9)) } }
-                error != null -> item { Text(error.orEmpty(), color = Color(0xFFB91C1C), modifier = Modifier.padding(12.dp)) }
+                error != null -> item { Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
                 filteredPeople.isEmpty() -> item {
-                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(16.dp)) {
                         Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.PersonSearch, null, tint = Color(0xFF6726D9), modifier = Modifier.size(36.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text("No matching people found", fontWeight = FontWeight.Bold, color = Color(0xFF101A35))
-                            Text("No records match '$selectedFilter' in your assigned cohorts.", fontSize = 12.sp, color = Color(0xFF64748B))
+                            Text("No matching people found", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text("No records match '$selectedFilter' in your assigned cohorts.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
                 else -> items(filteredPeople, key = { it.user.id ?: it.user.email }) { person ->
                     val roleBadgeColor = when (person.roleType) {
-                        "MENTOR" -> Color(0xFF6726D9)
-                        "VOLUNTEER" -> Color(0xFF0D9488)
-                        "STUDENT" -> Color(0xFFD97706)
-                        else -> Color(0xFF64748B)
+                        "MENTOR" -> MaterialTheme.colorScheme.primary
+                        "VOLUNTEER" -> semanticColors.info
+                        "STUDENT" -> semanticColors.warning
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                     val roleBadgeBg = when (person.roleType) {
-                        "MENTOR" -> Color(0xFFF1E9FF)
-                        "VOLUNTEER" -> Color(0xFFE6F7F5)
-                        "STUDENT" -> Color(0xFFFFF7ED)
-                        else -> Color(0xFFF1F5F9)
+                        "MENTOR" -> MaterialTheme.colorScheme.primaryContainer
+                        "VOLUNTEER" -> semanticColors.infoContainer
+                        "STUDENT" -> semanticColors.warningContainer
+                        else -> MaterialTheme.colorScheme.surfaceVariant
                     }
 
-                    Surface(onClick = { selected = person }, color = Color.White, shape = RoundedCornerShape(15.dp), shadowElevation = 2.dp, border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
+                    Surface(onClick = { selected = person }, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(15.dp), shadowElevation = 2.dp, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(44.dp).background(roleBadgeBg, CircleShape), contentAlignment = Alignment.Center) {
                                 Icon(
@@ -313,12 +312,36 @@ fun TrusteePeopleScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
+                                val fullName = listOfNotNull(person.user.firstName, person.user.lastName).joinToString(" ").trim().ifBlank {
+                                    person.user.email.substringBefore('@').replace(".", " ").replace("_", " ").split(" ").joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+                                }
                                 Text(
-                                    listOfNotNull(person.user.firstName, person.user.lastName).joinToString(" ").ifBlank { person.user.email.substringBefore('@') },
+                                    fullName.ifBlank { "Cohort Member" },
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF101A35)
+                                    fontSize = 14.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Text(person.user.email, fontSize = 11.5.sp, color = Color(0xFF64748B))
+                                Spacer(Modifier.height(2.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (person.roleType == "STUDENT") {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFFFEF3C7),
+                                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                                        ) {
+                                            Text(
+                                                text = "STUDENT",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFD97706),
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                        Spacer(Modifier.width(6.dp))
+                                    }
+                                    Text(person.user.email, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Spacer(Modifier.height(2.dp))
                                 Text("Cohorts: ${person.cohortCodes.joinToString().ifBlank { "Assigned cohort" }}", fontSize = 11.sp, color = roleBadgeColor, fontWeight = FontWeight.Medium)
                             }
                             Surface(color = roleBadgeBg, shape = RoundedCornerShape(8.dp)) {
@@ -356,16 +379,16 @@ fun TrusteePeopleScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
                         color = when (person.roleType) {
-                            "MENTOR" -> Color(0xFFF1E9FF)
-                            "VOLUNTEER" -> Color(0xFFE6F7F5)
-                            else -> Color(0xFFFFF7ED)
+                            "MENTOR" -> MaterialTheme.colorScheme.primaryContainer
+                            "VOLUNTEER" -> semanticColors.infoContainer
+                            else -> semanticColors.warningContainer
                         },
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
                             person.roleLabel.replace('_', ' '),
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF6726D9),
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             fontSize = 12.sp
                         )
@@ -374,7 +397,7 @@ fun TrusteePeopleScreen(
                     person.user.phoneNumber?.takeIf(String::isNotBlank)?.let {
                         Text("Phone: $it", fontSize = 13.sp)
                     }
-                    Text("Assigned Cohorts: ${person.cohortCodes.joinToString().ifBlank { "Assigned" }}", color = Color(0xFF64748B), fontSize = 12.5.sp)
+                    Text("Assigned Cohorts: ${person.cohortCodes.joinToString().ifBlank { "Assigned" }}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.5.sp)
                 }
             },
             confirmButton = { TextButton(onClick = { selected = null }) { Text("Close") } }

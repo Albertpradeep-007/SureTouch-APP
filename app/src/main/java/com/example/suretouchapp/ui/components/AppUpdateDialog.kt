@@ -92,7 +92,7 @@ fun AppUpdateDialog(
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
@@ -106,7 +106,7 @@ fun AppUpdateDialog(
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
-                            tint = Color(0xFF94A3B8)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -141,7 +141,7 @@ fun AppUpdateDialog(
                         text = if (downloadedFile != null) "Update Ready to Install" else "New Version Available!",
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 20.sp,
-                        color = Color(0xFF101A35),
+                        color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center
                     )
 
@@ -153,14 +153,14 @@ fun AppUpdateDialog(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Surface(
-                            color = Color(0xFFF1F5F9),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
                                 text = "Current: v${AppUpdateManager.currentVersionName}",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFF64748B),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
@@ -170,19 +170,19 @@ fun AppUpdateDialog(
                             Icon(
                                 imageVector = Icons.Default.ArrowForward,
                                 contentDescription = null,
-                                tint = Color(0xFF94A3B8),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(Modifier.width(8.dp))
                             Surface(
-                                color = Color(0xFFE0E7FF),
+                                color = MaterialTheme.colorScheme.primaryContainer,
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text(
                                     text = "New: v${info.versionName}",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = BrandPurple,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
@@ -197,14 +197,14 @@ fun AppUpdateDialog(
                             text = "What's New:",
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            color = Color(0xFF334155),
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(6.dp))
                         Surface(
-                            color = Color(0xFFF8FAFC),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = 140.dp)
@@ -217,7 +217,7 @@ fun AppUpdateDialog(
                                 Text(
                                     text = info.releaseNotes,
                                     fontSize = 12.sp,
-                                    color = Color(0xFF475569),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     lineHeight = 18.sp
                                 )
                             }
@@ -237,15 +237,15 @@ fun AppUpdateDialog(
                                     .fillMaxWidth()
                                     .height(8.dp)
                                     .clip(RoundedCornerShape(4.dp)),
-                                color = BrandPurple,
-                                trackColor = Color(0xFFE2E8F0)
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 text = "Downloading update... ${(progress * 100).toInt()}%",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = BrandPurple
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                         Spacer(Modifier.height(16.dp))
@@ -253,13 +253,13 @@ fun AppUpdateDialog(
 
                     if (errorMsg != null) {
                         Surface(
-                            color = Color(0xFFFEE2E2),
+                            color = MaterialTheme.colorScheme.errorContainer,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
                                 text = errorMsg,
-                                color = Color(0xFFDC2626),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(10.dp),
                                 textAlign = TextAlign.Center
@@ -305,7 +305,7 @@ fun AppUpdateDialog(
                                     .fillMaxWidth()
                                     .height(48.dp),
                                 shape = RoundedCornerShape(24.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
                                 Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
@@ -318,7 +318,7 @@ fun AppUpdateDialog(
                                     .fillMaxWidth()
                                     .height(48.dp),
                                 shape = RoundedCornerShape(24.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
                                 Text("DISMISS", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }

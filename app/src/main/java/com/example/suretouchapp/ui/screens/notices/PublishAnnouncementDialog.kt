@@ -31,16 +31,17 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.CohortDto
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 
-private val PurplePrimary = Color(0xFF6821A8)
-private val PurpleSoft = Color(0xFFF3E8FF)
-private val DarkText = Color(0xFF1E293B)
-private val SubText = Color(0xFF64748B)
-private val BorderColor = Color(0xFFE2E8F0)
+private val PurplePrimary @Composable get() = MaterialTheme.colorScheme.primary
+private val PurpleSoft @Composable get() = MaterialTheme.colorScheme.primaryContainer
+private val DarkText @Composable get() = MaterialTheme.colorScheme.onSurface
+private val SubText @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val BorderColor @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 enum class TargetAudienceOption(val value: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     ALL("ALL", "All Users", Icons.Default.Public),
@@ -119,7 +120,7 @@ fun PublishAnnouncementDialog(
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.92f),
             shape = RoundedCornerShape(20.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp
         ) {
             Column(
@@ -223,10 +224,7 @@ fun PublishAnnouncementDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = PurplePrimary,
-                                unfocusedBorderColor = BorderColor
-                            )
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                     }
 
@@ -247,10 +245,7 @@ fun PublishAnnouncementDialog(
                             maxLines = 6,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = PurplePrimary,
-                                unfocusedBorderColor = BorderColor
-                            )
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                     }
 
@@ -324,10 +319,7 @@ fun PublishAnnouncementDialog(
                                         .menuAnchor()
                                         .fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = PurplePrimary,
-                                        unfocusedBorderColor = BorderColor
-                                    )
+                                    colors = SureFormDefaults.outlinedTextFieldColors()
                                 )
                                 ExposedDropdownMenu(
                                     expanded = cohortDropdownExpanded,
@@ -383,7 +375,7 @@ fun PublishAnnouncementDialog(
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFF8FAFC),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
                                 border = BorderStroke(1.dp, BorderColor)
                             ) {
                                 Row(
@@ -443,10 +435,7 @@ fun PublishAnnouncementDialog(
                             leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = SubText, modifier = Modifier.size(18.dp)) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = PurplePrimary,
-                                unfocusedBorderColor = BorderColor
-                            )
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Text(
                             text = "Optional external or internal link URL.",
@@ -460,7 +449,7 @@ fun PublishAnnouncementDialog(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFF8FAFC),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
                         border = BorderStroke(1.dp, BorderColor)
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

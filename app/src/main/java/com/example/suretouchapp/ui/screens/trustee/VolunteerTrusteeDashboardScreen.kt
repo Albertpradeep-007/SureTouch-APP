@@ -16,11 +16,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
+import com.example.suretouchapp.ui.components.SureTrustLogo
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -50,6 +54,8 @@ import com.example.suretouchapp.data.model.NotificationDto
 import com.example.suretouchapp.data.model.VolunteerProfileDto
 import com.example.suretouchapp.data.model.VolunteerTaskDto
 import com.example.suretouchapp.data.repository.VolunteerRepository
+import com.example.suretouchapp.data.repository.isCancelledSession
+import com.example.suretouchapp.data.repository.isCompletedSession
 import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.BackendSyncedDashboard
 import com.example.suretouchapp.ui.components.StudentProfileImage
@@ -63,12 +69,12 @@ import java.time.LocalDate
 import java.util.Date
 import java.util.Locale
 
-private val Purple = Color(0xFF6726D9)
+private val Purple @Composable get() = MaterialTheme.colorScheme.primary
 private val DeepPurple = Color(0xFF46138F)
-private val Ink = Color(0xFF101A35)
-private val Slate = Color(0xFF536987)
-private val Line = Color(0xFFE1E6EF)
-private val Page = Color(0xFFFCFDFE)
+private val Ink @Composable get() = MaterialTheme.colorScheme.onSurface
+private val Slate @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val Line @Composable get() = MaterialTheme.colorScheme.outlineVariant
+private val Page @Composable get() = MaterialTheme.colorScheme.background
 
 private data class Shortcut(val title: String, val subtitle: String, val icon: ImageVector, val tint: Color, val bg: Color, val onClick: () -> Unit)
 
@@ -126,6 +132,14 @@ fun VolunteerTrusteeDashboardScreen(
     var connectionError by remember { mutableStateOf<String?>(null) }
     var showRecurringScheduleDialog by remember { mutableStateOf(false) }
     var showGitHubProvisioningDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = drawerState.isOpen || showRecurringScheduleDialog || showGitHubProvisioningDialog) {
+        when {
+            drawerState.isOpen -> scope.launch { drawerState.close() }
+            showRecurringScheduleDialog -> showRecurringScheduleDialog = false
+            showGitHubProvisioningDialog -> showGitHubProvisioningDialog = false
+        }
+    }
     val context = LocalContext.current
 
     suspend fun loadDashboard() {
@@ -151,10 +165,7 @@ fun VolunteerTrusteeDashboardScreen(
             val cohortIds = payload.profile.assignedCohorts.map { it.id }.filter(String::isNotBlank).toSet()
             val today = LocalDate.now().toString()
             fun isSessionUpcoming(session: AttendanceDto): Boolean {
-                val isCompleted = session.conducted ||
-                    session.classStatus.equals("COMPLETED", ignoreCase = true) ||
-                    session.effectiveStatus.equals("COMPLETED", ignoreCase = true) ||
-                    session.classStatus.equals("CANCELLED", ignoreCase = true)
+                val isCompleted = session.isCompletedSession() || session.isCancelledSession()
                 val isPastDate = session.date.take(10) < today
                 return !isCompleted && !isPastDate
             }
@@ -340,15 +351,15 @@ private fun TrusteeDrawer(
         Triple("Training Schedule", Icons.Default.EventRepeat, onRecurringSchedule),
         Triple("GitHub Repos", Icons.Default.Terminal, onGithubRepos),
         Triple("Updates", Icons.Default.Campaign, onAnnouncements),
-        Triple("Meetings", Icons.Default.EventNote, onMeetings),
+        Triple("Meetings", Icons.AutoMirrored.Filled.EventNote, onMeetings),
         Triple("Impact Reports", Icons.Default.BarChart, onImpact),
         Triple("Candidate Interviews", Icons.Default.HowToReg, onInterviews),
         Triple("Community Activities", Icons.Default.VolunteerActivism, onActivities),
-        Triple("Tasks", Icons.Default.Assignment, onTasks),
+        Triple("Tasks", Icons.AutoMirrored.Filled.Assignment, onTasks),
         Triple("Request Form", Icons.Default.SupportAgent, onSupport),
         Triple("Profile", Icons.Default.Person, onProfile)
     )
-    ModalDrawerSheet(modifier = Modifier.fillMaxHeight().width(310.dp), drawerContainerColor = Color.White) {
+    ModalDrawerSheet(modifier = Modifier.fillMaxHeight().width(310.dp), drawerContainerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF7027E5), DeepPurple))).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.foundation.Image(painterResource(R.drawable.sure_trust_official_logo), null, modifier = Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)))
@@ -370,7 +381,7 @@ private fun TrusteeDrawer(
                     selected = true,
                     onClick = onClose,
                     icon = { Icon(Icons.Default.Home, null) },
-                    colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = Color(0xFFF1E9FF), selectedIconColor = Purple, selectedTextColor = Purple),
+                    colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = MaterialTheme.colorScheme.primaryContainer, selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
                 items.forEach { (label, icon, action) ->
@@ -417,7 +428,7 @@ private fun TopBrandBar(
     profilePhoto: String?
 ) {
     Row(
-        Modifier.fillMaxWidth().height(74.dp).background(Color.White).padding(horizontal = 16.dp),
+        Modifier.fillMaxWidth().height(74.dp).background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(Icons.Default.Menu, "Menu", tint = Purple, modifier = Modifier.size(38.dp).clip(CircleShape).clickable(onClick = onMenu).padding(4.dp))
@@ -475,11 +486,11 @@ private fun DashboardHeading(profileName: String, onProgrammes: () -> Unit) {
                 Text(SimpleDateFormat("dd-MMM-yyyy", Locale.ENGLISH).format(Date()).uppercase(), color = Purple, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         }
-        Surface(modifier = Modifier.clickable(onClick = onProgrammes), shape = RoundedCornerShape(28.dp), color = Color(0xFFF6F0FF), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4D5FF))) {
+        Surface(modifier = Modifier.clickable(onClick = onProgrammes), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
             Row(Modifier.padding(horizontal = 9.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Groups, null, tint = Purple, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(5.dp)); Text("All Programmes", color = Purple, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                Spacer(Modifier.width(5.dp)); Icon(Icons.Default.ExpandCircleDown, null, tint = Purple, modifier = Modifier.size(15.dp))
+                Icon(Icons.Default.Groups, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(5.dp)); Text("All Programmes", color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                Spacer(Modifier.width(5.dp)); Icon(Icons.Default.ExpandCircleDown, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
             }
         }
     }
@@ -493,15 +504,13 @@ private fun OperationsCard(summary: VolunteerDashboardSummary, isLoading: Boolea
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Box(Modifier.background(Brush.linearGradient(listOf(Color(0xFF7027E5), DeepPurple)))) {
-            androidx.compose.foundation.Image(
-                painter = painterResource(R.drawable.sure_trust_official_logo),
-                contentDescription = "SURE Trust official logo watermark",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.align(Alignment.CenterEnd).offset(x = 8.dp).size(160.dp).graphicsLayer {
-                    alpha = 0.20f
-                    scaleX = 1.35f
-                    scaleY = 1.35f
-                }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .offset(x = 8.dp)
+                    .size(160.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f))
             )
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -520,14 +529,14 @@ private fun OperationsCard(summary: VolunteerDashboardSummary, isLoading: Boolea
                     DividerBar()
                     Metric(if (isLoading) "-" else summary.cohortCount.toString(), "Assigned\ncohorts", Icons.Default.Groups, Color(0xFFE87500), Color(0xFFFFF4E5), Modifier.weight(1f))
                     DividerBar()
-                    Metric(if (isLoading) "-" else summary.openTasks.toString(), "Open\ntasks", Icons.Default.Assignment, Color(0xFF079447), Color(0xFFEAFBF1), Modifier.weight(1f))
+                    Metric(if (isLoading) "-" else summary.openTasks.toString(), "Open\ntasks", Icons.AutoMirrored.Filled.Assignment, Color(0xFF079447), Color(0xFFEAFBF1), Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(16.dp))
-                Surface(Modifier.fillMaxWidth().clickable(onClick = onAssignedCohorts), color = Color.White, shape = RoundedCornerShape(14.dp)) {
+            Surface(Modifier.fillMaxWidth().clickable(onClick = onAssignedCohorts), color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(14.dp)) {
                     Row(Modifier.padding(horizontal = 17.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Groups, null, tint = Purple, modifier = Modifier.size(28.dp)); Spacer(Modifier.weight(1f))
-                        Text("View Assigned Cohorts", color = Purple, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
-                        Spacer(Modifier.weight(1f)); Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Purple, modifier = Modifier.size(27.dp))
+                        Icon(Icons.Default.Groups, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp)); Spacer(Modifier.weight(1f))
+                        Text("View Assigned Cohorts", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                        Spacer(Modifier.weight(1f)); Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(27.dp))
                     }
                 }
             }
@@ -543,8 +552,10 @@ private fun VolunteerScheduleCard(
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            SureTrustLogo(size = 32.dp, showSubtext = false)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("Class assistance", color = Ink, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                Text("Class Timetable & Schedule", color = Ink, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
                 Text("Upcoming sessions in your assigned cohorts", color = Slate, fontSize = 11.5.sp)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -558,7 +569,7 @@ private fun VolunteerScheduleCard(
         }
         Spacer(Modifier.height(8.dp))
         if (sessions.isEmpty()) {
-            Surface(shape = RoundedCornerShape(15.dp), color = Color.White, border = BorderStroke(1.dp, Line)) {
+            Surface(shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, Line)) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.EventAvailable, null, tint = Purple)
                     Spacer(Modifier.width(10.dp))
@@ -570,12 +581,12 @@ private fun VolunteerScheduleCard(
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable(onClick = onAttendance),
                     shape = RoundedCornerShape(15.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, Line)
                 ) {
                     Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(42.dp).background(Color(0xFFF1E9FF), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.VideoCall, null, tint = Purple)
+                        Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.VideoCall, null, tint = MaterialTheme.colorScheme.primary)
                         }
                         Spacer(Modifier.width(11.dp))
                         Column(Modifier.weight(1f)) {
@@ -622,10 +633,10 @@ private fun QuickAccess(
         Shortcut("Cohorts", "Active cohorts", Icons.Default.Groups, Color(0xFF079447), Color(0xFFE7F8ED), onCohorts),
         Shortcut("Attendance", "Track participation", Icons.Default.EventAvailable, Color(0xFF087EBF), Color(0xFFE8F4FC), onAttendance),
         Shortcut("Training Schedule", "Recurring classes", Icons.Default.EventRepeat, Color(0xFF7C3AED), Color(0xFFEDE9FE), onRecurringSchedule),
-        Shortcut("GitHub Repos", "Auto / 15-day task", Icons.Default.Terminal, Color(0xFF0F172A), Color(0xFFF1F5F9), onGithubRepos),
+        Shortcut("GitHub Repos", "Auto / 15-day task", Icons.Default.Terminal, Ink, MaterialTheme.colorScheme.surfaceVariant, onGithubRepos),
         Shortcut("Programmes", "All programmes", Icons.AutoMirrored.Filled.MenuBook, Purple, Color(0xFFF0E8FF), onProgrammes),
         Shortcut("Updates", "Announcements", Icons.Default.Campaign, Color(0xFFD51B76), Color(0xFFFDEAF4), onAnnouncements),
-        Shortcut("Meetings", "Schedule & notes", Icons.Default.EventNote, Color(0xFF079491), Color(0xFFE5F8F6), onMeetings),
+        Shortcut("Meetings", "Schedule & notes", Icons.AutoMirrored.Filled.EventNote, Color(0xFF079491), Color(0xFFE5F8F6), onMeetings),
         Shortcut("Impact", "Reports & outcomes", Icons.Default.BarChart, Purple, Color(0xFFF1E9FF), onImpact),
         Shortcut("Activities", "Plan & verify", Icons.Default.VolunteerActivism, Color(0xFF047857), Color(0xFFE8F8F1), onActivities),
         Shortcut("Request Form", "Request admin help", Icons.Default.SupportAgent, Color(0xFFE53935), Color(0xFFFFECE9), onSupport)
@@ -680,9 +691,9 @@ private fun QuickAccess(
 
 @Composable
 private fun ShortcutCard(item: Shortcut, modifier: Modifier) {
-    Surface(onClick = item.onClick, modifier = modifier.height(140.dp), shape = RoundedCornerShape(18.dp), color = Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, Line), shadowElevation = 3.dp) {
+    Surface(onClick = item.onClick, modifier = modifier.height(140.dp), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface, border = androidx.compose.foundation.BorderStroke(1.dp, Line), shadowElevation = 3.dp) {
         Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 15.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Box(Modifier.size(50.dp).background(item.bg, CircleShape), contentAlignment = Alignment.Center) { Icon(item.icon, item.title, tint = item.tint, modifier = Modifier.size(27.dp)) }
+            Box(Modifier.size(50.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) { Icon(item.icon, item.title, tint = item.tint, modifier = Modifier.size(27.dp)) }
             Spacer(Modifier.height(9.dp))
             Text(item.title, color = Ink, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(2.dp))
@@ -696,7 +707,7 @@ private fun TrusteeBottomBar(onPeople: () -> Unit, onImpact: () -> Unit, onTasks
     Box(Modifier.fillMaxWidth().height(96.dp)) {
         Surface(
             modifier = Modifier.fillMaxWidth().height(84.dp).align(Alignment.BottomCenter),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 10.dp,
             shape = RoundedCornerShape(topStart = 27.dp, topEnd = 27.dp)
         ) {
@@ -704,7 +715,7 @@ private fun TrusteeBottomBar(onPeople: () -> Unit, onImpact: () -> Unit, onTasks
                 NavItem("Home", Icons.Default.Home, true, {})
                 NavItem("People", Icons.Default.Groups, false, onPeople)
                 Box(Modifier.width(66.dp).fillMaxHeight().clickable(onClick = onImpact))
-                NavItem("Tasks", Icons.Default.Assignment, false, onTasks)
+                NavItem("Tasks", Icons.AutoMirrored.Filled.Assignment, false, onTasks)
                 NavItem("Profile", Icons.Default.Person, false, onProfile)
             }
         }
@@ -713,7 +724,7 @@ private fun TrusteeBottomBar(onPeople: () -> Unit, onImpact: () -> Unit, onTasks
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
-                Modifier.size(74.dp).shadow(9.dp, CircleShape).background(Color.White, CircleShape).padding(5.dp)
+                Modifier.size(74.dp).shadow(9.dp, CircleShape).background(MaterialTheme.colorScheme.surface, CircleShape).padding(5.dp)
                     .background(Brush.linearGradient(listOf(Color(0xFF7C3AED), DeepPurple)), CircleShape)
                     .clickable(onClick = onImpact),
                 contentAlignment = Alignment.Center
@@ -726,5 +737,5 @@ private fun TrusteeBottomBar(onPeople: () -> Unit, onImpact: () -> Unit, onTasks
 }
 
 @Composable private fun NavItem(label: String, icon: ImageVector, selected: Boolean, click: () -> Unit) {
-    Column(Modifier.width(58.dp).clip(RoundedCornerShape(18.dp)).background(if (selected) Color(0xFFF2ECFF) else Color.Transparent).clickable(onClick = click).padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = if (selected) Purple else Slate, modifier = Modifier.size(25.dp)); Text(label, color = if (selected) Purple else Slate, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, fontSize = 10.sp) }
+    Column(Modifier.width(58.dp).clip(RoundedCornerShape(18.dp)).background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent).clickable(onClick = click).padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = if (selected) MaterialTheme.colorScheme.primary else Slate, modifier = Modifier.size(25.dp)); Text(label, color = if (selected) MaterialTheme.colorScheme.primary else Slate, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, fontSize = 10.sp) }
 }

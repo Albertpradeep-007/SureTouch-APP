@@ -41,17 +41,19 @@ import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.SureTrustLogo
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
+import com.example.suretouchapp.ui.theme.SureFormDefaults
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import java.util.Locale
 
-private val CoursesPurple = Color(0xFF6C2BD9)
+private val CoursesPurple @Composable get() = MaterialTheme.colorScheme.primary
 private val CoursesDeepPurple = Color(0xFF4C1D95)
-private val CoursesCanvas = Color(0xFFF8FAFC)
-private val CoursesText = Color(0xFF0F172A)
-private val CoursesSubtext = Color(0xFF64748B)
-private val CoursesBorder = Color(0xFFE2E8F0)
+private val CoursesCanvas @Composable get() = MaterialTheme.colorScheme.background
+private val CoursesText @Composable get() = MaterialTheme.colorScheme.onSurface
+private val CoursesSubtext @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val CoursesBorder @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 private data class CourseUiModel(
     val websiteId: String,
@@ -99,6 +101,7 @@ fun CoursesScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val semanticColors = sureSemanticColors()
 
     val loadData = {
         scope.launch {
@@ -356,7 +359,7 @@ fun CoursesScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { padding ->
@@ -374,12 +377,12 @@ fun CoursesScreen(
             selectionMessage?.let { lockMessage ->
                 item {
                     Surface(
-                        color = Color(0xFFFFF7ED),
+                        color = semanticColors.warningContainer,
                         shape = RoundedCornerShape(13.dp),
-                        border = BorderStroke(1.dp, Color(0xFFFED7AA))
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Lock, null, tint = Color(0xFFEA580C), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Lock, null, tint = semanticColors.onWarningContainer, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(9.dp))
                             Column {
                                 Text(
@@ -405,12 +408,7 @@ fun CoursesScreen(
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
                     shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CoursesPurple,
-                        unfocusedBorderColor = CoursesBorder,
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    )
+                    colors = SureFormDefaults.outlinedTextFieldColors()
                 )
             }
 
@@ -565,7 +563,7 @@ private fun CourseCatalogCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, CoursesBorder),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {

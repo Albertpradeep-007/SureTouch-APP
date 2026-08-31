@@ -4,7 +4,6 @@ import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationMa
 import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,9 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,12 +37,12 @@ import java.util.Locale
 // ELEGANT COLOR TOKENS (MATCHING SURE TRUST THEME)
 // =======================================================
 private val ColorDarkHeader = Color(0xFF262626)
-private val ColorCanvasBg = Color(0xFFFAFAFA)
-private val ColorPrimaryPurple = Color(0xFF6821A8)
-private val ColorPurpleLight = Color(0xFFF3E8FF)
-private val ColorTextDark = Color(0xFF1E293B)
-private val ColorTextSub = Color(0xFF475569)
-private val ColorBorderHairline = Color(0xFFE2E8F0)
+private val ColorCanvasBg @Composable get() = MaterialTheme.colorScheme.background
+private val ColorPrimaryPurple @Composable get() = MaterialTheme.colorScheme.primary
+private val ColorPurpleLight @Composable get() = MaterialTheme.colorScheme.primaryContainer
+private val ColorTextDark @Composable get() = MaterialTheme.colorScheme.onSurface
+private val ColorTextSub @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val ColorBorderHairline @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 data class NoticeItem(
     val id: String,
@@ -193,18 +189,6 @@ fun NoticesScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Translucent SURE TRUST Official Logo Watermark
-            Image(
-                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .size(280.dp)
-                    .align(Alignment.Center)
-                    .padding(top = 40.dp)
-                    .graphicsLayer { alpha = 0.08f }
-            )
-
             val activeNotice = selectedNotice
             if (activeNotice == null) {
                 // =======================================================
@@ -218,27 +202,35 @@ fun NoticesScreen(
                     item {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Row(
                                 modifier = Modifier.padding(14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Campaign,
-                                    contentDescription = null,
-                                    tint = Color(0xFF1D4ED8),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Campaign,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(
                                         text = "Live Announcements & Broadcasts",
-                                        fontSize = 13.sp,
+                                        fontSize = 13.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1E3A8A)
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                     Text(
                                         text = when {
@@ -247,8 +239,8 @@ fun NoticesScreen(
                                             loadError != null && remoteNotices.isEmpty() -> requireNotNull(loadError)
                                             else -> "${remoteNotices.size} active announcements for your role and cohort."
                                         },
-                                        fontSize = 11.5.sp,
-                                        color = Color(0xFF1E40AF)
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.80f)
                                     )
                                 }
                             }
@@ -259,19 +251,19 @@ fun NoticesScreen(
                         item {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color.White,
-                                border = BorderStroke(1.dp, ColorBorderHairline)
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(20.dp),
+                                    modifier = Modifier.padding(24.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Icon(
                                         imageVector = if (loadError == null) Icons.Default.Campaign else Icons.Default.CloudOff,
                                         contentDescription = null,
-                                        tint = ColorTextSub,
-                                        modifier = Modifier.size(30.dp)
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(32.dp)
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Text(
@@ -280,9 +272,9 @@ fun NoticesScreen(
                                         } else {
                                             "Live announcements unavailable"
                                         },
-                                        fontSize = 14.sp,
+                                        fontSize = 14.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = ColorTextDark
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         text = if (loadError == null) {
@@ -290,8 +282,8 @@ fun NoticesScreen(
                                         } else {
                                             "Check your connection and try refreshing."
                                         },
-                                        fontSize = 12.sp,
-                                        color = ColorTextSub,
+                                        fontSize = 12.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = TextAlign.Center
                                     )
                                     if (loadError != null) {
@@ -317,10 +309,10 @@ fun NoticesScreen(
                                     SureProEdNotificationManager.dismissAnnouncement(context, item.id)
                                 }
                             },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, ColorBorderHairline),
-                            elevation = CardDefaults.cardElevation(2.dp)
+                            elevation = CardDefaults.cardElevation(3.dp)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Row(
@@ -328,109 +320,50 @@ fun NoticesScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val (icon, iconTint, badgeBg, badgeText) = when (item.category) {
-                                        "PINNED" -> NoticeMeta(Icons.Default.PushPin, ColorPrimaryPurple, ColorPurpleLight, "PINNED")
-                                        "HOLIDAY" -> NoticeMeta(Icons.Default.Celebration, Color(0xFFDC2626), Color(0xFFFEE2E2), "HOLIDAY NOTICE")
-                                        "ACADEMIC" -> NoticeMeta(Icons.Default.School, ColorPrimaryPurple, ColorPurpleLight, "ACADEMIC")
-                                        "REQUIREMENT" -> NoticeMeta(Icons.Default.Assignment, Color(0xFFD97706), Color(0xFFFEF3C7), "REQUIREMENT")
-                                        else -> NoticeMeta(Icons.Default.Build, Color(0xFF475569), Color(0xFFF1F5F9), "SYSTEM NOTICE")
-                                    }
-
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(28.dp)
-                                                .clip(CircleShape)
-                                                .background(badgeBg),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = null,
-                                                tint = iconTint,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = badgeBg
-                                        ) {
-                                            Text(
-                                                text = badgeText,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = iconTint,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (item.id !in readNoticeIds) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = Color(0xFFDC2626)
-                                            ) {
-                                                Text(
-                                                    text = "NEW",
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                        }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (item.isImportant) ColorPurpleLight else MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
                                         Text(
-                                            text = item.dateStr,
-                                            fontSize = 11.sp,
-                                            color = ColorTextSub
+                                            text = item.category.uppercase(),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (item.isImportant) ColorPrimaryPurple else ColorTextSub,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                         )
                                     }
+                                    Text(
+                                        text = item.dateStr,
+                                        fontSize = 11.sp,
+                                        color = ColorTextSub
+                                    )
                                 }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = item.title,
-                                    fontSize = 14.5.sp,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = ColorTextDark
                                 )
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = item.description.take(110) + "...",
-                                    fontSize = 12.5.sp,
-                                    color = ColorTextSub,
-                                    lineHeight = 17.5.sp
-                                )
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Text(
-                                    text = "Tap to view full notice →",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorPrimaryPurple
-                                )
+                                if (item.id !in readNoticeIds) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = ColorPrimaryPurple,
+                                        modifier = Modifier.size(8.dp)
+                                    ) {}
+                                }
                             }
                         }
                     }
                 }
             } else {
                 // =======================================================
-                // FULL-SCREEN NOTICE DETAIL VIEW
+                // DETAIL VIEW
                 // =======================================================
-                val (icon, iconTint, badgeBg, badgeText) = when (activeNotice.category) {
-                    "PINNED" -> NoticeMeta(Icons.Default.PushPin, ColorPrimaryPurple, ColorPurpleLight, "PINNED")
-                    "HOLIDAY" -> NoticeMeta(Icons.Default.Celebration, Color(0xFFDC2626), Color(0xFFFEE2E2), "HOLIDAY NOTICE")
-                    "ACADEMIC" -> NoticeMeta(Icons.Default.School, ColorPrimaryPurple, ColorPurpleLight, "ACADEMIC")
-                    "REQUIREMENT" -> NoticeMeta(Icons.Default.Assignment, Color(0xFFD97706), Color(0xFFFEF3C7), "REQUIREMENT")
-                    else -> NoticeMeta(Icons.Default.Build, Color(0xFF475569), Color(0xFFF1F5F9), "SYSTEM NOTICE")
-                }
+                val badgeBg = if (activeNotice.isImportant) ColorPurpleLight else MaterialTheme.colorScheme.surfaceVariant
+                val iconTint = if (activeNotice.isImportant) ColorPrimaryPurple else ColorTextSub
+                val badgeText = if (activeNotice.isImportant) "IMPORTANT" else activeNotice.category
 
                 Column(
                     modifier = Modifier
@@ -441,7 +374,7 @@ fun NoticesScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         border = BorderStroke(1.dp, ColorBorderHairline),
                         elevation = CardDefaults.cardElevation(3.dp)
                     ) {
@@ -525,7 +458,7 @@ fun NoticesScreen(
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFF8FAFC),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
                                 border = BorderStroke(1.dp, ColorBorderHairline)
                             ) {
                                 Row(
@@ -569,8 +502,6 @@ fun NoticesScreen(
         }
     }
 }
-
-private data class NoticeMeta<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 private fun formatNoticeDate(value: String?): String = runCatching {
     if (value.isNullOrBlank()) return@runCatching "RECENT"

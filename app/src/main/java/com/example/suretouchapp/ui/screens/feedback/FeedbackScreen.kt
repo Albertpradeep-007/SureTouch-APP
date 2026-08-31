@@ -28,6 +28,7 @@ import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 import kotlinx.coroutines.launch
 
 data class FeedbackCategory(
@@ -36,16 +37,16 @@ data class FeedbackCategory(
     val emoji: String
 )
 
-private val ColorCanvasBg = Color(0xFFF8FAFC)
-private val ColorCardSurface = Color(0xFFFFFFFF)
+private val ColorCanvasBg @Composable get() = MaterialTheme.colorScheme.background
+private val ColorCardSurface @Composable get() = MaterialTheme.colorScheme.surface
 private val ColorPrimaryPurple = Color(0xFF6D28D9)
 private val ColorPurpleGradientStart = Color(0xFF5B21B6)
 private val ColorPurpleGradientEnd = Color(0xFF6D28D9)
-private val ColorTextTitles = Color(0xFF0F172A)
-private val ColorTextSubtext = Color(0xFF64748B)
-private val ColorBorderHairline = Color(0xFFE2E8F0)
+private val ColorTextTitles @Composable get() = MaterialTheme.colorScheme.onSurface
+private val ColorTextSubtext @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val ColorBorderHairline @Composable get() = MaterialTheme.colorScheme.outlineVariant
 private val ColorStarAmber = Color(0xFFF59E0B)
-private val ColorRequiredRed = Color(0xFFDC2626)
+private val ColorRequiredRed @Composable get() = MaterialTheme.colorScheme.error
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -198,6 +199,7 @@ private fun AnonymousTutorReviewTab(tokenManager: TokenManager) {
     var improvementsText by remember { mutableStateOf("") }
     var showSuccessDialog by remember { mutableStateOf(false) }
     var validationError by remember { mutableStateOf(false) }
+    var submissionError by remember { mutableStateOf<String?>(null) }
 
     val q1Options = listOf("Excellent", "Good", "Average", "Poor")
     val q2Options = listOf("Very clear", "Clear", "Average", "Difficult to understand")
@@ -262,10 +264,7 @@ private fun AnonymousTutorReviewTab(tokenManager: TokenManager) {
                                 .menuAnchor()
                                 .fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ColorPrimaryPurple,
-                                unfocusedBorderColor = ColorBorderHairline
-                            )
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         ExposedDropdownMenu(
                             expanded = isModuleExpanded,
@@ -306,10 +305,7 @@ private fun AnonymousTutorReviewTab(tokenManager: TokenManager) {
                                 .menuAnchor()
                                 .fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ColorPrimaryPurple,
-                                unfocusedBorderColor = ColorBorderHairline
-                            )
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         ExposedDropdownMenu(
                             expanded = isMentorExpanded,
@@ -415,7 +411,8 @@ private fun AnonymousTutorReviewTab(tokenManager: TokenManager) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(100.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
                     )
                 }
             }
@@ -452,7 +449,8 @@ private fun AnonymousTutorReviewTab(tokenManager: TokenManager) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(100.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
                     )
                 }
             }
@@ -471,6 +469,12 @@ private fun AnonymousTutorReviewTab(tokenManager: TokenManager) {
             }
         }
 
+        submissionError?.let { error ->
+            item {
+                Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+
         // Submit Button
         item {
             Button(
@@ -485,7 +489,8 @@ private fun AnonymousTutorReviewTab(tokenManager: TokenManager) {
                         val fullComments = "Module: $selectedModule | Mentor: $selectedMentor | Explanation: $explanationRating | Interaction: $interactiveRating | Liked: $likedText | Suggestions: $improvementsText"
                         scope.launch {
                             isSubmitting = true
-                            try {
+                            submissionError = null
+                            val response = runCatching {
                                 ApiClient.getService(tokenManager).submitFeedback(
                                     mapOf(
                                         "feedback_type" to "COURSE",
@@ -494,9 +499,13 @@ private fun AnonymousTutorReviewTab(tokenManager: TokenManager) {
                                         "comments" to fullComments
                                     )
                                 )
-                            } catch (_: Exception) {}
+                            }.getOrNull()
                             isSubmitting = false
-                            showSuccessDialog = true
+                            if (response?.isSuccessful == true) {
+                                showSuccessDialog = true
+                            } else {
+                                submissionError = "Unable to submit feedback. Check your connection and try again."
+                            }
                         }
                     } else {
                         validationError = true
@@ -657,6 +666,7 @@ private fun GeneralAppSupportTab(tokenManager: TokenManager) {
     var rating by remember { mutableIntStateOf(5) }
     var feedbackMessage by remember { mutableStateOf("") }
     var showGeneralDialog by remember { mutableStateOf(false) }
+    var submissionError by remember { mutableStateOf<String?>(null) }
 
     val categories = listOf(
         FeedbackCategory("app", "App Bug / Technical", "💻"),
@@ -737,7 +747,8 @@ private fun GeneralAppSupportTab(tokenManager: TokenManager) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(110.dp),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = SureFormDefaults.outlinedTextFieldColors()
                 )
             }
         }
@@ -747,7 +758,8 @@ private fun GeneralAppSupportTab(tokenManager: TokenManager) {
                 onClick = {
                     scope.launch {
                         isSubmitting = true
-                        try {
+                        submissionError = null
+                        val response = runCatching {
                             ApiClient.getService(tokenManager).submitFeedback(
                                 mapOf(
                                     "feedback_type" to "SYSTEM",
@@ -755,9 +767,14 @@ private fun GeneralAppSupportTab(tokenManager: TokenManager) {
                                     "comments" to "Category: $selectedCategory | $feedbackMessage"
                                 )
                             )
-                        } catch (_: Exception) {}
+                        }.getOrNull()
                         isSubmitting = false
-                        showGeneralDialog = true
+                        if (response?.isSuccessful == true) {
+                            showGeneralDialog = true
+                            feedbackMessage = ""
+                        } else {
+                            submissionError = "Unable to submit app feedback. Please try again."
+                        }
                     }
                 },
                 enabled = feedbackMessage.isNotBlank() && !isSubmitting,
@@ -775,6 +792,12 @@ private fun GeneralAppSupportTab(tokenManager: TokenManager) {
                     Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text(text = if (isSubmitting) "SUBMITTING..." else "SUBMIT APP FEEDBACK", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        submissionError?.let { error ->
+            item {
+                Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }

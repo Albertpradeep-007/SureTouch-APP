@@ -69,22 +69,23 @@ import com.example.suretouchapp.ui.components.OAuthProvider
 import com.example.suretouchapp.ui.components.StudentProfileImage
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.components.SureTrustLogo
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.launch
 
 // ── Design Tokens ───────────────────────────────────────────────
 private val HeaderNavyStart   = Color(0xFF0B0C3B)
 private val HeaderNavyMid     = Color(0xFF1E0F6B)
 private val HeaderPurpleEnd   = Color(0xFF3B129E)
-private val PrimarySurePurple = Color(0xFF5422D8)
-private val CardVibrantPurple = Color(0xFF6430EE)
-private val CardLavender      = Color(0xFFF2EDFF)
-private val PanelBg           = Color(0xFFF8F5FF)
+private val PrimarySurePurple @Composable get() = MaterialTheme.colorScheme.primary
+private val CardVibrantPurple @Composable get() = MaterialTheme.colorScheme.primary
+private val CardLavender @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+private val PanelBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ScreenBg @Composable get() = MaterialTheme.colorScheme.background
 private val CardInk @Composable get() = MaterialTheme.colorScheme.onSurface
-private val CardMuted         = Color(0xFF334155)
-private val CardSupporting    = Color(0xFF1E293B)
-private val CardBorder        = Color(0xFFCBD5E1)
-private val CardDivider       = Color(0xFFE2E8F0)
+private val CardMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val CardSupporting @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val CardBorder @Composable get() = MaterialTheme.colorScheme.outlineVariant
+private val CardDivider @Composable get() = MaterialTheme.colorScheme.outlineVariant
 private val VerifiedGreen     = Color(0xFF059669)
 private val LinkedInBlue      = Color(0xFF0A66C2)
 
@@ -272,7 +273,7 @@ private fun EmailCard(email: String, modifier: Modifier = Modifier) {
                 }
             },
         shape = RoundedCornerShape(14.dp),
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, CardBorder),
         shadowElevation = 1.dp
     ) {
@@ -318,7 +319,7 @@ private fun LinkedInCard(linkedinUrl: String, handle: String, modifier: Modifier
                 runCatching { uriHandler.openUri(linkedinUrl) }
             },
         shape = RoundedCornerShape(14.dp),
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, CardBorder),
         shadowElevation = 1.dp
     ) {
@@ -423,8 +424,8 @@ private fun MentorProfileAvatar(
                 .size(size)
                 .shadow(8.dp, CircleShape),
             shape = CircleShape,
-            color = Color.White,
-            border = BorderStroke(4.dp, Color.White)
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(4.dp, MaterialTheme.colorScheme.surface)
         ) {
             Box(
                 modifier = Modifier
@@ -468,8 +469,8 @@ private fun MentorProfileAvatar(
                 .offset(x = (-2).dp, y = (-2).dp)
                 .clickable { onEditClick() },
             shape = CircleShape,
-            color = Color.White,
-            border = BorderStroke(2.dp, Color.White),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
             shadowElevation = 4.dp
         ) {
             Box(
@@ -562,6 +563,7 @@ private fun EditMentorProfileBottomSheet(
     ) -> Unit
 ) {
     val context = LocalContext.current
+    val semanticColors = sureSemanticColors()
     var editName by remember { mutableStateOf(name) }
     var editHeadline by remember { mutableStateOf(headline) }
     var editDesig by remember { mutableStateOf(designation) }
@@ -596,7 +598,7 @@ private fun EditMentorProfileBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 8.dp,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
@@ -669,8 +671,8 @@ private fun EditMentorProfileBottomSheet(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                             focusedBorderColor = PrimarySurePurple
                         )
                     )
@@ -687,8 +689,8 @@ private fun EditMentorProfileBottomSheet(
                         minLines = 2,
                         maxLines = 3,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                             focusedBorderColor = PrimarySurePurple
                         )
                     )
@@ -765,8 +767,8 @@ private fun EditMentorProfileBottomSheet(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                             focusedBorderColor = PrimarySurePurple
                         )
                     )
@@ -788,7 +790,7 @@ private fun EditMentorProfileBottomSheet(
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { editDesig = suggestion },
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) PrimarySurePurple.copy(alpha = 0.12f) else Color.White,
+                                color = if (isSelected) PrimarySurePurple.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
                                 border = BorderStroke(1.dp, if (isSelected) PrimarySurePurple else CardBorder)
                             ) {
                                 Text(
@@ -817,8 +819,8 @@ private fun EditMentorProfileBottomSheet(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                             focusedBorderColor = PrimarySurePurple
                         )
                     )
@@ -857,8 +859,8 @@ private fun EditMentorProfileBottomSheet(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                             focusedBorderColor = PrimarySurePurple
                         )
                     )
@@ -892,8 +894,8 @@ private fun EditMentorProfileBottomSheet(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                             focusedBorderColor = PrimarySurePurple
                         )
                     )
@@ -909,8 +911,8 @@ private fun EditMentorProfileBottomSheet(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                             focusedBorderColor = PrimarySurePurple
                         )
                     )
@@ -953,7 +955,7 @@ private fun EditMentorProfileBottomSheet(
                         trailingIcon = {
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFFE2E8F0)
+                                color = CardDivider
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
@@ -977,9 +979,9 @@ private fun EditMentorProfileBottomSheet(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            disabledContainerColor = Color(0xFFF8FAFC),
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                             disabledTextColor = CardInk,
-                            disabledBorderColor = Color(0xFFCBD5E1),
+                            disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
                             disabledLabelColor = CardSupporting
                         )
                     )
@@ -999,8 +1001,8 @@ private fun EditMentorProfileBottomSheet(
                             shape = RoundedCornerShape(12.dp),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White,
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                                 focusedBorderColor = PrimarySurePurple
                             )
                         )
@@ -1027,8 +1029,8 @@ private fun EditMentorProfileBottomSheet(
                             shape = RoundedCornerShape(12.dp),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White,
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                                 focusedBorderColor = PrimarySurePurple
                             )
                         )
@@ -1050,7 +1052,7 @@ private fun EditMentorProfileBottomSheet(
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { editGender = g },
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) PrimarySurePurple else Color.White,
+                                color = if (isSelected) PrimarySurePurple else MaterialTheme.colorScheme.surface,
                                 border = BorderStroke(1.dp, if (isSelected) PrimarySurePurple else CardBorder)
                             ) {
                                 Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
@@ -1087,8 +1089,8 @@ private fun EditMentorProfileBottomSheet(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                             focusedBorderColor = LinkedInBlue
                         )
                     )
@@ -1100,8 +1102,8 @@ private fun EditMentorProfileBottomSheet(
             val isConnected = com.example.suretouchapp.ui.components.LocalBackendConnected.current
             if (!isConnected) {
                 Surface(
-                    color = Color(0xFFFEF3C7),
-                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    color = semanticColors.warningContainer,
+                    border = BorderStroke(1.dp, semanticColors.warning.copy(alpha = 0.55f)),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1109,12 +1111,12 @@ private fun EditMentorProfileBottomSheet(
                         modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.WifiOff, null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.WifiOff, null, tint = semanticColors.warning, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
                             "Offline Mode: Mentor profile changes cannot be saved to the server until you reconnect.",
                             fontSize = 12.sp,
-                            color = Color(0xFF92400E),
+                            color = semanticColors.onWarningContainer,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -1313,18 +1315,28 @@ private fun MentorProfileMainView(
     val hasMore = (profile?.assignedCohorts?.size ?: 0) > 4
 
     val baseBullets = cohortsToDisplay
-        .map { it.course.ifBlank { it.name } }
+        .mapNotNull { cohort ->
+            val cohortName = cohort.name.trim()
+            val cCourse = cohort.course.trim()
+            if (cohortName.isNotBlank() && !cohortName.equals(courseName, ignoreCase = true)) {
+                "Cohort $cohortName"
+            } else if (cCourse.isNotBlank() && !cCourse.equals(courseName, ignoreCase = true)) {
+                cCourse
+            } else {
+                null
+            }
+        }
         .filter { it.isNotBlank() }
         .distinct()
     
     val syllabusBullets = if (baseBullets.isNotEmpty()) {
         if (hasMore && !showAllCohorts.value) {
-            baseBullets + "+ ${(profile?.assignedCohorts?.size ?: 0) - 4} more modules (Tap to view all)"
+            baseBullets + "+ ${(profile?.assignedCohorts?.size ?: 0) - 4} more cohorts (Tap to view all)"
         } else {
             baseBullets
         }
     } else if (!profile?.expertise.isNullOrBlank()) {
-        profile.expertise.split(",", ";").map { it.trim() }.filter { it.isNotBlank() }
+        profile.expertise.split(",", ";").map { it.trim() }.filter { it.isNotBlank() && !it.equals(courseName, ignoreCase = true) }
     } else {
         listOf("Technical Mentorship & Professional Guidance", "Curriculum Reviews & Project Advisory")
     }
@@ -1367,7 +1379,6 @@ private fun MentorProfileMainView(
             .fillMaxSize()
             .background(ScreenBg)
     ) {
-        // Translucent SURE ProEd Official Logo Watermark in Background
         Image(
             painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
             contentDescription = null,
@@ -1538,7 +1549,7 @@ private fun MentorProfileMainView(
                                     text = displayName,
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF17151C),
+                                    color = CardInk,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -1554,7 +1565,7 @@ private fun MentorProfileMainView(
                                 text = "Mentor · SURE ProEd",
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFF77737E)
+                                color = CardMuted
                             )
                         }
 
@@ -1565,15 +1576,15 @@ private fun MentorProfileMainView(
                                 .clip(CircleShape)
                                 .clickable { showEditSheet = true },
                             shape = CircleShape,
-                            color = Color.White,
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, CardBorder),
                             shadowElevation = 1.dp
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Edit,
                                     contentDescription = "Edit Profile Details",
-                                    tint = Color(0xFF0F172A),
+                                    tint = CardInk,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -1587,7 +1598,7 @@ private fun MentorProfileMainView(
                         text = currentHeadline,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1E293B),
+                        color = CardInk,
                         lineHeight = 21.sp
                     )
 
@@ -1598,7 +1609,7 @@ private fun MentorProfileMainView(
                         text = currentQualification,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A)
+                        color = CardInk
                     )
 
                     Spacer(Modifier.height(4.dp))
@@ -1608,7 +1619,7 @@ private fun MentorProfileMainView(
                         text = currentLocation,
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFF334155)
+                        color = CardMuted
                     )
 
                     Spacer(Modifier.height(7.dp))
@@ -1637,8 +1648,8 @@ private fun MentorProfileMainView(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color.White,
-                            border = BorderStroke(1.2.dp, Color(0xFF8B5CF6)),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
                             shadowElevation = 1.dp
                         ) {
                             Row(
@@ -1669,8 +1680,8 @@ private fun MentorProfileMainView(
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),
-                            color = Color.White,
-                            border = BorderStroke(1.2.dp, Color(0xFFCBD5E1)),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.2.dp, CardBorder),
                             shadowElevation = 1.dp
                         ) {
                             Row(
@@ -1680,7 +1691,7 @@ private fun MentorProfileMainView(
                                 Icon(
                                     Icons.Default.Badge,
                                     contentDescription = null,
-                                    tint = Color(0xFF0F172A),
+                                    tint = CardInk,
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
@@ -1688,7 +1699,7 @@ private fun MentorProfileMainView(
                                     text = mentorId,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF0F172A),
+                                    color = CardInk,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -1729,7 +1740,7 @@ private fun MentorProfileMainView(
                         .padding(horizontal = 18.dp, vertical = 6.dp)
                         .clickable { showEditSheet = true },
                     shape = RoundedCornerShape(18.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, CardBorder),
                     shadowElevation = 2.dp
                 ) {
@@ -1792,7 +1803,7 @@ private fun MentorProfileMainView(
                         .fillMaxWidth()
                         .padding(horizontal = 18.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(18.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, CardBorder),
                     shadowElevation = 2.dp
                 ) {
@@ -1825,7 +1836,7 @@ private fun MentorProfileMainView(
                         .fillMaxWidth()
                         .padding(horizontal = 18.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(18.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, CardBorder),
                     shadowElevation = 2.dp
                 ) {
@@ -1989,11 +2000,17 @@ private fun MentorProfileMainView(
             item {
                 val allCohorts = profile?.assignedCohorts ?: emptyList()
 
-                // Intelligent Status Classification
+                // Intelligent Status Classification: All current assigned batches are Active unless explicitly marked completed/graduated
                 fun isCohortActive(c: MentorAssignedCohortDto): Boolean {
                     val text = "${c.name} ${c.course} ${c.code}"
-                    val isPast = text.contains("2021", true) || text.contains("2022", true) || text.contains("2023", true) || text.contains("Completed", true) || text.contains("Graduated", true)
-                    return !c.meetingLink.isNullOrBlank() || (!isPast && (text.contains("2024", true) || text.contains("2025", true) || text.contains("Active", true) || text.contains("Ongoing", true)))
+                    val isPastOrCompleted = text.contains("Completed", true) ||
+                                            text.contains("Graduated", true) ||
+                                            text.contains("Archived", true) ||
+                                            text.contains("Finished", true) ||
+                                            text.contains("2021", true) ||
+                                            text.contains("2022", true) ||
+                                            text.contains("2023", true)
+                    return !isPastOrCompleted
                 }
 
                 val activeList = allCohorts.filter { isCohortActive(it) }
@@ -2015,7 +2032,7 @@ private fun MentorProfileMainView(
                         .fillMaxWidth()
                         .padding(horizontal = 18.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(18.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, CardBorder),
                     shadowElevation = 2.dp
                 ) {
@@ -2191,8 +2208,8 @@ private fun MentorProfileMainView(
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(14.dp),
-                                    color = if (isActive) Color(0xFFFAF8FF) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(1.dp, if (isActive) Color(0xFFE5DEFF) else Color(0xFFE2E8F0))
+                                    color = if (isActive) PanelBg else PanelBg,
+                                    border = BorderStroke(1.dp, if (isActive) Color(0xFFE5DEFF) else CardDivider)
                                 ) {
                                     Column(modifier = Modifier.padding(14.dp)) {
                                         // Status & Code Pill Row
@@ -2230,8 +2247,8 @@ private fun MentorProfileMainView(
                                             } else {
                                                 Surface(
                                                     shape = RoundedCornerShape(6.dp),
-                                                    color = Color(0xFFE2E8F0),
-                                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                                    color = CardDivider,
+                                                    border = BorderStroke(1.dp, CardBorder)
                                                 ) {
                                                     Row(
                                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -2257,8 +2274,8 @@ private fun MentorProfileMainView(
                                             // Cohort Code Chip
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
-                                                color = if (isActive) CardLavender else Color.White,
-                                                border = BorderStroke(1.dp, if (isActive) Color(0xFFE2D5FF) else Color(0xFFCBD5E1))
+                                                color = if (isActive) CardLavender else MaterialTheme.colorScheme.surface,
+                                                border = BorderStroke(1.dp, if (isActive) Color(0xFFE2D5FF) else CardBorder)
                                             ) {
                                                 Text(
                                                     text = cohortCode,
@@ -2324,8 +2341,8 @@ private fun MentorProfileMainView(
                                             Spacer(Modifier.height(8.dp))
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
-                                                color = Color.White,
-                                                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                                color = MaterialTheme.colorScheme.surface,
+                                                border = BorderStroke(1.dp, CardDivider)
                                             ) {
                                                 Row(
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -2527,7 +2544,7 @@ private fun MentorProfileMainView(
             AlertDialog(
                 onDismissRequest = { showLinkedinPopup = false },
                 shape = RoundedCornerShape(20.dp),
-                containerColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.surface,
                 icon = {
                     Surface(
                         modifier = Modifier.size(56.dp),

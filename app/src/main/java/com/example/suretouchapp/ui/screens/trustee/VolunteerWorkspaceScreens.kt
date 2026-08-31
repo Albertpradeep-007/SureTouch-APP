@@ -30,18 +30,49 @@ import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.*
 import com.example.suretouchapp.data.repository.VolunteerRepository
+import com.example.suretouchapp.data.repository.ClassSchedulePolicy
+import com.example.suretouchapp.data.repository.isCancelledSession
+import com.example.suretouchapp.data.repository.isCompletedSession
+import com.example.suretouchapp.ui.theme.SureFormDefaults
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.launch
 import retrofit2.Response
 import java.io.IOException
 import java.util.Calendar
 import java.util.Locale
 
-private val WorkspaceBg = Color(0xFFF6F7FC)
-private val WorkspacePurple = Color(0xFF6726D9)
+private val WorkspaceBg @Composable get() = MaterialTheme.colorScheme.background
+private val WorkspacePurple @Composable get() = MaterialTheme.colorScheme.primary
 private val WorkspaceTeal = Color(0xFF0D9488)
-private val WorkspaceInk = Color(0xFF101A35)
-private val WorkspaceMuted = Color(0xFF64748B)
-private val WorkspaceLine = Color(0xFFE2E8F0)
+private val WorkspaceInk @Composable get() = MaterialTheme.colorScheme.onSurface
+private val WorkspaceMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val WorkspaceLine @Composable get() = MaterialTheme.colorScheme.outlineVariant
+
+private fun resolveStudentName(student: StudentProfileDto): String {
+    val userFullName = listOfNotNull(
+        student.user?.firstName ?: student.userFirstName ?: student.firstName,
+        student.user?.lastName ?: student.userLastName ?: student.lastName
+    ).filter { it.isNotBlank() }.joinToString(" ").trim()
+    if (userFullName.isNotBlank()) return userFullName
+
+    val explicitName = listOfNotNull(
+        student.fullName,
+        student.name,
+        student.studentName,
+        student.userName,
+        student.userFullName
+    ).firstOrNull { it.isNotBlank() }
+    if (!explicitName.isNullOrBlank()) return explicitName
+
+    val email = student.user?.email ?: student.userEmail ?: student.email
+    if (!email.isNullOrBlank()) {
+        val handle = email.substringBefore("@").replace(".", " ").replace("_", " ")
+        return handle.split(" ").filter { it.isNotBlank() }.joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+    }
+
+    val code = student.studentCode?.takeIf { it.isNotBlank() }
+    return if (code != null) "Student ($code)" else "Student Profile"
+}
 
 private data class VolunteerScope(
     val profile: VolunteerProfileDto,
@@ -80,17 +111,6 @@ fun generateAutoMeetLink(cohortCode: String? = null): String {
     return "https://meet.google.com/$cleanCode-$part1-$part2"
 }
 
-fun isClassTimeOverlapping(
-    start1: String, end1: String,
-    start2: String, end2: String
-): Boolean {
-    val s1 = start1.replace(":", "").toIntOrNull() ?: return false
-    val e1 = end1.replace(":", "").toIntOrNull() ?: return false
-    val s2 = start2.replace(":", "").toIntOrNull() ?: return false
-    val e2 = end2.replace(":", "").toIntOrNull() ?: return false
-    return s1 < e2 && e1 > s2
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VolunteerWorkspacePage(
@@ -115,7 +135,7 @@ private fun VolunteerWorkspacePage(
                 actions = {
                     onRefresh?.let { refresh -> IconButton(onClick = refresh) { Icon(Icons.Default.Refresh, "Refresh", tint = WorkspacePurple) } }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
         floatingActionButton = floatingActionButton,
@@ -126,7 +146,7 @@ private fun VolunteerWorkspacePage(
 @Composable
 private fun WorkspaceStateCard(icon: ImageVector, title: String, message: String, danger: Boolean = false) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, WorkspaceLine),
         shape = RoundedCornerShape(18.dp)
     ) {
@@ -142,7 +162,7 @@ private fun WorkspaceStateCard(icon: ImageVector, title: String, message: String
 
 @Composable
 private fun MetricTile(value: String, label: String, tint: Color, modifier: Modifier = Modifier) {
-    Card(modifier, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(16.dp)) {
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(14.dp)) {
             Text(value, fontSize = 24.sp, fontWeight = FontWeight.Black, color = tint)
             Text(label, fontSize = 11.sp, color = WorkspaceMuted)
@@ -178,14 +198,18 @@ fun VolunteerProgrammesScreen(tokenManager: TokenManager, onBack: () -> Unit, on
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             MetricTile(data!!.cohorts.size.toString(), "Assigned cohorts", WorkspacePurple, Modifier.weight(1f))
-                            MetricTile(data!!.cohorts.count { it.status.equals("ACTIVE", true) }.toString(), "Active", WorkspaceTeal, Modifier.weight(1f))
+                            val activeCohortCount = data!!.cohorts.count {
+                                it.status?.uppercase() in setOf("ACTIVE", "TRAINING", "ONGOING", "IN_PROGRESS") ||
+                                    (!it.endDate.isNullOrBlank() && it.endDate >= "2026")
+                            }
+                            MetricTile(activeCohortCount.toString(), "Active", WorkspaceTeal, Modifier.weight(1f))
                         }
                     }
                     items(data!!.cohorts, key = { it.id }) { cohort ->
-                        Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(18.dp)) {
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(18.dp)) {
                             Column(Modifier.fillMaxWidth().padding(18.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(48.dp).background(Color(0xFFF1E9FF), CircleShape), contentAlignment = Alignment.Center) {
+                                    Box(Modifier.size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Groups, null, tint = WorkspacePurple)
                                     }
                                     Spacer(Modifier.width(12.dp))
@@ -260,7 +284,7 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 title = { Column { Text("Class Schedule", fontWeight = FontWeight.ExtraBold); Text("Create, reschedule and cancel cohort sessions", fontSize = 11.sp, color = WorkspaceMuted) } },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = WorkspacePurple) } },
                 actions = { IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Refresh", tint = WorkspacePurple) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
         floatingActionButton = {
@@ -293,6 +317,25 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
             onDismiss = { showEditor = false }
         ) { cohortId, title, date, start, end, link, notes, conducted ->
             coroutineScope.launch {
+                val latestResponse = runCatching { api.getAttendance() }.getOrNull()
+                if (latestResponse?.isSuccessful != true) {
+                    snackbar.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
+                    return@launch
+                }
+                val latestSessions = latestResponse.body()?.results.orEmpty()
+                val remoteConflict = ClassSchedulePolicy.findConflict(
+                    sessions = latestSessions,
+                    cohortId = cohortId,
+                    date = date,
+                    start = start,
+                    end = end,
+                    excludedSessionId = editing?.id
+                )
+                if (remoteConflict != null) {
+                    snackbar.showSnackbar("This cohort already has a class during that time. Refresh and choose another slot.")
+                    refresh++
+                    return@launch
+                }
                 val body = mutableMapOf<String, Any?>(
                     "cohort" to cohortId, "title" to title.trim(), "class_date" to date.trim(),
                     "start_time" to start.trim(), "end_time" to end.trim(),
@@ -323,6 +366,25 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
             onDismiss = { rescheduling = null },
             onReschedule = { newDate, newStart, newEnd, newLink ->
                 coroutineScope.launch {
+                    val latestResponse = runCatching { api.getAttendance() }.getOrNull()
+                    if (latestResponse?.isSuccessful != true) {
+                        snackbar.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
+                        return@launch
+                    }
+                    val latestSessions = latestResponse.body()?.results.orEmpty()
+                    val remoteConflict = ClassSchedulePolicy.findConflict(
+                        sessions = latestSessions,
+                        cohortId = session.cohort ?: session.cohortCode.orEmpty(),
+                        date = newDate,
+                        start = newStart,
+                        end = newEnd,
+                        excludedSessionId = session.id
+                    )
+                    if (remoteConflict != null) {
+                        snackbar.showSnackbar("That reschedule overlaps another class for this cohort.")
+                        refresh++
+                        return@launch
+                    }
                     val body = mapOf<String, Any?>(
                         "class_date" to newDate,
                         "start_time" to newStart,
@@ -394,8 +456,9 @@ private fun SessionCard(
     onReschedule: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val completed = session.classStatus.equals("COMPLETED", true) || session.effectiveStatus.equals("COMPLETED", true) || session.conducted
-    val isCancelled = session.classStatus.equals("CANCELLED", true)
+    val semanticColors = sureSemanticColors()
+    val completed = session.isCompletedSession()
+    val isCancelled = session.isCancelledSession()
     val isRescheduled = session.classStatus.equals("RESCHEDULED", true)
 
     val badgeText = when {
@@ -406,20 +469,20 @@ private fun SessionCard(
     }
 
     val badgeColor = when {
-        isCancelled -> Color(0xFFDC2626)
-        completed -> WorkspaceTeal
-        isRescheduled -> Color(0xFFD97706)
-        else -> WorkspacePurple
+        isCancelled -> MaterialTheme.colorScheme.onErrorContainer
+        completed -> semanticColors.onSuccessContainer
+        isRescheduled -> semanticColors.onWarningContainer
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
 
     val badgeBg = when {
-        isCancelled -> Color(0xFFFEE2E2)
-        completed -> Color(0xFFE6F7F1)
-        isRescheduled -> Color(0xFFFEF3C7)
-        else -> Color(0xFFF1E9FF)
+        isCancelled -> MaterialTheme.colorScheme.errorContainer
+        completed -> semanticColors.successContainer
+        isRescheduled -> semanticColors.warningContainer
+        else -> MaterialTheme.colorScheme.primaryContainer
     }
 
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(17.dp)) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(17.dp)) {
         Column(Modifier.fillMaxWidth().padding(15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(44.dp).background(badgeBg, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
@@ -538,22 +601,15 @@ private fun ClassSessionDialog(
     }
 
     val conflict = remember(cohortId, date, start, end, existingSessions, existing?.id) {
-        if (date.isBlank() || start.isBlank() || end.isBlank()) null
-        else {
-            existingSessions.firstOrNull { s ->
-                s.id != existing?.id &&
-                    s.cohort == cohortId &&
-                    s.date == date &&
-                    !s.classStatus.equals("CANCELLED", true) &&
-                    isClassTimeOverlapping(start, end, s.startTime?.take(5).orEmpty(), s.endTime?.take(5).orEmpty())
-            }
-        }
+        ClassSchedulePolicy.findConflict(existingSessions, cohortId, date, start, end, existing?.id)
     }
 
+    val validTimeRange = ClassSchedulePolicy.isValidTimeRange(start, end)
     val valid = title.isNotBlank() &&
         date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) &&
         start.matches(Regex("\\d{2}:\\d{2}")) &&
         end.matches(Regex("\\d{2}:\\d{2}")) &&
+        validTimeRange &&
         conflict == null
 
     AlertDialog(
@@ -565,7 +621,8 @@ private fun ClassSessionDialog(
                     OutlinedTextField(
                         value = cohorts.firstOrNull { it.id == cohortId }?.let { it.code ?: it.name } ?: "Assigned cohort",
                         onValueChange = {}, readOnly = true, label = { Text("Cohort") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
                     )
                     ExposedDropdownMenu(expanded, onDismissRequest = { expanded = false }) {
                         cohorts.forEach { cohort ->
@@ -583,13 +640,14 @@ private fun ClassSessionDialog(
                     }
                 }
 
-                OutlinedTextField(title, { title = it }, label = { Text("Class title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(title, { title = it }, label = { Text("Class title") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = SureFormDefaults.outlinedTextFieldColors())
 
                 Box(Modifier.fillMaxWidth()) {
                     OutlinedTextField(
                         value = date, onValueChange = {}, readOnly = true, label = { Text("Class Date") },
                         placeholder = { Text("Select Date") }, trailingIcon = { Icon(Icons.Default.CalendarMonth, null, tint = WorkspacePurple) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
                     )
                     Box(Modifier.matchParentSize().clickable { showDatePicker() })
                 }
@@ -599,7 +657,8 @@ private fun ClassSessionDialog(
                         OutlinedTextField(
                             value = start, onValueChange = {}, readOnly = true, label = { Text("Start Time") },
                             placeholder = { Text("HH:MM") }, trailingIcon = { Icon(Icons.Default.AccessTime, null, tint = WorkspacePurple) },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Box(Modifier.matchParentSize().clickable { showTimePicker(true) })
                     }
@@ -607,23 +666,32 @@ private fun ClassSessionDialog(
                         OutlinedTextField(
                             value = end, onValueChange = {}, readOnly = true, label = { Text("End Time") },
                             placeholder = { Text("HH:MM") }, trailingIcon = { Icon(Icons.Default.AccessTime, null, tint = WorkspacePurple) },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Box(Modifier.matchParentSize().clickable { showTimePicker(false) })
                     }
                 }
 
+                if (start.isNotBlank() && end.isNotBlank() && !validTimeRange) {
+                    Text(
+                        "End time must be after start time.",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp
+                    )
+                }
+
                 if (conflict != null) {
-                    Surface(color = Color(0xFFFEE2E2), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Text(
                             "Schedule Conflict: A class (${conflict.sessionTitle ?: "Session"}) is already scheduled for this cohort on $date from ${conflict.startTime?.take(5)} to ${conflict.endTime?.take(5)}. Please choose a non-overlapping time.",
-                            color = Color(0xFFDC2626), fontSize = 11.sp, modifier = Modifier.padding(8.dp)
+                            color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 11.sp, modifier = Modifier.padding(8.dp)
                         )
                     }
                 }
 
                 Column {
-                    OutlinedTextField(link, { link = it }, label = { Text("Google Meet Link") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(link, { link = it }, label = { Text("Google Meet Link") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = SureFormDefaults.outlinedTextFieldColors())
                     TextButton(
                         onClick = {
                             val code = cohorts.firstOrNull { it.id == cohortId }?.code
@@ -637,7 +705,7 @@ private fun ClassSessionDialog(
                     }
                 }
 
-                OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, minLines = 2, modifier = Modifier.fillMaxWidth(), colors = SureFormDefaults.outlinedTextFieldColors())
 
                 if (existing != null) Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(conducted, { conducted = it })
@@ -696,21 +764,20 @@ private fun RescheduleClassDialog(
     }
 
     val conflict = remember(session.cohort, date, start, end, existingSessions, session.id) {
-        if (date.isBlank() || start.isBlank() || end.isBlank()) null
-        else {
-            existingSessions.firstOrNull { s ->
-                s.id != session.id &&
-                    s.cohort == session.cohort &&
-                    s.date == date &&
-                    !s.classStatus.equals("CANCELLED", true) &&
-                    isClassTimeOverlapping(start, end, s.startTime?.take(5).orEmpty(), s.endTime?.take(5).orEmpty())
-            }
-        }
+        ClassSchedulePolicy.findConflict(
+            existingSessions,
+            session.cohort ?: session.cohortCode.orEmpty(),
+            date,
+            start,
+            end,
+            session.id
+        )
     }
 
     val valid = date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) &&
         start.matches(Regex("\\d{2}:\\d{2}")) &&
         end.matches(Regex("\\d{2}:\\d{2}")) &&
+        ClassSchedulePolicy.isValidTimeRange(start, end) &&
         conflict == null
 
     AlertDialog(
@@ -722,7 +789,8 @@ private fun RescheduleClassDialog(
                 Box(Modifier.fillMaxWidth()) {
                     OutlinedTextField(
                         value = date, onValueChange = {}, readOnly = true, label = { Text("New Date") },
-                        trailingIcon = { Icon(Icons.Default.CalendarMonth, null, tint = WorkspacePurple) }, modifier = Modifier.fillMaxWidth()
+                        trailingIcon = { Icon(Icons.Default.CalendarMonth, null, tint = WorkspacePurple) }, modifier = Modifier.fillMaxWidth(),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
                     )
                     Box(Modifier.matchParentSize().clickable { showDatePicker() })
                 }
@@ -730,27 +798,29 @@ private fun RescheduleClassDialog(
                     Box(Modifier.weight(1f)) {
                         OutlinedTextField(
                             value = start, onValueChange = {}, readOnly = true, label = { Text("New Start") },
-                            trailingIcon = { Icon(Icons.Default.AccessTime, null, tint = WorkspacePurple) }, modifier = Modifier.fillMaxWidth()
+                            trailingIcon = { Icon(Icons.Default.AccessTime, null, tint = WorkspacePurple) }, modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Box(Modifier.matchParentSize().clickable { showTimePicker(true) })
                     }
                     Box(Modifier.weight(1f)) {
                         OutlinedTextField(
                             value = end, onValueChange = {}, readOnly = true, label = { Text("New End") },
-                            trailingIcon = { Icon(Icons.Default.AccessTime, null, tint = WorkspacePurple) }, modifier = Modifier.fillMaxWidth()
+                            trailingIcon = { Icon(Icons.Default.AccessTime, null, tint = WorkspacePurple) }, modifier = Modifier.fillMaxWidth(),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Box(Modifier.matchParentSize().clickable { showTimePicker(false) })
                     }
                 }
                 if (conflict != null) {
-                    Surface(color = Color(0xFFFEE2E2), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Text(
                             "Conflict: Another class is already scheduled on $date from ${conflict.startTime?.take(5)} to ${conflict.endTime?.take(5)}.",
-                            color = Color(0xFFDC2626), fontSize = 11.sp, modifier = Modifier.padding(8.dp)
+                            color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 11.sp, modifier = Modifier.padding(8.dp)
                         )
                     }
                 }
-                OutlinedTextField(link, { link = it }, label = { Text("Google Meet link (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(link, { link = it }, label = { Text("Google Meet link (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = SureFormDefaults.outlinedTextFieldColors())
             }
         },
         confirmButton = {
@@ -798,7 +868,7 @@ fun VolunteerTasksScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 title = { Column { Text("Volunteer Tasks", fontWeight = FontWeight.ExtraBold); Text("Live backend assignments", fontSize = 11.sp, color = WorkspaceMuted) } },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = WorkspacePurple) } },
                 actions = { IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Refresh", tint = WorkspacePurple) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
         floatingActionButton = { if (!assignedScope?.cohorts.isNullOrEmpty()) FloatingActionButton(onClick = { showCreate = true }, containerColor = WorkspacePurple, contentColor = Color.White) { Icon(Icons.Default.Add, "Create task") } }
@@ -816,7 +886,7 @@ fun VolunteerTasksScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 error != null -> item { WorkspaceStateCard(Icons.Default.CloudOff, "Tasks unavailable", error.orEmpty(), true) }
                 tasks.isEmpty() -> item { WorkspaceStateCard(Icons.Default.TaskAlt, "No tasks", "No volunteer tasks have been assigned.") }
                 else -> items(tasks, key = { it.id }) { task ->
-                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(16.dp)) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(16.dp)) {
                         Column(Modifier.fillMaxWidth().padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(task.title, fontWeight = FontWeight.Bold, color = WorkspaceInk, modifier = Modifier.weight(1f))
@@ -930,7 +1000,7 @@ fun VolunteerImpactScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 title = { Column { Text("Impact & Activities", fontWeight = FontWeight.ExtraBold); Text("Assign community activity by Cohort or Student", fontSize = 11.sp, color = WorkspaceMuted) } },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = WorkspacePurple) } },
                 actions = { IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Refresh", tint = WorkspacePurple) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
         floatingActionButton = {
@@ -952,7 +1022,7 @@ fun VolunteerImpactScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 error != null -> item { WorkspaceStateCard(Icons.Default.CloudOff, "Impact unavailable", error.orEmpty(), true) }
                 activities.isEmpty() -> item { WorkspaceStateCard(Icons.Default.VolunteerActivism, "No activities", "Use + to assign a community activity to a cohort or individual student.") }
                 else -> items(activities, key = { it.id }) { activity ->
-                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(16.dp)) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(16.dp)) {
                         Column(Modifier.fillMaxWidth().padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.VolunteerActivism, null, tint = WorkspaceTeal)
@@ -1150,8 +1220,16 @@ private fun CommunityActivityAssignDialog(
                 if (!isAssignToCohort) {
                     ExposedDropdownMenuBox(appMenu, { appMenu = !appMenu }) {
                         val displayApp = cohortApps.firstOrNull { it.id == selectedAppId }
+                        val matchingStudent = displayApp?.let { app -> students.firstOrNull { it.id == app.student || it.userId == app.student } }
+                        val studentName = matchingStudent?.let { resolveStudentName(it) }
+                        val displayTitle = when {
+                            studentName != null -> "$studentName (${displayApp?.applicationNumber ?: displayApp?.id?.take(8)})"
+                            displayApp?.applicationNumber != null -> displayApp.applicationNumber
+                            selectedAppId.isNotBlank() -> "Student Application (${selectedAppId.take(8)})"
+                            else -> "Select Student"
+                        }
                         OutlinedTextField(
-                            value = displayApp?.applicationNumber ?: (if (selectedAppId.isNotBlank()) "Student Application (${selectedAppId.take(8)})" else "Select Student"),
+                            value = displayTitle,
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Select Student in Cohort") },
@@ -1163,8 +1241,11 @@ private fun CommunityActivityAssignDialog(
                                 DropdownMenuItem(text = { Text("No applications in this cohort") }, onClick = { appMenu = false })
                             } else {
                                 cohortApps.forEach { app ->
+                                    val st = students.firstOrNull { it.id == app.student || it.userId == app.student }
+                                    val name = st?.let { resolveStudentName(it) }
+                                    val title = if (name != null) "$name • ${app.applicationNumber ?: "App ${app.id.take(8)}"}" else (app.applicationNumber ?: "App ${app.id.take(8)}")
                                     DropdownMenuItem(
-                                        text = { Text(app.applicationNumber ?: "App ${app.id.take(8)}") },
+                                        text = { Text(title) },
                                         onClick = { selectedAppId = app.id; appMenu = false }
                                     )
                                 }
@@ -1228,6 +1309,7 @@ fun VolunteerInterviewsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     var volunteer by remember { mutableStateOf<VolunteerProfileDto?>(null) }
     var applications by remember { mutableStateOf<List<ApplicationDto>>(emptyList()) }
+    var students by remember { mutableStateOf<List<StudentProfileDto>>(emptyList()) }
     var interviews by remember { mutableStateOf<List<PreScreeningInterviewDto>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1243,10 +1325,12 @@ fun VolunteerInterviewsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
         try {
             val assigned = loadVolunteerScope(tokenManager)
             val appResponse = api.getMyApplications()
+            val studentResponse = runCatching { api.getStudents() }.getOrNull()
             val interviewResponse = api.getPreScreeningInterviews()
             if (!appResponse.isSuccessful) throw IOException("Applications request failed (${appResponse.code()})")
             if (!interviewResponse.isSuccessful) throw IOException("Interviews request failed (${interviewResponse.code()})")
             volunteer = assigned.profile
+            students = studentResponse?.takeIf { it.isSuccessful }?.body()?.results.orEmpty()
             applications = appResponse.body()?.results.orEmpty().filter { it.assignedCohort in assigned.cohortIds }
             val appIds = applications.map { it.id }.toSet()
             interviews = interviewResponse.body()?.results.orEmpty().filter { it.application in appIds }.sortedByDescending { it.scheduledAt }
@@ -1262,7 +1346,7 @@ fun VolunteerInterviewsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 title = { Column { Text("Candidate Interviews", fontWeight = FontWeight.ExtraBold); Text("Schedule, score and decide assigned candidates", fontSize = 11.sp, color = WorkspaceMuted) } },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = WorkspacePurple) } },
                 actions = { IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Refresh", tint = WorkspacePurple) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
         floatingActionButton = { if (eligibleApplications.isNotEmpty()) FloatingActionButton(onClick = { showSchedule = true }, containerColor = WorkspacePurple, contentColor = Color.White) { Icon(Icons.Default.Add, "Schedule interview") } }
@@ -1283,12 +1367,23 @@ fun VolunteerInterviewsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 interviews.isEmpty() -> item { WorkspaceStateCard(Icons.Default.HowToReg, "No interviews scheduled", "Use + to schedule an interview for an assigned candidate.") }
                 else -> items(interviews, key = { it.id }) { interview ->
                     val application = applications.firstOrNull { it.id == interview.application }
-                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(16.dp)) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, WorkspaceLine), shape = RoundedCornerShape(16.dp)) {
                         Column(Modifier.fillMaxWidth().padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(44.dp).background(Color(0xFFF1E9FF), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.HowToReg, null, tint = WorkspacePurple) }
+                                Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.HowToReg, null, tint = WorkspacePurple) }
                                 Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) { Text(application?.applicationNumber ?: "Application ${interview.application.take(8)}", fontWeight = FontWeight.Bold, color = WorkspaceInk); Text(interview.scheduledAt ?: "Schedule pending", fontSize = 11.sp, color = WorkspaceMuted) }
+                                val matchingStudent = application?.let { app -> students.firstOrNull { it.id == app.student || it.userId == app.student } }
+                                val candidateName = matchingStudent?.let { resolveStudentName(it) } ?: application?.applicationNumber ?: "Candidate (${interview.application.take(8)})"
+                                Column(Modifier.weight(1f)) {
+                                    Text(candidateName, fontWeight = FontWeight.Bold, color = WorkspaceInk)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        application?.applicationNumber?.let { appNum ->
+                                            Text(appNum, fontSize = 11.sp, color = WorkspacePurple, fontWeight = FontWeight.SemiBold)
+                                            Text(" • ", fontSize = 11.sp, color = WorkspaceMuted)
+                                        }
+                                        Text(interview.scheduledAt ?: "Schedule pending", fontSize = 11.sp, color = WorkspaceMuted)
+                                    }
+                                }
                                 AssistChip(onClick = {}, label = { Text(interview.status ?: "PENDING", fontSize = 9.sp) })
                             }
                             interview.score?.let { Text("Score: $it", fontWeight = FontWeight.SemiBold, color = WorkspacePurple, modifier = Modifier.padding(top = 8.dp)) }

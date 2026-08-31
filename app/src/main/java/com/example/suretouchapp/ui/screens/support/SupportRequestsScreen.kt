@@ -32,6 +32,8 @@ import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.UserRequestDto
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
+import com.example.suretouchapp.ui.theme.SureFormDefaults
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -40,9 +42,9 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 private val SupportPurple = Color(0xFF6C2BD9)
-private val SupportInk = Color(0xFF0F172A)
-private val SupportMuted = Color(0xFF64748B)
-private val SupportBorder = Color(0xFFE2E8F0)
+private val SupportInk @Composable get() = MaterialTheme.colorScheme.onSurface
+private val SupportMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val SupportBorder @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 private data class RequestCategory(val value: String, val label: String)
 
@@ -96,7 +98,7 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = Color(0xFFF8FAFC),
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
@@ -108,12 +110,12 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = SupportPurple) } },
                 actions = { IconButton(onClick = { refreshKey += 1 }) { Icon(Icons.Default.Refresh, "Refresh", tint = SupportPurple) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            PrimaryTabRow(selectedTabIndex = selectedTab, containerColor = Color.White, contentColor = SupportPurple) {
+            PrimaryTabRow(selectedTabIndex = selectedTab, containerColor = MaterialTheme.colorScheme.surface, contentColor = SupportPurple) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("New request") }, icon = { Icon(Icons.Default.AddCircle, null) })
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("My requests (${requests.size})") }, icon = { Icon(Icons.Default.ConfirmationNumber, null) })
             }
@@ -125,11 +127,11 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     item {
-                        Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFF3E8FF), border = BorderStroke(1.dp, Color(0xFFDDD0F8))) {
+                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.SupportAgent, null, tint = SupportPurple)
                                 Spacer(Modifier.width(10.dp))
-                                Text("Send a request to the SURE ProEd administration team. You can follow its status and resolution notes here.", fontSize = 12.sp, color = Color(0xFF4C1D95), lineHeight = 17.sp)
+                                Text("Send a request to the SURE ProEd administration team. You can follow its status and resolution notes here.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer, lineHeight = 17.sp)
                             }
                         }
                     }
@@ -147,7 +149,7 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                                 modifier = Modifier
                                     .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
                                     .fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = SupportPurple)
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             ExposedDropdownMenu(
                                 expanded = categoryExpanded,
@@ -159,8 +161,8 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                             }
                         }
                     }
-                    item { OutlinedTextField(subject, { subject = it }, label = { Text("Subject") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-                    item { OutlinedTextField(description, { description = it }, label = { Text("Describe your request") }, modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp), minLines = 5) }
+                    item { OutlinedTextField(subject, { subject = it }, label = { Text("Subject") }, modifier = Modifier.fillMaxWidth(), singleLine = true, colors = SureFormDefaults.outlinedTextFieldColors()) }
+                    item { OutlinedTextField(description, { description = it }, label = { Text("Describe your request") }, modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp), minLines = 5, colors = SureFormDefaults.outlinedTextFieldColors()) }
                     item {
                         OutlinedButton(onClick = { filePicker.launch(arrayOf("image/*", "application/pdf", "text/plain")) }, modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, SupportPurple)) {
                             Icon(Icons.Default.AttachFile, null)
@@ -239,17 +241,18 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
 
 @Composable
 private fun RequestTrackerCard(request: UserRequestDto) {
-    val statusColor = when (request.status) {
-        "RESOLVED", "CLOSED" -> Color(0xFF047857)
-        "REJECTED" -> Color(0xFFB91C1C)
-        "IN_PROGRESS" -> Color(0xFF0369A1)
-        else -> Color(0xFFB45309)
+    val semanticColors = sureSemanticColors()
+    val (statusColor, statusContainer) = when (request.status) {
+        "RESOLVED", "CLOSED" -> semanticColors.success to semanticColors.successContainer
+        "REJECTED" -> MaterialTheme.colorScheme.error to MaterialTheme.colorScheme.errorContainer
+        "IN_PROGRESS" -> semanticColors.info to semanticColors.infoContainer
+        else -> semanticColors.warning to semanticColors.warningContainer
     }
-    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, SupportBorder)) {
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, SupportBorder)) {
         Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(request.requestNumber.ifBlank { "REQUEST" }, color = SupportPurple, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Surface(shape = RoundedCornerShape(12.dp), color = statusColor.copy(alpha = 0.1f)) {
+                Surface(shape = RoundedCornerShape(12.dp), color = statusContainer) {
                     Text(request.status.replace('_', ' '), color = statusColor, fontWeight = FontWeight.Bold, fontSize = 9.5.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                 }
             }
@@ -257,19 +260,19 @@ private fun RequestTrackerCard(request: UserRequestDto) {
             Text(categoryLabel(request.category), color = SupportMuted, fontSize = 11.sp)
             Text(request.description, color = SupportMuted, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
             request.adminRemarks?.takeIf { it.isNotBlank() }?.let {
-                Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFFF0FDF4)) {
+                Surface(shape = RoundedCornerShape(10.dp), color = semanticColors.successContainer) {
                     Column(Modifier.padding(10.dp)) {
-                        Text("ADMIN RESPONSE", color = Color(0xFF047857), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        Text(it, color = SupportInk, fontSize = 11.5.sp)
+                        Text("ADMIN RESPONSE", color = semanticColors.success, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text(it, color = semanticColors.onSuccessContainer, fontSize = 11.5.sp)
                     }
                 }
             }
             if (request.adminRemarks.isNullOrBlank() && request.status in setOf("RESOLVED", "REJECTED", "CLOSED")) {
-                Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFFFFF7ED)) {
+                Surface(shape = RoundedCornerShape(10.dp), color = semanticColors.warningContainer) {
                     Text(
                         "No admin response was recorded for this closed request. Please ask the administration team to reopen it and add their remarks.",
                         modifier = Modifier.padding(10.dp),
-                        color = Color(0xFF9A3412),
+                        color = semanticColors.onWarningContainer,
                         fontSize = 11.5.sp,
                         lineHeight = 16.sp,
                     )

@@ -30,6 +30,7 @@ import com.example.suretouchapp.data.repository.StudentProfileRepository
 import com.example.suretouchapp.ui.theme.SureLimeSecondary
 import com.example.suretouchapp.ui.theme.SurePurpleDark
 import com.example.suretouchapp.ui.theme.SurePurplePrimary
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 
 private data class DrawerItemSpec(
     val title: String,
@@ -231,20 +232,14 @@ fun StudentDrawerContent(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search quick access", color = Color(0xFF7C718F)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = SurePurplePrimary) },
+                placeholder = { Text("Search quick access") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(22.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFFFDFBFF),
-                    unfocusedContainerColor = Color(0xFFFDFBFF),
-                    focusedBorderColor = SurePurplePrimary,
-                    unfocusedBorderColor = Color(0xFFD9D0E8),
-                    cursorColor = SurePurplePrimary
-                )
+                colors = SureFormDefaults.outlinedTextFieldColors()
             )
 
             Spacer(modifier = Modifier.height(12.dp))

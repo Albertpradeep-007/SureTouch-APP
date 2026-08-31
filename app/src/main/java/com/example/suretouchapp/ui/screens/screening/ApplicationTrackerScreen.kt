@@ -30,6 +30,7 @@ import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.components.InAppOAuthSheet
 import com.example.suretouchapp.ui.components.OAuthProvider
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -38,14 +39,12 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 private val JourneyHeader = Color(0xFF262626)
-private val JourneyCanvas = Color(0xFFFAFAFA)
-private val JourneyPurple = Color(0xFF6821A8)
-private val JourneyPurpleLight = Color(0xFFF3E8FF)
-private val JourneyText = Color(0xFF1E293B)
-private val JourneyMuted = Color(0xFF64748B)
-private val JourneyBorder = Color(0xFFE2E8F0)
-private val JourneyGreen = Color(0xFF16A34A)
-private val JourneyRed = Color(0xFFDC2626)
+private val JourneyCanvas @Composable get() = MaterialTheme.colorScheme.background
+private val JourneyPurple @Composable get() = MaterialTheme.colorScheme.primary
+private val JourneyPurpleLight @Composable get() = MaterialTheme.colorScheme.primaryContainer
+private val JourneyText @Composable get() = MaterialTheme.colorScheme.onSurface
+private val JourneyMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val JourneyBorder @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 enum class StepState { COMPLETED, CURRENT, UPCOMING, FAILED }
 
@@ -508,8 +507,8 @@ private fun LinkedInRequirementCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F7FF)),
-        border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -562,29 +561,29 @@ private fun LinkedInRequirementCard(
                     onClick = onAddGithub,
                     enabled = !isGithubLoading,
                     modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(1.dp, Color(0xFF24292F)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     shape = RoundedCornerShape(9.dp)
                 ) {
                     if (isGithubLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
-                            color = Color(0xFF24292F),
+                            color = MaterialTheme.colorScheme.onSurface,
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("GH", fontWeight = FontWeight.Black, color = Color(0xFF24292F))
+                        Text("GH", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(
                         if (isGithubLoading) "Opening GitHub…" else "Connect GitHub",
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF24292F)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
             error?.let {
                 Spacer(Modifier.height(7.dp))
-                Text(it, color = JourneyRed, fontSize = 12.sp)
+                Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
         }
     }
@@ -597,10 +596,11 @@ private fun ApplicationSummaryCard(
     cohortCode: String?,
     onNavigateToTimetable: () -> Unit
 ) {
+    val semanticColors = sureSemanticColors()
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, JourneyBorder),
         elevation = CardDefaults.cardElevation(3.dp)
     ) {
@@ -627,7 +627,7 @@ private fun ApplicationSummaryCard(
                 }
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = if (cohortCode == null) Color(0xFFFFF7ED) else Color(0xFFDCFCE7)
+                    color = if (cohortCode == null) semanticColors.warningContainer else semanticColors.successContainer
                 ) {
                     Row(
                         Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -636,7 +636,7 @@ private fun ApplicationSummaryCard(
                         Icon(
                             imageVector = if (cohortCode == null) Icons.Default.Schedule else Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = if (cohortCode == null) Color(0xFFEA580C) else JourneyGreen,
+                            tint = if (cohortCode == null) semanticColors.onWarningContainer else semanticColors.onSuccessContainer,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(Modifier.width(4.dp))
@@ -644,7 +644,7 @@ private fun ApplicationSummaryCard(
                             text = journeyStatus,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (cohortCode == null) Color(0xFFEA580C) else JourneyGreen,
+                            color = if (cohortCode == null) semanticColors.onWarningContainer else semanticColors.onSuccessContainer,
                             maxLines = 1,
                             softWrap = false
                         )
@@ -674,26 +674,27 @@ private fun ApplicationSummaryCard(
 @Composable
 private fun TimelineStepCard(step: JourneyStep, isLastStep: Boolean) {
     val uriHandler = LocalUriHandler.current
+    val semanticColors = sureSemanticColors()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(36.dp)) {
             val (icon, background, foreground) = when (step.state) {
-                StepState.COMPLETED -> Triple(Icons.Default.Check, JourneyGreen, Color.White)
+                StepState.COMPLETED -> Triple(Icons.Default.Check, semanticColors.success, Color.White)
                 StepState.CURRENT -> Triple(Icons.Default.Star, JourneyPurple, Color.White)
-                StepState.UPCOMING -> Triple(Icons.Default.HourglassEmpty, Color(0xFFE2E8F0), Color(0xFF94A3B8))
-                StepState.FAILED -> Triple(Icons.Default.Close, JourneyRed, Color.White)
+                StepState.UPCOMING -> Triple(Icons.Default.HourglassEmpty, MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
+                StepState.FAILED -> Triple(Icons.Default.Close, MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.onError)
             }
             Box(Modifier.size(28.dp).clip(CircleShape).background(background), contentAlignment = Alignment.Center) {
                 Icon(icon, null, tint = foreground, modifier = Modifier.size(15.dp))
             }
             if (!isLastStep) {
-                Box(Modifier.width(2.dp).height(58.dp).background(if (step.state == StepState.COMPLETED) JourneyGreen.copy(alpha = .55f) else JourneyBorder))
+                Box(Modifier.width(2.dp).height(58.dp).background(if (step.state == StepState.COMPLETED) semanticColors.success.copy(alpha = .55f) else JourneyBorder))
             }
         }
         Spacer(Modifier.width(12.dp))
         Card(
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(10.dp),
-            colors = CardDefaults.cardColors(containerColor = if (step.state == StepState.CURRENT) JourneyPurpleLight.copy(alpha = .55f) else Color.White),
+            colors = CardDefaults.cardColors(containerColor = if (step.state == StepState.CURRENT) JourneyPurpleLight else MaterialTheme.colorScheme.surface),
             border = BorderStroke(if (step.state == StepState.CURRENT) 1.5.dp else 1.dp, if (step.state == StepState.CURRENT) JourneyPurple else JourneyBorder),
             elevation = CardDefaults.cardElevation(if (step.state == StepState.CURRENT) 2.dp else 1.dp)
         ) {
@@ -727,9 +728,10 @@ private fun TimelineStepCard(step: JourneyStep, isLastStep: Boolean) {
 
 @Composable
 private fun JourneySyncNotice(onRetry: () -> Unit) {
-    Surface(color = Color(0xFFFFF7ED), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Color(0xFFFED7AA))) {
+    val semanticColors = sureSemanticColors()
+    Surface(color = semanticColors.warningContainer, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.CloudOff, null, tint = Color(0xFFEA580C), modifier = Modifier.size(19.dp))
+            Icon(Icons.Default.CloudOff, null, tint = semanticColors.onWarningContainer, modifier = Modifier.size(19.dp))
             Spacer(Modifier.width(8.dp))
             Text("Could not sync the latest journey data.", modifier = Modifier.weight(1f), fontSize = 11.5.sp, color = JourneyText)
             TextButton(onClick = onRetry, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Retry", color = JourneyPurple) }

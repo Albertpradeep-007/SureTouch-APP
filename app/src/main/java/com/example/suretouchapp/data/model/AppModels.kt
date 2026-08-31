@@ -17,6 +17,18 @@ data class StudentProfileDto(
     // responses still expand the same field to a user object, so accept both shapes.
     @SerializedName("user") private val userValue: JsonElement? = null,
     @SerializedName("student_code") val studentCode: String? = null,
+    @SerializedName("first_name") val firstName: String? = null,
+    @SerializedName("last_name") val lastName: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("full_name") val fullName: String? = null,
+    @SerializedName("student_name") val studentName: String? = null,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("user_email") val userEmail: String? = null,
+    @SerializedName("user_phone") val userPhone: String? = null,
+    @SerializedName("user_first_name") val userFirstName: String? = null,
+    @SerializedName("user_last_name") val userLastName: String? = null,
+    @SerializedName("user_full_name") val userFullName: String? = null,
+    @SerializedName("user_name") val userName: String? = null,
     @SerializedName("is_public") val isPublic: Boolean = false,
     @SerializedName("profile_photo") val profilePhoto: String? = null,
     @SerializedName("profile_photo_url") val profilePhotoUrl: String? = null,
@@ -89,7 +101,7 @@ data class StudentProfileDto(
             }
         }
     val userId: String? get() = user?.id
-    val phone: String? get() = user?.phoneNumber
+    val phone: String? get() = userPhone ?: user?.phoneNumber
     val qualification: String? get() = degree ?: educationLevel
     val collegeName: String? get() = college
     val formattedLocation: String
@@ -287,10 +299,43 @@ data class AttendanceDto(
     @SerializedName("meeting_link") val meetingLink: String? = null,
     @SerializedName("recording_link") val recordingLink: String? = null,
     val notes: String? = null,
-    val present: Boolean = true
+    @SerializedName("student_dashboard_data") val studentDashboardData: StudentAttendanceDataDto? = null,
+    // Session payloads do not always include a student-specific attendance flag.
+    // Defaulting to true made every scheduled class look attended (100%).
+    val present: Boolean = false
+)
+
+/** Student-scoped attendance result emitted by the backend AttendanceSerializer. */
+data class StudentAttendanceDataDto(
+    val status: String? = null,
+    val course: String? = null,
+    val cohort: String? = null,
+    @SerializedName("class_date") val classDate: String? = null,
+    @SerializedName("active_duration_seconds") val activeDurationSeconds: Long = 0,
+    @SerializedName("attendance_percentage") val attendancePercentage: Double? = null,
+    @SerializedName("attendance_status") val attendanceStatus: String? = null,
+    @SerializedName("warning_state") val warningState: String? = null,
+    @SerializedName("meeting_link") val meetingLink: String? = null
 )
 
 typealias TimetableSessionDto = AttendanceDto
+
+data class AbsenceWarningDto(
+    val id: String = "",
+    @SerializedName("session_title") val sessionTitle: String? = null,
+    @SerializedName("class_date") val classDate: String? = null,
+    val status: String = "PENDING",
+    @SerializedName("apology_text") val apologyText: String? = null,
+    val resolved: Boolean = false
+)
+
+data class PermissionRequestMessageDto(
+    @SerializedName("message_id") val messageId: String = "",
+    val message: String = "",
+    @SerializedName("sender_id") val senderId: String = "",
+    @SerializedName("sender_name") val senderName: String = "",
+    val timestamp: String = ""
+)
 
 data class AssignmentDto(
     val id: String = "",

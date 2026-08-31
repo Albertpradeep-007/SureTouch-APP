@@ -34,6 +34,7 @@ import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.NetworkUtils
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.VolunteerProfileDto
+import com.example.suretouchapp.data.model.VolunteerAssignedCohortDto
 import com.example.suretouchapp.data.repository.VolunteerRepository
 import kotlinx.coroutines.launch
 import com.example.suretouchapp.ui.components.BackendConnectionGate
@@ -45,8 +46,20 @@ import okhttp3.MultipartBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
+
+private fun isCohortActive(cohort: VolunteerAssignedCohortDto): Boolean {
+    val text = listOfNotNull(cohort.name, cohort.code, cohort.course).joinToString(" ").lowercase()
+    if (text.contains("completed") || text.contains("graduated") || text.contains("archive") || text.contains("finished")) {
+        return false
+    }
+    if (text.contains("2020") || text.contains("2021") || text.contains("2022") || text.contains("2023")) {
+        return false
+    }
+    return true
+}
+
 private val PrimaryTeal = Color(0xFF0D9488)
-private val ScreenBg = Color(0xFFF8FAFC)
+private val ScreenBg @Composable get() = MaterialTheme.colorScheme.background
 private val TextMain @Composable get() = MaterialTheme.colorScheme.onSurface
 private val TextMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -93,6 +106,8 @@ fun VolunteerTrusteeProfessionalProfileScreen(
     var coverPhotoUri by remember { mutableStateOf(tokenManager.getCoverPhotoUrl()) }
     var showCoverOptionsDialog by remember { mutableStateOf(false) }
     var profilePhotoUri by remember { mutableStateOf(tokenManager.getProfilePhotoUrl()) }
+    var cohortFilter by remember { mutableStateOf("ALL") }
+    var selectedCohortForDetails by remember { mutableStateOf<VolunteerAssignedCohortDto?>(null) }
 
     val formattedId = profile?.id
         ?.replace("-", "")
@@ -234,7 +249,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                         .clip(CircleShape)
                                         .clickable { onBack() },
                                     shape = CircleShape,
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.surface,
                                     shadowElevation = 5.dp
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
@@ -337,8 +352,8 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                     .clip(CircleShape)
                                     .clickable { showEditSheet = true },
                                 shape = CircleShape,
-                                color = Color.White,
-                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 shadowElevation = 1.dp
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -353,7 +368,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                             text = designation.ifBlank { "Occupation not provided" },
                             fontSize = 14.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF334155),
+                            color = TextMuted,
                             lineHeight = 20.sp
                         )
 
@@ -382,7 +397,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                                 border = BorderStroke(1.2.dp, PrimaryTeal),
                                 shadowElevation = 1.dp
                             ) {
@@ -398,8 +413,8 @@ fun VolunteerTrusteeProfessionalProfileScreen(
 
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color.White,
-                                border = BorderStroke(1.2.dp, Color(0xFFCBD5E1)),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.outlineVariant),
                                 shadowElevation = 1.dp
                             ) {
                                 Row(
@@ -434,7 +449,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                 onClick = { showIdModal = true },
                                 modifier = Modifier.height(42.dp),
                                 shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
                             ) {
                                 Icon(Icons.Default.QrCode, null, modifier = Modifier.size(16.dp))
@@ -507,9 +522,213 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                         Text(
                             text = bio.ifBlank { "No biography has been added to the backend profile." },
                             fontSize = 14.sp,
-                            color = Color(0xFF334155),
+                            color = TextMuted,
                             lineHeight = 22.sp
                         )
+                    }
+                }
+
+
+                // ── 5. Assigned Cohorts & Batches ──
+                val allAssigned = profile?.assignedCohorts.orEmpty()
+                val activeAssigned = allAssigned.filter { isCohortActive(it) }
+                val completedAssigned = allAssigned.filter { !isCohortActive(it) }
+
+                val displayedCohorts = when (cohortFilter) {
+                    "ACTIVE" -> activeAssigned
+                    "COMPLETED" -> completedAssigned
+                    else -> allAssigned
+                }
+
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        modifier = Modifier.size(36.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFEDE9FE)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.Groups, null, tint = Color(0xFF6726D9), modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text("Assigned Cohorts & Batches", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextMain)
+                                        Text(
+                                            "${activeAssigned.size} Active • ${completedAssigned.size} Completed (${allAssigned.size} Total)",
+                                            fontSize = 11.5.sp,
+                                            color = TextMuted
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFEDE9FE)
+                                ) {
+                                    Text(
+                                        "${allAssigned.size} Batches",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF6726D9),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            if (allAssigned.isNotEmpty()) {
+                                Spacer(Modifier.height(14.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = cohortFilter == "ALL",
+                                        onClick = { cohortFilter = "ALL" },
+                                        label = { Text("All (${allAssigned.size})", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    FilterChip(
+                                        selected = cohortFilter == "ACTIVE",
+                                        onClick = { cohortFilter = "ACTIVE" },
+                                        label = { Text("🟢 Active (${activeAssigned.size})", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = Color(0xFFDCFCE7),
+                                            selectedLabelColor = Color(0xFF15803D)
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    FilterChip(
+                                        selected = cohortFilter == "COMPLETED",
+                                        onClick = { cohortFilter = "COMPLETED" },
+                                        label = { Text("🎓 Completed (${completedAssigned.size})", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = Color(0xFFF3F4F6),
+                                            selectedLabelColor = Color(0xFF4B5563)
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                if (displayedCohorts.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "No ${cohortFilter.lowercase()} cohorts found.",
+                                            fontSize = 12.5.sp,
+                                            color = TextMuted
+                                        )
+                                    }
+                                } else {
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        displayedCohorts.forEach { cohort ->
+                                            val isActive = isCohortActive(cohort)
+                                            Card(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { selectedCohortForDetails = cohort },
+                                                shape = RoundedCornerShape(14.dp),
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = if (isActive) Color(0xFFF5F3FF) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                                ),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (isActive) Color(0xFFDDD6FE) else MaterialTheme.colorScheme.outlineVariant
+                                                )
+                                            ) {
+                                                Column(modifier = Modifier.padding(14.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = if (isActive) Color(0xFFDCFCE7) else Color(0xFFF3F4F6),
+                                                            border = BorderStroke(1.dp, if (isActive) Color(0xFF86EFAC) else Color(0xFFE5E7EB))
+                                                        ) {
+                                                            Text(
+                                                                text = if (isActive) "● Active Live Batch" else "🎓 Graduated Batch",
+                                                                fontSize = 10.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (isActive) Color(0xFF15803D) else Color(0xFF6B7280),
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                                            )
+                                                        }
+                                                        if (cohort.code.isNotBlank()) {
+                                                            Surface(
+                                                                shape = RoundedCornerShape(6.dp),
+                                                                color = Color(0xFFEDE9FE)
+                                                            ) {
+                                                                Text(
+                                                                    cohort.code,
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Color(0xFF6726D9),
+                                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    Spacer(Modifier.height(8.dp))
+                                                    Text(
+                                                        text = cohort.name.ifBlank { cohort.course },
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TextMain
+                                                    )
+                                                    if (cohort.course.isNotBlank() && cohort.course != cohort.name) {
+                                                        Spacer(Modifier.height(2.dp))
+                                                        Text(cohort.course, fontSize = 11.5.sp, color = TextMuted)
+                                                    }
+                                                    cohort.meetingLink?.takeIf(String::isNotBlank)?.let { link ->
+                                                        Spacer(Modifier.height(8.dp))
+                                                        OutlinedButton(
+                                                            onClick = { uriHandler.openUri(link) },
+                                                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF6726D9)),
+                                                            border = BorderStroke(1.dp, Color(0xFFDDD6FE))
+                                                        ) {
+                                                            Icon(Icons.Default.VideoCall, null, modifier = Modifier.size(16.dp))
+                                                            Spacer(Modifier.width(6.dp))
+                                                            Text("Join Live Class / Meet", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    "No cohorts currently assigned by administration.",
+                                    fontSize = 13.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -565,7 +784,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
             if (showEditSheet) {
                 ModalBottomSheet(
                     onDismissRequest = { showEditSheet = false },
-                    containerColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 ) {
                     Column(

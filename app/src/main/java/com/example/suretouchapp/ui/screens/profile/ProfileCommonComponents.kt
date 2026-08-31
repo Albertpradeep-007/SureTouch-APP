@@ -136,8 +136,8 @@ fun SocialLinkRow(
 ) {
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = Color(0xFFF8FAFC),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
@@ -259,8 +259,8 @@ fun StudentProfileAvatar(
                 .size(size)
                 .clip(CircleShape),
             shape = CircleShape,
-            color = Color.White,
-            border = BorderStroke(4.dp, Color.White),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(4.dp, MaterialTheme.colorScheme.surface),
             shadowElevation = 6.dp
         ) {
             val hasValidPhoto = !photo.isNullOrBlank()
@@ -301,7 +301,7 @@ fun StudentProfileAvatar(
                 .clickable { onEditClick() },
             shape = CircleShape,
             color = badgeColor,
-            border = BorderStroke(2.dp, Color.White),
+            border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
             shadowElevation = 4.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -332,7 +332,7 @@ fun StudentIdCardModal(
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Close", fontWeight = FontWeight.Bold) }
         },
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(20.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {

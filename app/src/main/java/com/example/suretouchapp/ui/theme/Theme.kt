@@ -1,7 +1,6 @@
 package com.example.suretouchapp.ui.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -22,6 +21,13 @@ private val DarkColorScheme = darkColorScheme(
     secondaryContainer = SureSurfaceVariantDark,
     onSecondaryContainer = SureLimeContainer,
     tertiary = SurePinkAccent,
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFF831843),
+    onTertiaryContainer = Color(0xFFFCE7F3),
+    error = Color(0xFFF87171),
+    onError = Color(0xFF450A0A),
+    errorContainer = Color(0xFF7F1D1D),
+    onErrorContainer = Color(0xFFFEE2E2),
     background = SureBackgroundDark,
     onBackground = Color(0xFFF8FAFC),
     surface = SureSurfaceDark,
@@ -29,7 +35,11 @@ private val DarkColorScheme = darkColorScheme(
     surfaceVariant = SureSurfaceVariantDark,
     onSurfaceVariant = Color(0xFFCBD5E1),
     outline = Color(0xFF64748B),
-    outlineVariant = Color(0xFF334155)
+    outlineVariant = Color(0xFF334155),
+    inverseSurface = Color(0xFFF1F5F9),
+    inverseOnSurface = Color(0xFF1E293B),
+    inversePrimary = SurePurpleDark,
+    scrim = Color.Black
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -42,6 +52,13 @@ private val LightColorScheme = lightColorScheme(
     secondaryContainer = SureLimeContainer,
     onSecondaryContainer = SureOnLimeContainer,
     tertiary = SurePinkAccent,
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFFCE7F3),
+    onTertiaryContainer = Color(0xFF831843),
+    error = Color(0xFFB91C1C),
+    onError = Color.White,
+    errorContainer = Color(0xFFFEE2E2),
+    onErrorContainer = Color(0xFF7F1D1D),
     background = SureBackgroundLight,
     onBackground = Color(0xFF0F172A),
     surface = SureSurfaceLight,
@@ -49,12 +66,16 @@ private val LightColorScheme = lightColorScheme(
     surfaceVariant = SureSurfaceVariantLight,
     onSurfaceVariant = Color(0xFF475569),
     outline = Color(0xFFCBD5E1),
-    outlineVariant = Color(0xFFE2E8F0)
+    outlineVariant = Color(0xFFE2E8F0),
+    inverseSurface = Color(0xFF1E293B),
+    inverseOnSurface = Color(0xFFF8FAFC),
+    inversePrimary = SurePurpleLight,
+    scrim = Color.Black
 )
 
 @Composable
 fun SureTouchAPPTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false, // Default to Light theme
     dynamicColor: Boolean = false, // Set to false so SURE TRUST brand colors are always displayed
     content: @Composable () -> Unit
 ) {

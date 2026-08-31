@@ -30,6 +30,7 @@ import com.example.suretouchapp.data.repository.DashboardRepository
 import com.example.suretouchapp.data.repository.DashboardSnapshot
 import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -134,19 +135,19 @@ fun EnrolledCourseScreen(
                         Text(
                             "Discontinuing this course will unenroll you from your assigned cohort and close this enrolment. After confirmation, you may choose any other published course.",
                             fontSize = 13.sp,
-                            color = Color(0xFF475569)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             "To ensure security, a 6-digit confirmation OTP will be sent to your registered email ($userEmail).",
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF1E293B)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     } else {
                         Text(
                             "We sent a 6-digit confirmation code to $userEmail. Please enter it below to confirm discontinuation.",
                             fontSize = 13.sp,
-                            color = Color(0xFF475569)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         OutlinedTextField(
                             value = discontinueOtp,
@@ -155,10 +156,7 @@ fun EnrolledCourseScreen(
                             placeholder = { Text("e.g. 123456") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFFDC2626),
-                                cursorColor = Color(0xFFDC2626)
-                            )
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -194,7 +192,7 @@ fun EnrolledCourseScreen(
                         }
                     }
                     discontinueError?.let { err ->
-                        Text(err, color = Color(0xFFDC2626), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(err, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             },
@@ -225,7 +223,7 @@ fun EnrolledCourseScreen(
                             }
                         },
                         enabled = !isSendingOtp && isConnected,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
                         if (isSendingOtp) CircularProgressIndicator(Modifier.size(17.dp), color = Color.White, strokeWidth = 2.dp)
                         else Text("Send Confirmation OTP")
@@ -265,7 +263,7 @@ fun EnrolledCourseScreen(
                             }
                         },
                         enabled = !discontinuing && isConnected && discontinueOtp.length == 6,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
                         if (discontinuing) CircularProgressIndicator(Modifier.size(17.dp), color = Color.White, strokeWidth = 2.dp)
                         else Text("Verify & Confirm Discontinue")
@@ -300,12 +298,12 @@ fun EnrolledCourseScreen(
         onLogout = null
     ) {
         Scaffold(
-            containerColor = Color(0xFFF8FAFC),
+            containerColor = MaterialTheme.colorScheme.background,
             topBar = {
             TopAppBar(
                 title = { Text("My Enrolled Course", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { padding ->
@@ -318,11 +316,11 @@ fun EnrolledCourseScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.AutoMirrored.Filled.MenuBook, null, Modifier.size(68.dp), tint = Color(0xFF6C2BD9))
+                Icon(Icons.AutoMirrored.Filled.MenuBook, null, Modifier.size(68.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(16.dp))
                 Text("No course selected yet", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                Text(error ?: "Choose a published programme from the live SURE ProEd catalogue.", color = Color(0xFF64748B))
+                Text(error ?: "Choose a published programme from the live SURE ProEd catalogue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(20.dp))
                 Button(onClick = onBrowseCourses) { Text("Browse Courses") }
             }
@@ -352,9 +350,9 @@ fun EnrolledCourseScreen(
                         )
                     }
                 }
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AssignmentTurnedIn, null, tint = Color(0xFF6C2BD9))
+                        Icon(Icons.Default.AssignmentTurnedIn, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Screening marks & grade", fontWeight = FontWeight.Bold)
@@ -364,7 +362,7 @@ fun EnrolledCourseScreen(
                                     exam?.marksObtained != null -> "${exam?.marksObtained}/${exam?.totalMarks ?: "--"} • ${exam?.status ?: "Evaluated"}"
                                     else -> "Your evaluated result will appear here from the backend"
                                 },
-                                color = Color(0xFF64748B),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 12.sp
                             )
                         }
@@ -377,14 +375,14 @@ fun EnrolledCourseScreen(
                 OutlinedButton(
                     onClick = { showDiscontinueDialog = true },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    border = BorderStroke(1.dp, Color(0xFFB91C1C)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB91C1C))
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
                     Icon(Icons.Default.ExitToApp, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(7.dp))
                     Text(if (application?.assignedCohort.isNullOrBlank()) "Cancel Course Selection" else "Discontinue Course")
                 }
-                discontinueError?.let { Text(it, color = Color(0xFFB91C1C), fontSize = 12.sp) }
+                discontinueError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
             }
         }
     }

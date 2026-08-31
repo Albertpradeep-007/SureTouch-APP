@@ -54,6 +54,7 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import java.net.URL
 import java.net.URLEncoder
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 
 /**
  * High-fidelity in-app document and PDF viewer.
@@ -67,6 +68,7 @@ fun InAppDocumentViewerDialog(
     documentTitle: String = "Student_Resume_CV.pdf",
     onDismiss: () -> Unit
 ) {
+    val semanticColors = sureSemanticColors()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isLoading by remember(documentUrl) { mutableStateOf(true) }
@@ -200,12 +202,12 @@ fun InAppDocumentViewerDialog(
                 .fillMaxSize()
                 .padding(top = 28.dp),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            color = Color(0xFFF8FAFC)
+            color = MaterialTheme.colorScheme.background
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // ── Top Navigation Bar ──
                 Surface(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 2.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -237,7 +239,7 @@ fun InAppDocumentViewerDialog(
                                 text = documentTitle.ifBlank { "Student_Resume_CV.pdf" },
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F172A),
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -252,7 +254,7 @@ fun InAppDocumentViewerDialog(
                                 Text(
                                     text = if (renderedBitmaps.isNotEmpty()) "In-App Viewer • ${renderedBitmaps.size} Page${if (renderedBitmaps.size > 1) "s" else ""}" else "Official Resume Document",
                                     fontSize = 11.5.sp,
-                                    color = Color(0xFF64748B)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -275,7 +277,7 @@ fun InAppDocumentViewerDialog(
                             Icon(
                                 Icons.AutoMirrored.Filled.OpenInNew,
                                 contentDescription = "Open in External App",
-                                tint = Color(0xFF4F46E5),
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -285,7 +287,7 @@ fun InAppDocumentViewerDialog(
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = "Close Resume",
-                                tint = Color(0xFF475569),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -307,7 +309,7 @@ fun InAppDocumentViewerDialog(
                                 modifier = Modifier.padding(24.dp)
                             ) {
                                 CircularProgressIndicator(
-                                    color = Color(0xFF4F46E5),
+                                    color = MaterialTheme.colorScheme.primary,
                                     strokeWidth = 3.dp,
                                     modifier = Modifier.size(44.dp)
                                 )
@@ -316,12 +318,12 @@ fun InAppDocumentViewerDialog(
                                     text = "Loading Resume...",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF334155)
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "Rendering in-app document preview",
                                     fontSize = 11.5.sp,
-                                    color = Color(0xFF64748B)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -330,7 +332,7 @@ fun InAppDocumentViewerDialog(
                             LazyColumn(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(Color(0xFFE2E8F0)),
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -352,7 +354,7 @@ fun InAppDocumentViewerDialog(
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .background(Color(0xFFF8FAFC))
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant)
                                                     .padding(horizontal = 12.dp, vertical = 6.dp),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
@@ -361,13 +363,13 @@ fun InAppDocumentViewerDialog(
                                                     text = "SURE Trust Verified Candidate CV",
                                                     fontSize = 10.5.sp,
                                                     fontWeight = FontWeight.Medium,
-                                                    color = Color(0xFF64748B)
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(
                                                     text = "Page ${index + 1} of ${renderedBitmaps.size}",
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF334155)
+                                                    color = MaterialTheme.colorScheme.onSurface
                                                 )
                                             }
                                         }
@@ -393,12 +395,12 @@ fun InAppDocumentViewerDialog(
                                     text = "Unable to render resume PDF",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF334155)
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = errorMessage ?: "The file could not be parsed.",
                                     fontSize = 12.sp,
-                                    color = Color(0xFF64748B)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(Modifier.height(16.dp))
                                 Button(
@@ -416,7 +418,7 @@ fun InAppDocumentViewerDialog(
 
                 // ── Bottom Action Bar ──
                 Surface(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 4.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -431,7 +433,7 @@ fun InAppDocumentViewerDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 shape = CircleShape,
-                                color = Color(0xFFDCFCE7),
+                                color = semanticColors.success,
                                 modifier = Modifier.size(8.dp)
                             ) {}
                             Spacer(Modifier.width(6.dp))
@@ -439,13 +441,13 @@ fun InAppDocumentViewerDialog(
                                 text = "Verified Student Document • Ready for Review",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF15803D)
+                                color = semanticColors.success
                             )
                         }
 
                         Button(
                             onClick = onDismiss,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp)
                         ) {

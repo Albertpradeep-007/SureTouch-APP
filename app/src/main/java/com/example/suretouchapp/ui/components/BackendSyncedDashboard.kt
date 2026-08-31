@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -63,88 +64,14 @@ fun BackendSyncedDashboard(
 
 @Composable
 fun StandardDashboardSkeleton(modifier: Modifier = Modifier) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DashboardShimmerBox(Modifier.width(190.dp).height(27.dp))
-                    DashboardShimmerBox(
-                        Modifier.width(116.dp).height(14.dp),
-                        RoundedCornerShape(7.dp)
-                    )
-                }
-                DashboardShimmerBox(
-                    Modifier.width(100.dp).height(38.dp),
-                    RoundedCornerShape(19.dp)
-                )
-            }
-        }
-        item {
-            DashboardShimmerBox(
-                modifier = Modifier.fillMaxWidth().height(244.dp),
-                shape = RoundedCornerShape(22.dp),
-                baseColor = Color(0xFFD8D1F1)
-            )
-        }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                DashboardShimmerBox(Modifier.width(138.dp).height(24.dp))
-                DashboardShimmerBox(
-                    Modifier.width(86.dp).height(28.dp),
-                    RoundedCornerShape(14.dp)
-                )
-            }
-        }
-        repeat(3) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    repeat(3) {
-                        DashboardShimmerBox(
-                            modifier = Modifier.weight(1f).height(118.dp),
-                            shape = RoundedCornerShape(18.dp)
-                        )
-                    }
-                }
-            }
-        }
+        SureTrustLoadingIndicator(
+            size = 80.dp,
+            logoSize = 52.dp,
+            message = "Loading SURE Trust Portal..."
+        )
     }
-}
-
-@Composable
-private fun DashboardShimmerBox(
-    modifier: Modifier,
-    shape: Shape = RoundedCornerShape(12.dp),
-    baseColor: Color = Color(0xFFE7E9EF)
-) {
-    val transition = rememberInfiniteTransition(label = "dashboard_skeleton_shimmer")
-    val shimmerX by transition.animateFloat(
-        initialValue = -700f,
-        targetValue = 1500f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1250, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "dashboard_skeleton_shimmer_x"
-    )
-    val shimmerBrush = Brush.linearGradient(
-        colors = listOf(baseColor, Color.White.copy(alpha = 0.94f), baseColor),
-        start = Offset(shimmerX - 360f, 0f),
-        end = Offset(shimmerX, 460f)
-    )
-    Box(modifier = modifier.clip(shape).background(shimmerBrush))
 }

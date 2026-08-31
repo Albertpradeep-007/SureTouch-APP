@@ -49,6 +49,13 @@ import com.example.suretouchapp.ui.screens.notifications.NotificationsScreen
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 import com.example.suretouchapp.ui.screens.profile.ProfileScreen
 import com.example.suretouchapp.ui.screens.softskills.SoftSkillsScreen
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.suretouchapp.ui.screens.splash.SureTrustSplashScreen
 import com.example.suretouchapp.ui.screens.timetable.TimetableScreen
 import com.example.suretouchapp.ui.theme.SureTouchAPPTheme
 import kotlinx.coroutines.launch
@@ -82,18 +89,31 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent {
-            SureTouchAPPTheme {
+            SureTouchAPPTheme(darkTheme = false) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    BrandedAppEntry(
-                        deepLinkUri = currentDeepLinkData,
-                        notificationRequestId = notificationNavigationRequest,
-                        noticesRequestId = noticesNavigationRequest,
-                        assignmentsRequestId = assignmentsNavigationRequest,
-                        otaPreviewRequested = otaPreviewRequested
-                    )
+                    var showSplashScreen by remember { mutableStateOf(true) }
+                    AnimatedContent(
+                        targetState = showSplashScreen,
+                        transitionSpec = {
+                            fadeIn(tween(350)) togetherWith fadeOut(tween(250))
+                        },
+                        label = "splash_transition"
+                    ) { isSplash ->
+                        if (isSplash) {
+                            SureTrustSplashScreen(onTimeout = { showSplashScreen = false })
+                        } else {
+                            AppNavigation(
+                                deepLinkUri = currentDeepLinkData,
+                                notificationRequestId = notificationNavigationRequest,
+                                noticesRequestId = noticesNavigationRequest,
+                                assignmentsRequestId = assignmentsNavigationRequest,
+                                otaPreviewRequested = otaPreviewRequested
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -111,48 +131,6 @@ class MainActivity : ComponentActivity() {
         }
         if (intent.getBooleanExtra("open_assignments", false)) {
             assignmentsNavigationRequest++
-        }
-    }
-}
-
-@Composable
-private fun BrandedAppEntry(
-    deepLinkUri: Uri?,
-    notificationRequestId: Long,
-    noticesRequestId: Long = 0L,
-    assignmentsRequestId: Long = 0L,
-    otaPreviewRequested: Boolean = false
-) {
-    var startupReady by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        delay(800)
-        startupReady = true
-    }
-
-    if (startupReady) {
-        AppNavigation(
-            deepLinkUri = deepLinkUri,
-            notificationRequestId = notificationRequestId,
-            noticesRequestId = noticesRequestId,
-            assignmentsRequestId = assignmentsRequestId,
-            otaPreviewRequested = otaPreviewRequested
-        )
-    } else {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                SureTrustLoadingIndicator(
-                    size = 82.dp,
-                    logoSize = 52.dp,
-                    message = "Loading SURE ProEd"
-                )
-            }
         }
     }
 }

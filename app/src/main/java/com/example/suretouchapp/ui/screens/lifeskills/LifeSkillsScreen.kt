@@ -33,14 +33,14 @@ import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import kotlinx.coroutines.launch
 
-private val ColorCanvasBg = Color(0xFFF8FAFC)
-private val ColorCardSurface = Color(0xFFFFFFFF)
+private val ColorCanvasBg @Composable get() = MaterialTheme.colorScheme.background
+private val ColorCardSurface @Composable get() = MaterialTheme.colorScheme.surface
 private val ColorPrimaryTeal = Color(0xFF0D9488)
 private val ColorTealGradientStart = Color(0xFF0F766E)
 private val ColorTealGradientEnd = Color(0xFF14B8A6)
-private val ColorTextTitles = Color(0xFF0F172A)
-private val ColorTextSubtext = Color(0xFF64748B)
-private val ColorBorderHairline = Color(0xFFE2E8F0)
+private val ColorTextTitles @Composable get() = MaterialTheme.colorScheme.onSurface
+private val ColorTextSubtext @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val ColorBorderHairline @Composable get() = MaterialTheme.colorScheme.outlineVariant
 private val ColorGreenBadgeBg = Color(0xFFD1FAE5)
 private val ColorGreenBadgeText = Color(0xFF047857)
 private val ColorRedBadgeBg = Color(0xFFFEE2E2)

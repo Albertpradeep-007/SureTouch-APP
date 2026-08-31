@@ -56,12 +56,12 @@ fun InAppOAuthSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
         dragHandle = {
             Box(
                 Modifier.padding(vertical = 10.dp).width(42.dp).height(4.dp)
-                    .clip(CircleShape).background(Color(0xFFD8DEE9))
+                    .clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant)
             )
         }
     ) {
@@ -80,11 +80,11 @@ fun InAppOAuthSheet(
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(provider.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
+                    Text(provider.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Lock, null, Modifier.size(12.dp), tint = Color(0xFF16A34A))
                         Spacer(Modifier.width(4.dp))
-                        Text("Secure provider sign-in", fontSize = 11.sp, color = Color(0xFF64748B))
+                        Text("Secure provider sign-in", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 IconButton(onClick = onDismiss) {
@@ -95,7 +95,7 @@ fun InAppOAuthSheet(
             if (loading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth(), color = provider.color)
             } else {
-                HorizontalDivider(color = Color(0xFFE5E7EB))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
 
             AndroidView(

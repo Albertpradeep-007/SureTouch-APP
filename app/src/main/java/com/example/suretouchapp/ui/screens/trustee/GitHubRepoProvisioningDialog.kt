@@ -30,12 +30,11 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
-private val DarkSlate = Color(0xFF0F172A)
-private val GitHubDark = Color(0xFF1E293B)
-private val GitHubBg = Color(0xFFF8FAFC)
-private val PurplePrimary = Color(0xFF6821A8)
-private val PurpleSoft = Color(0xFFF3E8FF)
-private val BorderColor = Color(0xFFE2E8F0)
+private val DarkSlate @Composable get() = MaterialTheme.colorScheme.onSurface
+private val GitHubBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+private val PurplePrimary @Composable get() = MaterialTheme.colorScheme.primary
+private val PurpleSoft @Composable get() = MaterialTheme.colorScheme.primaryContainer
+private val BorderColor @Composable get() = MaterialTheme.colorScheme.outlineVariant
 private val GreenActive = Color(0xFF047857)
 private val GreenSoft = Color(0xFFE8F8F1)
 private val AmberGrace = Color(0xFFD97706)
@@ -129,14 +128,14 @@ fun GitHubRepoProvisioningDialog(
                         Text(
                             text = "Why is it waiting?\nBackend policy enforces a 15-day grace period after a cohort enters TRAINING to ensure enrolled students connect their GitHub accounts before repositories are provisioned.",
                             fontSize = 12.sp,
-                            color = Color(0xFF475569),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 16.sp
                         )
                     } else {
                         Text(
                             text = "15-day grace period complete! The backend will create private student repositories with standard folders and mentor access.",
                             fontSize = 12.sp,
-                            color = Color(0xFF475569)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
@@ -171,7 +170,7 @@ fun GitHubRepoProvisioningDialog(
             confirmButton = {
                 Button(
                     onClick = { statusDialogCohort = null; statusDialogMessage = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = DarkSlate),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("Got It")
@@ -211,7 +210,7 @@ fun GitHubRepoProvisioningDialog(
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.92f),
             shape = RoundedCornerShape(20.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp
         ) {
             Column(
@@ -230,13 +229,13 @@ fun GitHubRepoProvisioningDialog(
                             modifier = Modifier
                                 .size(42.dp)
                                 .clip(CircleShape)
-                                .background(DarkSlate),
+                                .background(MaterialTheme.colorScheme.inverseSurface),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Terminal,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = MaterialTheme.colorScheme.inverseOnSurface,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -251,7 +250,7 @@ fun GitHubRepoProvisioningDialog(
                             Text(
                                 text = "Automated 15-day trigger & manual runner",
                                 fontSize = 12.sp,
-                                color = Color(0xFF64748B)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -260,7 +259,7 @@ fun GitHubRepoProvisioningDialog(
                         onClick = onDismiss,
                         enabled = provisioningCohortId == null
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF64748B))
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -297,7 +296,7 @@ fun GitHubRepoProvisioningDialog(
                             Text(
                                 text = "Repositories auto-create 15 days after entering Training status. Provisioning is idempotent and duplicate-safe: existing repositories are preserved and skipped.",
                                 fontSize = 11.sp,
-                                color = Color(0xFF64748B),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 lineHeight = 14.sp
                             )
                         }
@@ -323,13 +322,13 @@ fun GitHubRepoProvisioningDialog(
                             onClick = { selectedFilter = key },
                             label = { Text(label, fontSize = 11.5.sp) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = DarkSlate,
-                                selectedLabelColor = Color.White
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                             ),
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,
                                 selected = isSelected,
-                                borderColor = if (isSelected) DarkSlate else BorderColor
+                                borderColor = if (isSelected) MaterialTheme.colorScheme.primary else BorderColor
                             ),
                             shape = RoundedCornerShape(14.dp)
                         )
@@ -341,11 +340,11 @@ fun GitHubRepoProvisioningDialog(
                 // Cohort List
                 if (isLoading) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = DarkSlate, modifier = Modifier.size(32.dp))
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                     }
                 } else if (filteredCohorts.isEmpty()) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text("No cohorts found in this filter.", fontSize = 13.sp, color = Color(0xFF64748B))
+                        Text("No cohorts found in this filter.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
                     LazyColumn(
@@ -399,17 +398,17 @@ fun GitHubRepoProvisioningDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = { loadData() }) {
-                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp), tint = DarkSlate)
+                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Refresh", color = DarkSlate, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Refresh", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
 
                     Button(
                         onClick = onDismiss,
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = DarkSlate)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Done", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -432,7 +431,7 @@ private fun CohortProvisionCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, if (isEligible) PurplePrimary.copy(0.5f) else BorderColor),
         shadowElevation = 2.dp
     ) {
@@ -453,7 +452,7 @@ private fun CohortProvisionCard(
                     Text(
                         text = cohort.courseName ?: "Specialization Cohort",
                         fontSize = 11.5.sp,
-                        color = Color(0xFF64748B)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -462,7 +461,7 @@ private fun CohortProvisionCard(
                     color = when (status) {
                         "TRAINING" -> PurpleSoft
                         "ACTIVE" -> GreenSoft
-                        else -> Color(0xFFF1F5F9)
+                        else -> MaterialTheme.colorScheme.surfaceVariant
                     }
                 ) {
                     Text(
@@ -472,7 +471,7 @@ private fun CohortProvisionCard(
                         color = when (status) {
                             "TRAINING" -> PurplePrimary
                             "ACTIVE" -> GreenActive
-                            else -> Color(0xFF475569)
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
@@ -526,7 +525,7 @@ private fun CohortProvisionCard(
                 Text(
                     text = "Cohort is in $status stage. 15-day grace countdown begins once switched to TRAINING.",
                     fontSize = 11.sp,
-                    color = Color(0xFF64748B)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -548,27 +547,27 @@ private fun CohortProvisionCard(
                 enabled = !isProvisioning,
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DarkSlate
+                    containerColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isProvisioning) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Provisioning Repositories...", fontSize = 12.sp, color = Color.White)
+                    Text("Provisioning Repositories...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
                 } else {
                     Icon(
                         imageVector = Icons.Default.RocketLaunch,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = Color.White
+                        tint = MaterialTheme.colorScheme.onPrimary
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = if (isEligible) "⚡ Provision Repositories" else "⚡ Manual Trigger Repo Creation",
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
                 }
             }

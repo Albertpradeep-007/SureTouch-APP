@@ -17,26 +17,62 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.NetworkUtils
 import com.example.suretouchapp.data.api.TokenManager
+import com.example.suretouchapp.data.model.AbsenceWarningDto
 import com.example.suretouchapp.data.model.AttendanceDto
 import com.example.suretouchapp.data.model.CohortDto
 import com.example.suretouchapp.data.model.StudentProfileDto
 import com.example.suretouchapp.data.repository.VolunteerRepository
+import com.example.suretouchapp.data.repository.StudentSessionAttendance
+import com.example.suretouchapp.data.repository.StudentStatisticsRepository
+import com.example.suretouchapp.data.repository.calculateStudentAttendancePercentage
+import com.example.suretouchapp.data.repository.isCancelledSession
+import com.example.suretouchapp.data.repository.isCompletedSession
+import com.example.suretouchapp.data.repository.studentAttendance
 import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
+import com.example.suretouchapp.ui.theme.SureFormDefaults
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
-private val AttendanceCanvas = Color(0xFFF6F7FC)
-private val AttendancePurple = Color(0xFF6C2BD9)
-private val AttendanceInk = Color(0xFF18213D)
-private val AttendanceMuted = Color(0xFF64748B)
-private val AttendanceBorder = Color(0xFFE2E8F0)
+private val AttendanceCanvas @Composable get() = MaterialTheme.colorScheme.background
+private val AttendancePurple @Composable get() = MaterialTheme.colorScheme.primary
+private val AttendanceInk @Composable get() = MaterialTheme.colorScheme.onSurface
+private val AttendanceMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val AttendanceBorder @Composable get() = MaterialTheme.colorScheme.outlineVariant
+
+private fun resolveStudentName(student: StudentProfileDto): String {
+    val userFullName = listOfNotNull(
+        student.user?.firstName ?: student.userFirstName ?: student.firstName,
+        student.user?.lastName ?: student.userLastName ?: student.lastName
+    ).filter { it.isNotBlank() }.joinToString(" ").trim()
+    if (userFullName.isNotBlank()) return userFullName
+
+    val explicitName = listOfNotNull(
+        student.fullName,
+        student.name,
+        student.studentName,
+        student.userName,
+        student.userFullName
+    ).firstOrNull { it.isNotBlank() }
+    if (!explicitName.isNullOrBlank()) return explicitName
+
+    val email = student.user?.email ?: student.userEmail ?: student.email
+    if (!email.isNullOrBlank()) {
+        val handle = email.substringBefore("@").replace(".", " ").replace("_", " ")
+        return handle.split(" ").filter { it.isNotBlank() }.joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+    }
+
+    val code = student.studentCode?.takeIf { it.isNotBlank() }
+    return if (code != null) "Student ($code)" else "Student Profile"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +83,13 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
     var allStudents by remember { mutableStateOf<List<StudentProfileDto>>(emptyList()) }
     var allCohorts by remember { mutableStateOf<List<CohortDto>>(emptyList()) }
     var selectedSession by remember { mutableStateOf<AttendanceDto?>(null) }
+    var warnings by remember { mutableStateOf<List<AbsenceWarningDto>>(emptyList()) }
+    var selectedWarningForApology by remember { mutableStateOf<AbsenceWarningDto?>(null) }
+    var apologyInputText by remember { mutableStateOf("") }
+    var isSubmittingApology by remember { mutableStateOf(false) }
+    var requestPermissionSession by remember { mutableStateOf<AttendanceDto?>(null) }
+    var permissionReasonText by remember { mutableStateOf("") }
+    var isSubmittingPermission by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     var isConnected by remember { mutableStateOf(false) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
@@ -55,7 +98,9 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
     var connectionError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val semanticColors = sureSemanticColors()
     var assignedCohortCount by remember { mutableIntStateOf(0) }
+    var authoritativePercentage by remember { mutableStateOf<Double?>(null) }
 
     suspend fun loadAttendance() {
         isLoading = true
@@ -63,16 +108,29 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
         errorTitle = null
         try {
             val api = ApiClient.getService(tokenManager)
-            val assignedProfile = if (isStudent) null else VolunteerRepository(tokenManager).loadProfile()
-            val assignedIds = assignedProfile?.assignedCohorts?.map { it.id }?.filter(String::isNotBlank)?.toSet().orEmpty()
-            val assignedCodes = assignedProfile?.assignedCohorts?.map { it.code }?.filter(String::isNotBlank)?.toSet().orEmpty()
-            assignedCohortCount = assignedIds.size
+            val assignedCohorts = when {
+                isStudent -> emptyList()
+                tokenManager.isMentor() -> api.getMentorProfiles()
+                    .takeIf { it.isSuccessful }
+                    ?.body()
+                    ?.results
+                    ?.firstOrNull()
+                    ?.assignedCohorts
+                    ?.map { it.id to it.code }
+                    .orEmpty()
+                else -> VolunteerRepository(tokenManager).loadProfile().assignedCohorts
+                    .map { it.id to it.code }
+            }
+            val assignedIds = assignedCohorts.map { it.first }.filter(String::isNotBlank).toSet()
+            val assignedCodes = assignedCohorts.mapNotNull { it.second }.filter(String::isNotBlank).toSet()
+            assignedCohortCount = assignedCohorts.size
 
-            val (attendanceRes, studentsRes, cohortsRes) = coroutineScope {
+            val (attendanceRes, studentsRes, cohortsRes, warningsRes) = coroutineScope {
                 val a = async { api.getAttendance() }
                 val s = async { api.getStudents() }
                 val c = async { api.getCohorts() }
-                Triple(a.await(), s.await(), c.await())
+                val w = async { if (isStudent) runCatching { api.getAbsenceWarnings() }.getOrNull() else null }
+                Quadruple(a.await(), s.await(), c.await(), w.await())
             }
 
             if (attendanceRes.isSuccessful) {
@@ -81,6 +139,10 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                 }.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
                 allStudents = studentsRes.body()?.results.orEmpty()
                 allCohorts = cohortsRes.body()?.results.orEmpty()
+                warnings = warningsRes?.takeIf { it.isSuccessful }?.body().orEmpty().filter { !it.resolved }
+                authoritativePercentage = if (isStudent) {
+                    runCatching { StudentStatisticsRepository(tokenManager).load()?.attendancePercentage }.getOrNull()
+                } else null
                 isConnected = true
                 hasLoadedOnce = true
                 isOffline = false
@@ -106,9 +168,26 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
 
     LaunchedEffect(Unit) { loadAttendance() }
 
-    val presentCount = records.count { it.present }
-    val percentage = if (!isStudent || records.isEmpty()) 0 else presentCount * 100 / records.size
-    val cohort = tokenManager.getCohortCode().ifBlank { "Assignment pending" }
+    val currentStudent = allStudents.firstOrNull {
+        it.user?.email.equals(tokenManager.getUserEmail(), ignoreCase = true) ||
+            it.studentCode.equals(tokenManager.getStudentCode(), ignoreCase = true)
+    }
+    val studentIdentifiers = setOfNotNull(
+        currentStudent?.id?.takeIf(String::isNotBlank),
+        currentStudent?.userId?.takeIf(String::isNotBlank),
+        currentStudent?.studentCode?.takeIf(String::isNotBlank),
+        tokenManager.getStudentCode().takeIf(String::isNotBlank)
+    )
+    val recordedStudentStates = records.map { it.studentAttendance(studentIdentifiers) }
+        .filter {
+            it == StudentSessionAttendance.PRESENT ||
+                it == StudentSessionAttendance.BELOW_THRESHOLD ||
+                it == StudentSessionAttendance.ABSENT
+        }
+    val presentCount = recordedStudentStates.count { it == StudentSessionAttendance.PRESENT }
+    val calculatedPercentage = calculateStudentAttendancePercentage(records, studentIdentifiers)
+    val percentage = if (!isStudent) 0 else (authoritativePercentage ?: calculatedPercentage ?: 0.0).toInt()
+    val cohort = tokenManager.getCohortCode().ifBlank { "Pending assignment" }
 
     BackendConnectionGate(
         isLoading = isLoading,
@@ -129,7 +208,12 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                     title = {
                         Column {
                             Text("Attendance", fontWeight = FontWeight.Bold, color = AttendanceInk)
-                            Text(if (isStudent) "Cohort $cohort" else "$assignedCohortCount assigned cohorts • live attendance metrics", fontSize = 11.sp, color = AttendanceMuted)
+                            Text(
+                                if (isStudent) "Cohort $cohort • Your Participation"
+                                else "$assignedCohortCount Assigned Cohorts • Class Participation",
+                                fontSize = 11.5.sp,
+                                color = AttendanceMuted
+                            )
                         }
                     },
                     navigationIcon = {
@@ -139,16 +223,16 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                     },
                     actions = {
                         IconButton(onClick = { scope.launch { loadAttendance() } }) {
-                            Icon(Icons.Default.Refresh, "Refresh attendance", tint = AttendancePurple)
+                            Icon(Icons.Default.Refresh, "Refresh", tint = AttendancePurple)
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                 )
             }
         ) { padding ->
             if (isLoading) {
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    SureTrustLoadingIndicator(message = "Loading attendance")
+                    SureTrustLoadingIndicator(message = "Loading attendance records...")
                 }
             } else {
                 LazyColumn(
@@ -156,25 +240,35 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Student Attendance Overview Card
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, AttendanceBorder)
                         ) {
                             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Surface(Modifier.size(58.dp), CircleShape, color = Color(0xFFF3E8FF)) {
+                                Surface(Modifier.size(58.dp), CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Text(if (isStudent) "$percentage%" else records.size.toString(), fontSize = 17.sp, fontWeight = FontWeight.Black, color = AttendancePurple)
                                     }
                                 }
                                 Spacer(Modifier.width(14.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(if (isStudent) "Current attendance" else "Cohort attendance monitor", fontWeight = FontWeight.Bold, color = AttendanceInk)
                                     Text(
-                                        if (isStudent) "$presentCount attended • ${records.size} recorded sessions"
-                                        else "${records.count { it.classStatus.equals("COMPLETED", true) || it.effectiveStatus.equals("COMPLETED", true) || it.conducted }} completed • ${records.count { !it.classStatus.equals("COMPLETED", true) && !it.effectiveStatus.equals("COMPLETED", true) && !it.conducted }} scheduled",
+                                        if (isStudent) "Overall Attendance" else "Assigned Cohorts Overview",
+                                        fontWeight = FontWeight.Bold,
+                                        color = AttendanceInk,
+                                        fontSize = 15.sp
+                                    )
+                                    Text(
+                                        if (isStudent) {
+                                            if (percentage >= 75) "Great job! Keep attending regularly."
+                                            else "$presentCount attended of ${recordedStudentStates.size} sessions (Min. 75% required)"
+                                        } else {
+                                            "${records.count { it.isCompletedSession() }} completed • ${records.count { !it.isCompletedSession() && !it.isCancelledSession() }} upcoming sessions"
+                                        },
                                         fontSize = 12.sp,
                                         color = AttendanceMuted
                                     )
@@ -183,28 +277,98 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                         }
                     }
 
+                    // Absence Warning Banner for Students
+                    if (isStudent && warnings.isNotEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+                            ) {
+                                Column(Modifier.padding(14.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.WarningAmber, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            "Attendance Attention Required",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        "You have ${warnings.size} absence notice(s). Please submit a brief explanation so your mentors can review and update your record.",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    warnings.forEach { warn ->
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(warn.sessionTitle ?: "Missed Session", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, color = AttendanceInk)
+                                                Text("Date: ${warn.classDate ?: "Past class"} • Status: ${warn.status}", fontSize = 11.sp, color = AttendanceMuted)
+                                            }
+                                            FilledTonalButton(
+                                                onClick = {
+                                                    selectedWarningForApology = warn
+                                                    apologyInputText = warn.apologyText.orEmpty()
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Text("Explain", fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (records.isEmpty()) {
                         item {
-                            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
-                                Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Default.EventAvailable, null, tint = AttendancePurple, modifier = Modifier.size(38.dp))
-                                    Spacer(Modifier.height(9.dp))
-                                    Text("No attendance records", fontWeight = FontWeight.Bold, color = AttendanceInk)
-                                    Text("Records will appear after assigned cohort sessions begin.", fontSize = 12.sp, color = AttendanceMuted)
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, AttendanceBorder)
+                            ) {
+                                Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.EventAvailable, null, tint = AttendancePurple, modifier = Modifier.size(42.dp))
+                                    Spacer(Modifier.height(10.dp))
+                                    Text("No Attendance Records Yet", fontWeight = FontWeight.Bold, color = AttendanceInk, fontSize = 15.sp)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        if (isStudent) "You're all set! As soon as your classes begin, your attendance history will be recorded right here."
+                                        else "No class sessions scheduled for your assigned cohorts yet.",
+                                        fontSize = 12.sp,
+                                        color = AttendanceMuted,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
                                 }
                             }
                         }
                     } else {
                         item {
-                            Text(if (isStudent) "Session history" else "Cohort sessions (click to view student attendees)", fontWeight = FontWeight.Bold, color = AttendanceInk)
+                            Text(
+                                if (isStudent) "Class Attendance History" else "Scheduled & Completed Classes",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = AttendanceInk
+                            )
                         }
                     }
 
                     items(records, key = { it.id }) { record ->
-                        val completed = record.classStatus.equals("COMPLETED", true) || record.effectiveStatus.equals("COMPLETED", true) || record.conducted
-                        val isCancelled = record.classStatus.equals("CANCELLED", true)
+                        val completed = record.isCompletedSession()
+                        val isCancelled = record.isCancelledSession()
                         val isRescheduled = record.classStatus.equals("RESCHEDULED", true)
-                        val positive = if (isStudent) record.present else completed
+                        val studentState = record.studentAttendance(studentIdentifiers)
+                        val positive = if (isStudent) studentState == StudentSessionAttendance.PRESENT else completed
 
                         val cohortObj = allCohorts.firstOrNull { it.id == record.cohort || it.code == record.cohortCode }
                         val cohortDisplayName = cohortObj?.name?.takeIf(String::isNotBlank)
@@ -223,7 +387,7 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                             onClick = {
                                 if (!isStudent) selectedSession = record
                             },
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.surface,
                             shape = RoundedCornerShape(14.dp),
                             border = BorderStroke(1.dp, AttendanceBorder),
                             shadowElevation = 1.dp
@@ -238,10 +402,10 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                     },
                                     null,
                                     tint = when {
-                                        isCancelled -> Color(0xFFDC2626)
-                                        positive -> Color(0xFF059669)
-                                        isRescheduled -> Color(0xFFD97706)
-                                        else -> Color(0xFF6C2BD9)
+                                        isCancelled -> MaterialTheme.colorScheme.error
+                                        positive -> semanticColors.success
+                                        isRescheduled -> semanticColors.warning
+                                        else -> MaterialTheme.colorScheme.primary
                                     },
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -260,7 +424,7 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                     )
                                     if (!isStudent) {
                                         Text(
-                                            "Attendance: $attendeeCount / $totalCount present • Click for student list",
+                                            "Attendance: $attendeeCount / $totalCount present • Tap to view roster",
                                             fontSize = 11.5.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = AttendancePurple
@@ -269,26 +433,60 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                     record.notes?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 11.sp, color = AttendanceMuted) }
                                 }
                                 if (isStudent) {
-                                    Surface(
-                                        color = if (record.present) Color(0xFFD1FAE5) else Color(0xFFFEE2E2),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text(
-                                            if (record.present) "PRESENT" else "ABSENT",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (record.present) Color(0xFF059669) else Color(0xFFDC2626),
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                                        )
+                                    val stateLabel = when (studentState) {
+                                        StudentSessionAttendance.PRESENT -> "PRESENT"
+                                        StudentSessionAttendance.BELOW_THRESHOLD -> "PARTIAL"
+                                        StudentSessionAttendance.ABSENT -> "ABSENT"
+                                        StudentSessionAttendance.CANCELLED -> "CANCELLED"
+                                        StudentSessionAttendance.PENDING -> "UPCOMING"
+                                    }
+                                    val stateColor = when (studentState) {
+                                        StudentSessionAttendance.PRESENT -> semanticColors.success
+                                        StudentSessionAttendance.BELOW_THRESHOLD -> semanticColors.warning
+                                        StudentSessionAttendance.ABSENT -> MaterialTheme.colorScheme.error
+                                        StudentSessionAttendance.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        StudentSessionAttendance.PENDING -> AttendancePurple
+                                    }
+                                    val stateContainer = when (studentState) {
+                                        StudentSessionAttendance.PRESENT -> semanticColors.successContainer
+                                        StudentSessionAttendance.BELOW_THRESHOLD -> semanticColors.warningContainer
+                                        StudentSessionAttendance.ABSENT -> MaterialTheme.colorScheme.errorContainer
+                                        StudentSessionAttendance.CANCELLED -> MaterialTheme.colorScheme.surfaceVariant
+                                        StudentSessionAttendance.PENDING -> MaterialTheme.colorScheme.primaryContainer
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Surface(
+                                            color = stateContainer,
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                stateLabel,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = stateColor,
+                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                        if (studentState == StudentSessionAttendance.ABSENT || studentState == StudentSessionAttendance.BELOW_THRESHOLD) {
+                                            TextButton(
+                                                onClick = {
+                                                    requestPermissionSession = record
+                                                    permissionReasonText = ""
+                                                },
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) {
+                                                Text("Request Review", fontSize = 10.sp, color = AttendancePurple)
+                                            }
+                                        }
                                     }
                                 } else {
                                     Column(horizontalAlignment = Alignment.End) {
                                         Surface(
                                             color = when {
-                                                isCancelled -> Color(0xFFFEE2E2)
-                                                completed -> Color(0xFFD1FAE5)
-                                                isRescheduled -> Color(0xFFFEF3C7)
-                                                else -> Color(0xFFF1E9FF)
+                                                isCancelled -> MaterialTheme.colorScheme.errorContainer
+                                                completed -> semanticColors.successContainer
+                                                isRescheduled -> semanticColors.warningContainer
+                                                else -> MaterialTheme.colorScheme.primaryContainer
                                             },
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
@@ -302,10 +500,10 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = when {
-                                                    isCancelled -> Color(0xFFDC2626)
-                                                    completed -> Color(0xFF059669)
-                                                    isRescheduled -> Color(0xFFD97706)
-                                                    else -> AttendancePurple
+                                                    isCancelled -> MaterialTheme.colorScheme.onErrorContainer
+                                                    completed -> semanticColors.onSuccessContainer
+                                                    isRescheduled -> semanticColors.onWarningContainer
+                                                    else -> MaterialTheme.colorScheme.onPrimaryContainer
                                                 },
                                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                                             )
@@ -318,9 +516,9 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                                     }.getOrNull()
                                                     if (response?.isSuccessful == true) {
                                                         records = records.map { if (it.id == record.id) it.copy(conducted = true, classStatus = "COMPLETED", effectiveStatus = "COMPLETED") else it }
-                                                        snackbarHostState.showSnackbar("Class marked completed")
+                                                        snackbarHostState.showSnackbar("Class marked as completed.")
                                                     } else {
-                                                        snackbarHostState.showSnackbar(if (response?.code() == 403) "Backend permission is required to update attendance." else "Unable to update attendance.")
+                                                        snackbarHostState.showSnackbar(if (response?.code() == 403) "Mentor authorization required to update attendance." else "Unable to update session status.")
                                                     }
                                                 }
                                             }) { Icon(Icons.Default.CheckCircleOutline, "Mark Completed", tint = AttendancePurple) }
@@ -335,6 +533,124 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
         }
     }
 
+    // Student Apology Submission Dialog
+    selectedWarningForApology?.let { warn ->
+        AlertDialog(
+            onDismissRequest = { if (!isSubmittingApology) selectedWarningForApology = null },
+            icon = { Icon(Icons.Default.EditNote, null, tint = AttendancePurple) },
+            title = { Text("Submit Absence Explanation", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Session: ${warn.sessionTitle ?: "Class"}\nPlease provide your sincere explanation or reason for missing this class. Mentors review requests promptly.",
+                        fontSize = 12.sp,
+                        color = AttendanceMuted
+                    )
+                    OutlinedTextField(
+                        value = apologyInputText,
+                        onValueChange = { apologyInputText = it },
+                        placeholder = { Text("Write your reason or apology...") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (apologyInputText.isNotBlank()) {
+                            isSubmittingApology = true
+                            scope.launch {
+                                val res = runCatching {
+                                    ApiClient.getService(tokenManager).resolveWarning(
+                                        mapOf("warning_id" to warn.id, "apology_text" to apologyInputText.trim())
+                                    )
+                                }.getOrNull()
+                                isSubmittingApology = false
+                                if (res?.isSuccessful == true) {
+                                    snackbarHostState.showSnackbar("Explanation submitted. Your mentor will review it shortly.")
+                                    selectedWarningForApology = null
+                                    loadAttendance()
+                                } else {
+                                    snackbarHostState.showSnackbar("Failed to submit explanation. Please try again.")
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isSubmittingApology && apologyInputText.isNotBlank()
+                ) {
+                    Text(if (isSubmittingApology) "Submitting..." else "Submit")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedWarningForApology = null }, enabled = !isSubmittingApology) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Student Late-Join / Permission Request Dialog
+    requestPermissionSession?.let { sess ->
+        AlertDialog(
+            onDismissRequest = { if (!isSubmittingPermission) requestPermissionSession = null },
+            icon = { Icon(Icons.Default.HelpOutline, null, tint = AttendancePurple) },
+            title = { Text("Request Attendance Review", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Class: ${sess.sessionTitle ?: "Session"}\nIf you attended or faced connectivity issues, submit your note here for the mentor's review.",
+                        fontSize = 12.sp,
+                        color = AttendanceMuted
+                    )
+                    OutlinedTextField(
+                        value = permissionReasonText,
+                        onValueChange = { permissionReasonText = it },
+                        placeholder = { Text("Explain what happened or request permission...") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (permissionReasonText.isNotBlank()) {
+                            isSubmittingPermission = true
+                            scope.launch {
+                                val res = runCatching {
+                                    ApiClient.getService(tokenManager).requestLateJoinPermission(
+                                        mapOf("session_id" to sess.id, "reason" to permissionReasonText.trim())
+                                    )
+                                }.getOrNull()
+                                isSubmittingPermission = false
+                                if (res?.isSuccessful == true) {
+                                    snackbarHostState.showSnackbar("Attendance review request submitted successfully.")
+                                    requestPermissionSession = null
+                                    loadAttendance()
+                                } else {
+                                    val err = res?.errorBody()?.string() ?: "Failed to submit request."
+                                    snackbarHostState.showSnackbar(if (err.contains("already", true)) "A request has already been submitted." else "Unable to submit request.")
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isSubmittingPermission && permissionReasonText.isNotBlank()
+                ) {
+                    Text(if (isSubmittingPermission) "Submitting..." else "Submit Request")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { requestPermissionSession = null }, enabled = !isSubmittingPermission) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Mentor/Volunteer Student Attendance Roster Dialog
     selectedSession?.let { session ->
         val cohortObj = allCohorts.firstOrNull { it.id == session.cohort || it.code == session.cohortCode }
         val cohortCode = cohortObj?.code ?: session.cohortCode.orEmpty()
@@ -350,11 +666,13 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
         val filteredCohortStudents = remember(cohortStudents, searchStudent) {
             if (searchStudent.isBlank()) cohortStudents
             else cohortStudents.filter { s ->
-                val fn = s.user?.firstName.orEmpty()
-                val ln = s.user?.lastName.orEmpty()
-                val em = s.user?.email.orEmpty()
+                val name = resolveStudentName(s)
+                val fn = (s.user?.firstName ?: s.userFirstName ?: s.firstName).orEmpty()
+                val ln = (s.user?.lastName ?: s.userLastName ?: s.lastName).orEmpty()
+                val em = (s.user?.email ?: s.userEmail ?: s.email).orEmpty()
                 val sc = s.studentCode.orEmpty()
-                fn.contains(searchStudent, ignoreCase = true) ||
+                name.contains(searchStudent, ignoreCase = true) ||
+                    fn.contains(searchStudent, ignoreCase = true) ||
                     ln.contains(searchStudent, ignoreCase = true) ||
                     em.contains(searchStudent, ignoreCase = true) ||
                     sc.contains(searchStudent, ignoreCase = true)
@@ -378,21 +696,21 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
             text = {
                 Column(Modifier.fillMaxWidth().heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Surface(color = Color(0xFFF1E9FF), shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) {
+                        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) {
                             Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(cohortStudents.size.toString(), fontWeight = FontWeight.Black, color = AttendancePurple, fontSize = 16.sp)
                                 Text("Enrolled", fontSize = 10.sp, color = AttendanceMuted)
                             }
                         }
-                        Surface(color = Color(0xFFD1FAE5), shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) {
+                        Surface(color = semanticColors.successContainer, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) {
                             Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(presentCountInSession.toString(), fontWeight = FontWeight.Black, color = Color(0xFF059669), fontSize = 16.sp)
+                                Text(presentCountInSession.toString(), fontWeight = FontWeight.Black, color = semanticColors.success, fontSize = 16.sp)
                                 Text("Present", fontSize = 10.sp, color = AttendanceMuted)
                             }
                         }
-                        Surface(color = Color(0xFFFEE2E2), shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) {
+                        Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) {
                             Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(absentCountInSession.toString(), fontWeight = FontWeight.Black, color = Color(0xFFDC2626), fontSize = 16.sp)
+                                Text(absentCountInSession.toString(), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.error, fontSize = 16.sp)
                                 Text("Absent", fontSize = 10.sp, color = AttendanceMuted)
                             }
                         }
@@ -409,44 +727,65 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                             }
                         },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
                     )
 
                     if (cohortStudents.isEmpty()) {
-                        Text("No students are mapped to this cohort in the backend database.", fontSize = 12.sp, color = AttendanceMuted, modifier = Modifier.padding(8.dp))
+                        Text("No students are mapped to this cohort in the records.", fontSize = 12.sp, color = AttendanceMuted, modifier = Modifier.padding(8.dp))
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f, fill = false)) {
                             items(filteredCohortStudents, key = { it.id }) { student ->
                                 val isPresent = student.id in attendeeIdSet || student.userId in attendeeIdSet
                                 Surface(
-                                    color = Color(0xFFF8FAFC),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
                                     shape = RoundedCornerShape(10.dp),
                                     border = BorderStroke(1.dp, AttendanceBorder)
                                 ) {
                                     Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Box(Modifier.size(34.dp).background(if (isPresent) Color(0xFFD1FAE5) else Color(0xFFFEE2E2), CircleShape), contentAlignment = Alignment.Center) {
+                                        Box(Modifier.size(34.dp).background(if (isPresent) semanticColors.successContainer else MaterialTheme.colorScheme.errorContainer, CircleShape), contentAlignment = Alignment.Center) {
                                             Icon(
                                                 if (isPresent) Icons.Default.Check else Icons.Default.Close,
                                                 null,
-                                                tint = if (isPresent) Color(0xFF059669) else Color(0xFFDC2626),
+                                                tint = if (isPresent) semanticColors.success else MaterialTheme.colorScheme.error,
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
                                         Spacer(Modifier.width(10.dp))
                                         Column(Modifier.weight(1f)) {
-                                            val name = listOfNotNull(student.user?.firstName, student.user?.lastName).joinToString(" ").ifBlank { student.user?.email?.substringBefore('@') ?: student.studentCode ?: "Student" }
-                                            Text(name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = AttendanceInk)
-                                            Text(student.user?.email.orEmpty().ifBlank { student.studentCode.orEmpty() }, fontSize = 11.sp, color = AttendanceMuted)
+                                            val name = resolveStudentName(student)
+                                            Text(name, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = AttendanceInk)
+                                            Spacer(Modifier.height(2.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = AttendancePurple.copy(alpha = 0.08f),
+                                                    border = BorderStroke(1.dp, AttendancePurple.copy(alpha = 0.2f))
+                                                ) {
+                                                    Text(
+                                                        text = student.studentCode ?: "STU-ID",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = AttendancePurple,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                                val email = student.user?.email ?: student.userEmail ?: student.email
+                                                if (!email.isNullOrBlank()) {
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(email, fontSize = 11.sp, color = AttendanceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                }
+                                            }
                                         }
                                         Surface(
-                                            color = if (isPresent) Color(0xFFD1FAE5) else Color(0xFFFEE2E2),
+                                            color = if (isPresent) semanticColors.successContainer else MaterialTheme.colorScheme.errorContainer,
                                             shape = RoundedCornerShape(6.dp)
                                         ) {
                                             Text(
                                                 if (isPresent) "PRESENT" else "ABSENT",
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (isPresent) Color(0xFF059669) else Color(0xFFDC2626),
+                                                color = if (isPresent) semanticColors.success else MaterialTheme.colorScheme.error,
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                                             )
                                         }
@@ -461,3 +800,5 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
         )
     }
 }
+
+private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)

@@ -90,6 +90,7 @@ interface ApiService {
 
     @GET("attendance/")
     suspend fun getAttendance(
+        @Query("status") status: String? = null,
         @Query("class_date") classDate: String? = null,
         @Query("date_from") dateFrom: String? = null,
         @Query("date_to") dateTo: String? = null
@@ -99,9 +100,21 @@ interface ApiService {
     @PUT("attendance/{id}/") suspend fun replaceAttendance(@Path("id") id: String, @Body body: ApiBody): Response<AttendanceDto>
     @PATCH("attendance/{id}/") suspend fun patchAttendance(@Path("id") id: String, @Body body: ApiBody): Response<AttendanceDto>
     @DELETE("attendance/{id}/") suspend fun deleteAttendance(@Path("id") id: String): Response<Unit>
+    @POST("attendance/generate-lst/") suspend fun generateLstClass(@Body body: ApiBody): Response<ApiBody>
     @POST("attendance/setup-lst-automation/") suspend fun setupLstAutomation(@Body body: ApiBody): Response<ApiBody>
     @GET("attendance/get-lst-automation/") suspend fun getLstAutomation(): Response<ApiBody>
     @POST("attendance/toggle-lst-automation/") suspend fun toggleLstAutomation(@Body body: ApiBody): Response<ApiBody>
+    @GET("attendance/warnings/") suspend fun getAbsenceWarnings(): Response<List<AbsenceWarningDto>>
+    @POST("attendance/resolve_warning/") suspend fun resolveWarning(@Body body: ApiBody): Response<ApiBody>
+    @POST("attendance/request-permission/") suspend fun requestLateJoinPermission(@Body body: ApiBody): Response<ApiBody>
+    @GET("attendance/{id}/official-attendance/") suspend fun getOfficialAttendance(
+        @Path("id") id: String,
+        @Query("scope") scope: String? = null,
+        @Query("scope_id") scopeId: String? = null
+    ): Response<ApiBody>
+    @POST("attendance/{id}/add-attendees/") suspend fun addAttendeesToSession(@Path("id") id: String, @Body body: ApiBody): Response<ApiBody>
+    @GET("attendance/alerts/low/") suspend fun getLowAttendanceAlerts(): Response<List<ApiBody>>
+    @GET("attendance/chat_history/") suspend fun getAttendanceChatHistory(@Query("warning_id") warningId: String): Response<List<PermissionRequestMessageDto>>
 
     @GET("assignments/") suspend fun getAssignments(): Response<PaginatedResponse<AssignmentDto>>
     @POST("assignments/") suspend fun createAssignment(@Body body: ApiBody): Response<AssignmentDto>

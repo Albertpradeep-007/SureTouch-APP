@@ -50,9 +50,9 @@ import androidx.compose.ui.platform.LocalContext
 
 private val ColorDarkHeader = Color(0xFF6C2BD9)
 private val ColorCardTopBanner = Color(0xFF4C1D95)
-private val ColorCanvasBackground = Color(0xFFFAFAFA)
-private val ColorTextDark = Color(0xFF1E293B)
-private val ColorTextSub = Color(0xFF475569)
+private val ColorCanvasBackground @Composable get() = MaterialTheme.colorScheme.background
+private val ColorTextDark @Composable get() = MaterialTheme.colorScheme.onSurface
+private val ColorTextSub @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
 private enum class TimetableMode { UPCOMING, HISTORY }
 private enum class SlotState { UPCOMING, LIVE, COMPLETED }
@@ -77,6 +77,25 @@ private fun parseApiTime(value: String?): LocalTime? {
 private fun displayTime(value: String?): String = parseApiTime(value)
     ?.format(DateTimeFormatter.ofPattern("hh:mm a", Locale.US))
     ?: "Time pending"
+
+private fun formatTimeRange(startValue: String?, endValue: String?): String {
+    val start = parseApiTime(startValue)
+    val end = parseApiTime(endValue)
+    if (start == null && end == null) return "Time pending"
+    if (start != null && end == null) return start.format(DateTimeFormatter.ofPattern("hh:mm a", Locale.US))
+    if (start == null && end != null) return end.format(DateTimeFormatter.ofPattern("hh:mm a", Locale.US))
+
+    val startFmt = start!!.format(DateTimeFormatter.ofPattern("hh:mm a", Locale.US))
+    val endFmt = end!!.format(DateTimeFormatter.ofPattern("hh:mm a", Locale.US))
+
+    if (!end.isAfter(start)) {
+        val correctedEnd = start.plusHours(1)
+        val correctedFmt = correctedEnd.format(DateTimeFormatter.ofPattern("hh:mm a", Locale.US))
+        return "$startFmt – $correctedFmt"
+    }
+
+    return "$startFmt – $endFmt"
+}
 
 private fun stateFor(session: AttendanceDto, now: LocalDateTime): SlotState {
     val backendStatus = session.effectiveStatus ?: session.classStatus
@@ -174,14 +193,14 @@ fun TimetableScreen(
             TimetableSlot(
                 id = session.id,
                 rawDate = date,
-                timeSlot = "${displayTime(session.startTime)} – ${displayTime(session.endTime)}",
+                timeSlot = formatTimeRange(session.startTime, session.endTime),
                 classType = listOfNotNull(statusLabel, session.conductedByName?.takeIf(String::isNotBlank)).joinToString(" • "),
                 courseDetails = listOfNotNull(
                     courseName,
                     sessionTitle.takeIf {
                         it.isNotBlank() && !genericTitle && !it.equals(courseName, ignoreCase = true)
                     },
-                    session.notes?.takeIf(String::isNotBlank)
+                    session.notes?.replace("Sechdule", "Schedule", ignoreCase = true)?.takeIf(String::isNotBlank)
                 ).joinToString("\n").ifBlank { "Class details pending" },
                 state = state,
                 hasMeetingLink = !session.meetingLink.isNullOrBlank()
@@ -252,11 +271,17 @@ fun TimetableScreen(
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
             Image(
                 painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                contentDescription = null,
+                contentDescription = "SURE Trust Official Logo Watermark",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.size(280.dp).align(Alignment.Center).graphicsLayer { alpha = 0.07f }
+                modifier = Modifier
+                    .size(280.dp)
+                    .align(Alignment.Center)
+                    .graphicsLayer {
+                        alpha = 0.04f
+                        scaleX = 1.35f
+                        scaleY = 1.35f
+                    }
             )
-
             Column(Modifier.fillMaxSize()) {
                 SingleChoiceSegmentedButtonRow(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
@@ -272,7 +297,7 @@ fun TimetableScreen(
 
                 if (mode == TimetableMode.UPCOMING) {
                     LazyRow(
-                        modifier = Modifier.fillMaxWidth().background(Color.White).padding(vertical = 10.dp, horizontal = 12.dp),
+                        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 10.dp, horizontal = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(days) { day ->
@@ -285,7 +310,7 @@ fun TimetableScreen(
                     }
                 } else {
                     Row(
-                        Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 10.dp),
+                        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -302,7 +327,7 @@ fun TimetableScreen(
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFE5E7EB))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Text(
                     text = if (mode == TimetableMode.UPCOMING) selectedDay else "Class History",
                     fontSize = 22.sp,
@@ -343,7 +368,7 @@ fun TimetableScreen(
                                 onClick = onNavigateToLiveClass
                             ),
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                         ) {
                             Column(Modifier.fillMaxWidth()) {

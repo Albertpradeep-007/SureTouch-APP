@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.*
@@ -61,6 +62,7 @@ import com.example.suretouchapp.ui.components.InAppOAuthSheet
 import com.example.suretouchapp.ui.components.OAuthProvider
 import com.example.suretouchapp.ui.screens.attendance.AttendanceScreen
 import com.example.suretouchapp.ui.screens.feedback.FeedbackScreen
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import com.example.suretouchapp.ui.screens.lifeskills.LifeSkillsScreen
 import com.example.suretouchapp.ui.screens.softskills.SoftSkillsScreen
 import com.example.suretouchapp.ui.screens.timetable.TimetableScreen
@@ -132,44 +134,44 @@ private fun getSessionState(
 // =======================================================
 // OFFICIAL DASHBOARD DESIGN TOKENS
 // =======================================================
-private val ColorCanvasBg = Color(0xFFF8FAFC)
-private val ColorCardSurface = Color(0xFFFFFFFF)
-private val ColorPrimaryPurple = Color(0xFF6C2BD9)       // SURE TRUST Official Primary Purple
+private val ColorCanvasBg @Composable get() = MaterialTheme.colorScheme.background
+private val ColorCardSurface @Composable get() = MaterialTheme.colorScheme.surface
+private val ColorPrimaryPurple @Composable get() = MaterialTheme.colorScheme.primary
 private val ColorPurpleGradientStart = Color(0xFF6C2BD9)  // Official Vibrant Royal Purple
 private val ColorPurpleGradientEnd = Color(0xFF4C1D95)    // Official Deep Violet
-private val ColorTextTitles = Color(0xFF0F172A)
-private val ColorTextSubtext = Color(0xFF64748B)
-private val ColorBorderHairline = Color(0xFFE2E8F0)
+private val ColorTextTitles @Composable get() = MaterialTheme.colorScheme.onSurface
+private val ColorTextSubtext @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val ColorBorderHairline @Composable get() = MaterialTheme.colorScheme.outlineVariant
 private val ColorActiveBorder = Color(0xFF6C2BD9)
-private val ColorBottomNavBg = Color(0xFFFFFFFF)
-private val ColorHomeActivePill = Color(0xFFF5F1FF)
+private val ColorBottomNavBg @Composable get() = MaterialTheme.colorScheme.surface
+private val ColorHomeActivePill @Composable get() = MaterialTheme.colorScheme.primaryContainer
 
 // Grid Icon Container Color Tokens
-private val ColorIndigoIconBg = Color(0xFFEEF2FF)
+private val ColorIndigoIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorIndigoIcon = Color(0xFF4F46E5)
 
-private val ColorAmberIconBg = Color(0xFFFEF3C7)
+private val ColorAmberIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorAmberIcon = Color(0xFFD97706)
 
-private val ColorGreenIconBg = Color(0xFFD1FAE5)
+private val ColorGreenIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorGreenIcon = Color(0xFF059669)
 
-private val ColorBlueIconBg = Color(0xFFE0F2FE)
+private val ColorBlueIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorBlueIcon = Color(0xFF0284C7)
 
-private val ColorPurpleIconBg = Color(0xFFF3E8FF)
+private val ColorPurpleIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorPurpleIcon = Color(0xFF6D28D9)
 
-private val ColorRedIconBg = Color(0xFFFEE2E2)
+private val ColorRedIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorRedIcon = Color(0xFFDC2626)
 
-private val ColorTealIconBg = Color(0xFFCCFBF1)
+private val ColorTealIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorTealIcon = Color(0xFF0D9488)
 
-private val ColorPinkIconBg = Color(0xFFFCE7F3)
+private val ColorPinkIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorPinkIcon = Color(0xFFDB2777)
 
-private val ColorGrayIconBg = Color(0xFFF1F5F9)
+private val ColorGrayIconBg @Composable get() = MaterialTheme.colorScheme.surfaceVariant
 private val ColorGrayIcon = Color(0xFF475569)
 
 data class CleanPortalTile(
@@ -357,16 +359,7 @@ fun StudentDashboardScreen(
             delay(30_000L)
         }
     }
-    LaunchedEffect(dashboardSnapshot.isLinkedinConnected, dashboardSnapshot.isGithubLinked) {
-        val profilesReady = dashboardSnapshot.isLinkedinConnected && dashboardSnapshot.isGithubLinked
-        if (profilesReady && !profilesReadyNoticeShown) {
-            profilesReadyNoticeShown = true
-            snackbarHostState.showSnackbar(
-                message = "LinkedIn and GitHub linked. Student-role verification and cohort assignment can now proceed.",
-                duration = SnackbarDuration.Long
-            )
-        }
-    }
+    // Suppress auto-popup notification if student is already active or in a cohort
     DisposableEffect(lifecycleOwner) {
         var hasPaused = false
         val observer = LifecycleEventObserver { _, event ->
@@ -507,19 +500,21 @@ fun StudentDashboardScreen(
                     .background(ColorCanvasBg)
                     .padding(paddingValues)
             ) {
-                // Translucent SURE ProEd Official Logo Watermark in Dashboard Screen Background
+                // Official SURE Trust Logo Watermark in Student Dashboard Background
                 Image(
                     painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .size(280.dp)
+                        .size(340.dp)
                         .align(Alignment.Center)
-                        .padding(top = 40.dp)
-                        .graphicsLayer { alpha = 0.08f }
+                        .graphicsLayer {
+                            alpha = 0.055f
+                            scaleX = 1.3f
+                            scaleY = 1.3f
+                        }
                 )
 
-                // Main Dashboard View with Clean Timetable Card
                 CleanTimetableDashboardView(
                     onNavigateToCourses = onNavigateToCourses,
                     onNavigateToAssignments = onNavigateToAssignments,
@@ -638,32 +633,32 @@ fun StudentDashboardScreen(
                                 Text(
                                     text = "Your academic and personal profile details are currently pending. Completing your profile is required to enable cohort assignment, attendance tracking, and official certificates.",
                                     fontSize = 13.sp,
-                                    color = Color(0xFF475569),
+                                    color = ColorTextSubtext,
                                     lineHeight = 18.sp,
                                     textAlign = TextAlign.Center
                                 )
 
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFF8FAFC),
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(1.dp, ColorBorderHairline),
                                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                                 ) {
                                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.CheckCircleOutline, null, tint = Color(0xFF6C2BD9), modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(8.dp))
-                                            Text("College & Degree / Specialization", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                                            Text("College & Degree / Specialization", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = ColorTextTitles)
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.CheckCircleOutline, null, tint = Color(0xFF6C2BD9), modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(8.dp))
-                                            Text("Contact Phone & Location details", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                                            Text("Contact Phone & Location details", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = ColorTextTitles)
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.CheckCircleOutline, null, tint = Color(0xFF6C2BD9), modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(8.dp))
-                                            Text("LinkedIn & GitHub profile links", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                                            Text("LinkedIn & GitHub profile links", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = ColorTextTitles)
                                         }
                                     }
                                 }
@@ -691,7 +686,7 @@ fun StudentDashboardScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Remind Me Later", color = Color(0xFF64748B), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("Remind Me Later", color = ColorTextSubtext, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                             }
                         }
                     )
@@ -1071,8 +1066,8 @@ private fun DashboardLinkedInVerificationCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F7FF)),
-        border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -1096,12 +1091,12 @@ private fun DashboardLinkedInVerificationCard(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Complete profiles for cohort", color = ColorTextTitles, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("Connect Professional Profiles", color = ColorTextTitles, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Text(
                     when {
-                        !linkedinConnected && !githubLinked -> "No cohort/timetable until LinkedIn + GitHub are linked"
-                        !linkedinConnected -> "Connect LinkedIn before cohort assignment"
-                        else -> "Add GitHub before cohort assignment"
+                        !linkedinConnected && !githubLinked -> "Link your LinkedIn and GitHub accounts to receive your cohort assignment."
+                        !linkedinConnected -> "Connect your LinkedIn profile to verify your student credentials."
+                        else -> "Link your GitHub account to access cohort coding projects."
                     },
                     color = ColorTextSubtext,
                     fontSize = 11.5.sp
@@ -1166,8 +1161,8 @@ fun CleanTimetableDashboardView(
     isDashboardLoading: Boolean = false,
     hasLoadedOnce: Boolean = true,
     onRefreshDashboard: () -> Unit = {},
-    onOpenSubmitAssignment: () -> Unit,
-    onOpenAttendanceDetails: () -> Unit,
+    onOpenSubmitAssignment: () -> Unit = {},
+    onOpenAttendanceDetails: () -> Unit = {},
     onNavigateToGrades: () -> Unit = {},
     isLinkedinActionLoading: Boolean = false,
     isGithubActionLoading: Boolean = false,
@@ -1343,12 +1338,26 @@ fun CleanTimetableDashboardView(
         indicator = {}
     ) {
         BackendSyncedDashboard(isLoading = isDashboardLoading) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Image(
+                    painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                    contentDescription = "SURE Trust Official Logo Watermark",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(300.dp)
+                        .align(Alignment.Center)
+                        .graphicsLayer {
+                            alpha = 0.04f
+                            scaleX = 1.35f
+                            scaleY = 1.35f
+                        }
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
         if (isProfilePending) {
             item {
                 ProfileIncompleteBanner(onNavigateToProfile = onNavigateToProfile)
@@ -1369,6 +1378,7 @@ fun CleanTimetableDashboardView(
                 SimpleDateFormat("dd-MMM-yyyy", Locale.US).format(java.util.Date()).uppercase(Locale.US)
             }
             val pendingScheduleMessage = when {
+                dashboardSnapshot.cohortCode != null -> "There are no upcoming sessions in the current timetable."
                 dashboardSnapshot.applicationStatus == null -> "Apply for a course to begin your student journey."
                 !screeningSubmitted -> "Complete the pre-screening assessment to continue."
                 !dashboardSnapshot.screeningQualified -> "Your screening result is awaiting a backend update."
@@ -1401,17 +1411,9 @@ fun CleanTimetableDashboardView(
                     listOf(
                         TimetableClassSession(
                             id = "pending",
-                            courseCode = if (dashboardSnapshot.cohortCode == null) "Cohort assignment pending" else "No class scheduled",
-                            moduleTitle = if (dashboardSnapshot.cohortCode == null) {
-                                pendingScheduleMessage
-                            } else {
-                                "There are no upcoming sessions in the current timetable."
-                            },
-                            mentorName = if (dashboardSnapshot.cohortCode == null) {
-                                "Admission progress"
-                            } else {
-                                "Schedule pending"
-                            },
+                            courseCode = if (dashboardSnapshot.cohortCode == null) "Cohort assignment pending" else "Await Upcoming Classes",
+                            moduleTitle = if (dashboardSnapshot.cohortCode != null) "Your mentors will publish the next session shortly." else pendingScheduleMessage,
+                            mentorName = if (dashboardSnapshot.cohortCode == null) "Admission progress" else "Cohort ${dashboardSnapshot.cohortCode}",
                             startTime = "--:--",
                             endTime = "--:--",
                             periodStr = "IST",
@@ -1427,8 +1429,7 @@ fun CleanTimetableDashboardView(
 
             Column {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1459,8 +1460,8 @@ fun CleanTimetableDashboardView(
                     Surface(
                         modifier = Modifier.clickable(enabled = !isDashboardLoading) { onRefreshDashboard() },
                         shape = CircleShape,
-                        color = Color(0xFFF3E8FF),
-                        border = BorderStroke(1.dp, Color(0xFFE9D5FF)),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         shadowElevation = 0.dp
                     ) {
                         Row(
@@ -1518,7 +1519,9 @@ fun CleanTimetableDashboardView(
                             .height(244.dp)
                             .clickable {
                                 when {
+                                    !session.isPlaceholder && session.sessionState == SessionState.LIVE_NOW && !session.meetingLink.isNullOrBlank() -> onNavigateToLiveClass()
                                     !session.isPlaceholder -> onNavigateToTimetable()
+                                    dashboardSnapshot.cohortCode != null -> onNavigateToTimetable()
                                     dashboardSnapshot.applicationStatus == null -> onNavigateToCourses()
                                     else -> onNavigateToApplicationTracker()
                                 }
@@ -1538,16 +1541,16 @@ fun CleanTimetableDashboardView(
                                     )
                                 )
                         ) {
-                            // Keep the tree emblem fully inside the card while retaining the subtle watermark.
                             Image(
                                 painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                                contentDescription = null,
+                                contentDescription = "SURE Trust official logo watermark",
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(160.dp)
                                     .align(Alignment.CenterEnd)
+                                    .offset(x = 24.dp)
                                     .graphicsLayer {
-                                        alpha = 0.15f
+                                        alpha = 0.18f
                                         scaleX = 1.35f
                                         scaleY = 1.35f
                                     }
@@ -1703,6 +1706,7 @@ fun CleanTimetableDashboardView(
                                         when {
                                             !session.isPlaceholder && session.sessionState == SessionState.LIVE_NOW && !session.meetingLink.isNullOrBlank() -> onNavigateToLiveClass()
                                             !session.isPlaceholder -> onNavigateToTimetable()
+                                            dashboardSnapshot.cohortCode != null -> onNavigateToTimetable()
                                             dashboardSnapshot.applicationStatus == null -> onNavigateToCourses()
                                             else -> onNavigateToApplicationTracker()
                                         }
@@ -1711,7 +1715,11 @@ fun CleanTimetableDashboardView(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = if (session.isPlaceholder) Icons.Default.School else when (session.sessionState) {
+                                    imageVector = if (session.isPlaceholder) {
+                                        if (dashboardSnapshot.cohortCode != null) Icons.Default.CalendarMonth
+                                        else if (dashboardSnapshot.applicationStatus == null) Icons.Default.School
+                                        else Icons.Default.Quiz
+                                    } else when (session.sessionState) {
                                         SessionState.LIVE_NOW -> Icons.Default.Videocam
                                         SessionState.UPCOMING -> Icons.Default.CalendarMonth
                                         SessionState.COMPLETED -> Icons.Default.Schedule
@@ -1720,13 +1728,15 @@ fun CleanTimetableDashboardView(
                                     tint = ColorPrimaryPurple,
                                     modifier = Modifier.size(23.dp)
                                 )
+                                val hasCohortAssigned = dashboardSnapshot.cohortCode != null
                                 Text(
                                     text = when {
                                         !session.isPlaceholder && session.sessionState == SessionState.LIVE_NOW -> "Join Session"
                                         !session.isPlaceholder && session.sessionState == SessionState.COMPLETED -> "Ended • ${session.startTime} – ${session.endTime}"
                                         !session.isPlaceholder -> "View Schedule"
+                                        hasCohortAssigned -> "Await Upcoming Classes"
                                         dashboardSnapshot.applicationStatus == null -> "Browse Courses"
-                                        else -> "View Screening"
+                                        else -> "Await Upcoming Classes"
                                     },
                                     modifier = Modifier.weight(1f),
                                     textAlign = TextAlign.Center,
@@ -1894,6 +1904,7 @@ fun CleanTimetableDashboardView(
                 }
             }
         }
+    }
 
     if (showCustomizeSheet) {
         ModalBottomSheet(
@@ -2010,7 +2021,7 @@ private fun StudentMetricCard(
     Surface(
         modifier = Modifier.width(142.dp),
         shape = RoundedCornerShape(16.dp),
-        color = Color.White,
+        color = ColorCardSurface,
         border = BorderStroke(1.dp, ColorBorderHairline)
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2025,6 +2036,8 @@ private fun StudentMetricCard(
         }
     }
 }
+
+
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2074,10 +2087,18 @@ private fun ProfessionalGradesScreen(
                         )
                     ) {
                         Image(
-                            painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                            contentDescription = null,
-                            modifier = Modifier.align(Alignment.CenterEnd).offset(x = 24.dp).size(150.dp).graphicsLayer { alpha = 0.10f },
-                            contentScale = ContentScale.Fit
+                            painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                            contentDescription = "SURE Trust official logo watermark",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .offset(x = 24.dp)
+                                .size(150.dp)
+                                .graphicsLayer {
+                                    alpha = 0.18f
+                                    scaleX = 1.35f
+                                    scaleY = 1.35f
+                                }
                         )
                         Column(Modifier.padding(18.dp)) {
                             Text("STUDENT PERFORMANCE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD8B4FE), letterSpacing = 1.sp)
@@ -2120,13 +2141,13 @@ private fun ProfessionalGradesScreen(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, ColorBorderHairline),
                     shadowElevation = 2.dp
                 ) {
                     Column {
                         Row(
-                            Modifier.fillMaxWidth().background(Color(0xFFF1F5F9)).padding(horizontal = 14.dp, vertical = 10.dp),
+                            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("ASSESSMENT", Modifier.weight(1f), fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = ColorTextSubtext)
@@ -2273,7 +2294,7 @@ private fun PreScreenGradeCard(
 
 @Composable
 private fun EmptyGradesMessage(cohortAssigned: Boolean) {
-    Surface(color = Color(0xFFF8FAFC), shape = RoundedCornerShape(12.dp)) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
         Row(Modifier.fillMaxWidth().padding(11.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 if (cohortAssigned) Icons.Default.LockOpen else Icons.Default.Lock,
@@ -2424,10 +2445,11 @@ fun SpaciousBadgelessGridCard(tile: CleanPortalTile) {
 private fun ProfileIncompleteBanner(
     onNavigateToProfile: () -> Unit
 ) {
+    val semanticColors = sureSemanticColors()
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = Color(0xFFFFF7ED),
-        border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+        color = semanticColors.warningContainer,
+        border = BorderStroke(1.dp, semanticColors.warning.copy(alpha = 0.55f)),
         shadowElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
@@ -2441,13 +2463,13 @@ private fun ProfileIncompleteBanner(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFFFEDD5)),
+                    .background(semanticColors.warningContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.PriorityHigh,
                     contentDescription = null,
-                    tint = Color(0xFFEA580C),
+                    tint = semanticColors.warning,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -2457,13 +2479,13 @@ private fun ProfileIncompleteBanner(
                     text = "Student Profile Incomplete",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF9A3412)
+                    color = semanticColors.onWarningContainer
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Fill in your college, degree, and contact details to unlock cohort allocation.",
                     fontSize = 11.sp,
-                    color = Color(0xFFC2410C),
+                    color = semanticColors.onWarningContainer,
                     lineHeight = 15.sp
                 )
             }

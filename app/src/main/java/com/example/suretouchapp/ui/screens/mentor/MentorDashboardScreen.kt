@@ -2,7 +2,9 @@ package com.example.suretouchapp.ui.screens.mentor
 
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 import com.example.suretouchapp.ui.screens.trustee.generateAutoMeetLink
-import com.example.suretouchapp.ui.screens.trustee.isClassTimeOverlapping
+import com.example.suretouchapp.data.repository.ClassSchedulePolicy
+import com.example.suretouchapp.data.repository.isCancelledSession
+import com.example.suretouchapp.data.repository.isCompletedSession
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -28,12 +30,15 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.automirrored.filled.Grading
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,6 +65,8 @@ import com.example.suretouchapp.ui.components.InAppOAuthSheet
 import com.example.suretouchapp.ui.components.OAuthProvider
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.components.SureTrustLogo
+import com.example.suretouchapp.ui.theme.SureFormDefaults
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -71,9 +78,9 @@ import java.util.Locale
 // ============================================================
 // DESIGN TOKENS
 // ============================================================
-private val MC_Bg           = Color(0xFFF8FAFC)
-private val MC_Surface      = Color(0xFFFFFFFF)
-private val MC_Primary      = Color(0xFF5B21B6)
+private val MC_Bg @Composable get() = MaterialTheme.colorScheme.background
+private val MC_Surface @Composable get() = MaterialTheme.colorScheme.surface
+private val MC_Primary @Composable get() = MaterialTheme.colorScheme.primary
 private val MC_PrimaryMid   = Color(0xFF6D28D9)
 private val MC_PrimaryLight = Color(0xFF7C3AED)
 private val MC_PrimaryEnd   = Color(0xFF4C1D95)
@@ -82,11 +89,11 @@ private val MC_Amber        = Color(0xFFD97706)
 private val MC_Blue         = Color(0xFF0284C7)
 private val MC_Red          = Color(0xFFDC2626)
 private val MC_Pink         = Color(0xFFDB2777)
-private val MC_TextTitle    = Color(0xFF0F172A)
-private val MC_TextSub      = Color(0xFF64748B)
-private val MC_Border       = Color(0xFFE2E8F0)
-private val MC_NavBg        = Color(0xFFFFFFFF)
-private val MC_ActivePill   = Color(0xFFEDE9FE)
+private val MC_TextTitle @Composable get() = MaterialTheme.colorScheme.onSurface
+private val MC_TextSub @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val MC_Border @Composable get() = MaterialTheme.colorScheme.outlineVariant
+private val MC_NavBg @Composable get() = MaterialTheme.colorScheme.surface
+private val MC_ActivePill @Composable get() = MaterialTheme.colorScheme.primaryContainer
 private val MC_DatePurple   = Color(0xFF6D28D9)
 private val MC_LogoDiamond = GenericShape { size, _ ->
     moveTo(size.width / 2f, 0f)
@@ -97,6 +104,60 @@ private val MC_LogoDiamond = GenericShape { size, _ ->
 }
 
 // ============================================================
+// ============================================================
+// STUDENT NAME RESOLUTION HELPERS
+// ============================================================
+private fun resolveStudentName(
+    student: StudentProfileDto?,
+    users: List<UserDto> = emptyList()
+): String {
+    if (student == null) return "Student"
+    val userObj = student.user ?: users.firstOrNull { it.id == student.userId || it.id == student.id }
+    val userFullName = listOfNotNull(
+        userObj?.firstName ?: student.userFirstName ?: student.firstName,
+        userObj?.lastName ?: student.userLastName ?: student.lastName
+    ).filter { it.isNotBlank() }.joinToString(" ").trim()
+    if (userFullName.isNotBlank()) return userFullName
+
+    val explicitName = listOfNotNull(
+        student.fullName,
+        student.name,
+        student.studentName,
+        student.userName,
+        student.userFullName
+    ).firstOrNull { it.isNotBlank() }
+    if (!explicitName.isNullOrBlank()) return explicitName
+
+    val email = userObj?.email ?: student.userEmail ?: student.email
+    if (!email.isNullOrBlank()) {
+        val handle = email.substringBefore("@").replace(".", " ").replace("_", " ")
+        return handle.split(" ").filter { it.isNotBlank() }.joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+    }
+    
+    val code = student.studentCode?.takeIf { it.isNotBlank() }
+    return if (code != null) "Student $code" else "Student"
+}
+
+private fun resolveStudentNameFromId(
+    studentId: String?,
+    students: List<StudentProfileDto>,
+    users: List<UserDto>
+): String {
+    if (studentId.isNullOrBlank()) return "Student"
+    val student = students.firstOrNull { it.id == studentId || it.userId == studentId || it.studentCode.equals(studentId, ignoreCase = true) }
+    if (student != null) {
+        val name = resolveStudentName(student, users)
+        if (name != "Student") return name
+    }
+    val user = users.firstOrNull { it.id == studentId }
+    if (user != null) {
+        val fullName = listOfNotNull(user.firstName, user.lastName).filter { it.isNotBlank() }.joinToString(" ").trim()
+        if (fullName.isNotBlank()) return fullName
+        if (user.email.isNotBlank()) return user.email.substringBefore("@")
+    }
+    return if (studentId.length > 12) student?.studentCode ?: "Student" else studentId
+}
+
 // DATA STATE
 // ============================================================
 data class MentorSummary(
@@ -118,7 +179,8 @@ data class MentorSummary(
     val applications: List<ApplicationDto> = emptyList(),
     val totalStudents: Int = 0,
     val pendingGrading: Int = 0,
-    val pendingInterviews: Int = 0
+    val pendingInterviews: Int = 0,
+    val allUsers: List<UserDto> = emptyList()
 )
 
 // ============================================================
@@ -152,7 +214,28 @@ fun MentorDashboardScreen(
     var connectionError by remember { mutableStateOf<String?>(null) }
     var isLinkedinActionLoading by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
+    val tabHistory = remember { mutableStateListOf(0) }
     var selectedCohortId by remember { mutableStateOf<String?>(null) }
+
+    fun switchTab(tab: Int) {
+        if (selectedTab != tab) {
+            tabHistory.add(tab)
+            selectedTab = tab
+        }
+    }
+
+    BackHandler(enabled = drawerState.isOpen || selectedTab != 0 || tabHistory.size > 1) {
+        if (drawerState.isOpen) {
+            scope.launch { drawerState.close() }
+        } else if (tabHistory.size > 1) {
+            tabHistory.removeAt(tabHistory.size - 1)
+            selectedTab = tabHistory.lastOrNull() ?: 0
+        } else if (selectedTab != 0) {
+            selectedTab = 0
+            tabHistory.clear()
+            tabHistory.add(0)
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     var isLinkedinConnected by remember { mutableStateOf(tokenManager.getLinkedinUrl().isNotBlank()) }
@@ -249,7 +332,8 @@ fun MentorDashboardScreen(
                 myCourses = myCourses, myCompany = myCompany, jobReferences = myJobs, certificates = myCertificates,
                 prescreeningInterviews = myInterviews, applications = allApplications,
                 totalStudents = myStudents.size, pendingGrading = pendingSubs.size,
-                pendingInterviews = pendingInterviewsCount
+                pendingInterviews = pendingInterviewsCount,
+                allUsers = users
             )
             @Suppress("UNCHECKED_CAST") val announcements = payload[11] as List<com.example.suretouchapp.data.model.AnnouncementDto>
             SureProEdNotificationManager.syncUnread(context, notifications)
@@ -381,12 +465,24 @@ fun MentorDashboardScreen(
                 }
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
-            bottomBar = { MentorBottomNavBar(selectedTab = selectedTab, onTabSelected = { selectedTab = it }, onCreate = { selectedTab = 6 }) }
+            bottomBar = { MentorBottomNavBar(selectedTab = selectedTab, onTabSelected = { switchTab(it) }, onCreate = { selectedTab = 6 }) }
         ) { padding ->
             PullToRefreshBox(isRefreshing = isLoading, onRefresh = { scope.launch { loadData() } }, modifier = Modifier.fillMaxSize().padding(padding)) {
-                BackendSyncedDashboard(isLoading = isLoading) {
                 Box(Modifier.fillMaxSize()) {
-                    Image(painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(260.dp).align(Alignment.Center).graphicsLayer { alpha = 0.04f })
+                    // Official SURE Trust Logo Watermark in Mentor Dashboard Background
+                    Image(
+                        painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .size(340.dp)
+                            .align(Alignment.Center)
+                            .graphicsLayer {
+                                alpha = 0.055f
+                                scaleX = 1.3f
+                                scaleY = 1.3f
+                            }
+                    )
                     when (selectedTab) {
                         0 -> MentorHomeContent(
                             summary = summary,
@@ -434,6 +530,8 @@ fun MentorDashboardScreen(
                         )
                         2 -> MentorGradingTab(
                             submissions = cohortSubmissions,
+                            students = summary.myStudents,
+                            users = summary.allUsers,
                             readOnly = isSelectedCohortReadOnly,
                             onGrade = { submission, marks, feedback ->
                                 scope.launch {
@@ -459,7 +557,8 @@ fun MentorDashboardScreen(
                             students = cohortStudents,
                             assignments = cohortAssignments,
                             submissions = cohortSubmissions,
-                            certificates = cohortCertificates
+                            certificates = cohortCertificates,
+                            users = summary.allUsers
                         )
                         5 -> MentorReportsTab(summary = cohortSummary)
                         6 -> MentorAssignmentsTab(
@@ -494,8 +593,23 @@ fun MentorDashboardScreen(
                             readOnly = isSelectedCohortReadOnly,
                             onCreateSession = { cohortId, title, date, startTime, endTime, meetingLink ->
                                 scope.launch {
+                                    val api = ApiClient.getService(tokenManager)
+                                    val latestResponse = runCatching { api.getAttendance() }.getOrNull()
+                                    if (latestResponse?.isSuccessful != true) {
+                                        snackbarHostState.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
+                                        return@launch
+                                    }
+                                    val latestSessions = latestResponse.body()?.results.orEmpty()
+                                    val conflict = ClassSchedulePolicy.findConflict(
+                                        latestSessions, cohortId, date, startTime, endTime
+                                    )
+                                    if (conflict != null) {
+                                        snackbarHostState.showSnackbar("This cohort already has a class during that time. Choose another slot.")
+                                        loadData()
+                                        return@launch
+                                    }
                                     val response = runCatching {
-                                        ApiClient.getService(tokenManager).createAttendance(
+                                        api.createAttendance(
                                             mapOf(
                                                 "cohort" to cohortId,
                                                 "title" to title,
@@ -515,6 +629,30 @@ fun MentorDashboardScreen(
                             },
                             onRescheduleSession = { sessionId, newDate, newStart, newEnd, newLink ->
                                 scope.launch {
+                                    val session = summary.myAttendance.firstOrNull { it.id == sessionId }
+                                        ?: cohortAttendance.firstOrNull { it.id == sessionId }
+                                    val api = ApiClient.getService(tokenManager)
+                                    val latestResponse = runCatching { api.getAttendance() }.getOrNull()
+                                    if (latestResponse?.isSuccessful != true) {
+                                        snackbarHostState.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
+                                        return@launch
+                                    }
+                                    val latestSessions = latestResponse.body()?.results.orEmpty()
+                                    val conflict = session?.let {
+                                        ClassSchedulePolicy.findConflict(
+                                            latestSessions,
+                                            it.cohort ?: it.cohortCode.orEmpty(),
+                                            newDate,
+                                            newStart,
+                                            newEnd,
+                                            sessionId
+                                        )
+                                    }
+                                    if (conflict != null) {
+                                        snackbarHostState.showSnackbar("That reschedule overlaps another class for this cohort.")
+                                        loadData()
+                                        return@launch
+                                    }
                                     val body = mapOf<String, Any?>(
                                         "class_date" to newDate,
                                         "start_time" to newStart,
@@ -522,7 +660,7 @@ fun MentorDashboardScreen(
                                         "meeting_link" to newLink.takeIf(String::isNotBlank),
                                         "class_status" to "RESCHEDULED"
                                     )
-                                    val res = runCatching { ApiClient.getService(tokenManager).patchAttendance(sessionId, body) }.getOrNull()
+                                    val res = runCatching { api.patchAttendance(sessionId, body) }.getOrNull()
                                     if (res?.isSuccessful == true) {
                                         snackbarHostState.showSnackbar("Class rescheduled successfully")
                                         loadData()
@@ -602,6 +740,8 @@ fun MentorDashboardScreen(
                             cohorts = summary.myCohorts,
                             interviews = summary.prescreeningInterviews,
                             applications = summary.applications,
+                            students = summary.myStudents,
+                            users = summary.allUsers,
                             readOnly = isSelectedCohortReadOnly,
                             onScheduleInterview = { appId, scheduledAt, meetingLink, notes ->
                                 scope.launch {
@@ -664,7 +804,7 @@ fun MentorDashboardScreen(
             AlertDialog(
                 onDismissRequest = { showLinkedinPopup = false },
                 shape = RoundedCornerShape(20.dp),
-                containerColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.surface,
                 icon = {
                     Surface(
                         modifier = Modifier.size(56.dp),
@@ -778,7 +918,6 @@ fun MentorDashboardScreen(
             )
         }
     }
-}
 }
 
 // ============================================================
@@ -897,7 +1036,16 @@ private fun MentorHomeContent(
     onSupport: () -> Unit
 ) {
     if (isLoading) {
-        MentorDashboardSkeleton()
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            com.example.suretouchapp.ui.components.SureTrustLoadingIndicator(
+                size = 80.dp,
+                logoSize = 52.dp,
+                message = "Loading SURE Trust Mentor Portal..."
+            )
+        }
         return
     }
     val dateStr = remember { SimpleDateFormat("dd-MMM-yyyy", Locale.ENGLISH).format(Date()).uppercase() }
@@ -908,7 +1056,8 @@ private fun MentorHomeContent(
     val cohortSubmissions = summary.pendingSubmissions.filter { it.assignment in assignmentIds }
     val cohortAttendance = summary.myAttendance.filter { selectedCohort == null || it.cohort == selectedCohort.id }
     val todayAttendance = cohortAttendance.filter { it.date.take(10) == apiDate }.sortedBy { it.startTime }
-    val attendancePending = todayAttendance.count { !it.conducted }
+    val semanticColors = sureSemanticColors()
+    val attendancePending = todayAttendance.count { !it.isCompletedSession() && !it.isCancelledSession() }
     val isLocalBackendConnected = com.example.suretouchapp.ui.components.LocalBackendConnected.current
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
         item { MentorDashboardHeader(dateStr = dateStr, cohorts = summary.myCohorts, selectedCohort = selectedCohort, onCohortSelected = onCohortSelected) }
@@ -922,8 +1071,8 @@ private fun MentorHomeContent(
                         .padding(horizontal = 16.dp, vertical = 6.dp)
                         .clickable(onClick = onConnectLinkedin),
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFFF0F7FF),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBAE6FD)),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     shadowElevation = 1.dp
                 ) {
                     Row(
@@ -945,19 +1094,19 @@ private fun MentorHomeContent(
                                 text = "LinkedIn Profile Not Connected",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0A66C2)
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Text(
                                 text = "Tap to verify your official industry credentials",
                                 fontSize = 11.sp,
-                                color = Color(0xFF0369A1)
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
                         Spacer(Modifier.width(8.dp))
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = null,
-                            tint = Color(0xFF0A66C2),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -970,11 +1119,11 @@ private fun MentorHomeContent(
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFFFF7ED),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFED7AA))
+                    color = semanticColors.warningContainer,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Lock, null, tint = MC_Amber, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Lock, null, tint = semanticColors.onWarningContainer, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(9.dp))
                         Column {
                             Text("Completed cohort · Read-only", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = MC_TextTitle)
@@ -1183,17 +1332,37 @@ private fun MentorDashboardHeader(dateStr: String, cohorts: List<CohortDto>, sel
 
 @Composable
 private fun MentorOverviewCard(classesToday: Int, pendingSubmissions: Int, pendingInterviews: Int, onSchedule: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xFF5B21B6))) {
-        Image(
-            painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
+    androidx.compose.material3.Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(22.dp),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(4.dp)
+    ) {
+        Box(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .offset(x = 8.dp)
-                .size(174.dp)
-                .graphicsLayer { alpha = 0.105f; shape = MC_LogoDiamond; clip = true }
-        )
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF6C2BD9),
+                            Color(0xFF4C1D95)
+                        )
+                    )
+                )
+        ) {
+            Image(
+                painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                contentDescription = "SURE Trust official logo watermark",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(160.dp)
+                    .align(Alignment.CenterEnd)
+                    .offset(x = 24.dp)
+                    .graphicsLayer {
+                        alpha = 0.18f
+                        scaleX = 1.35f
+                        scaleY = 1.35f
+                    }
+            )
         Column(
             modifier = Modifier.align(Alignment.TopStart).padding(start = 15.dp, top = 16.dp).width(38.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -1227,6 +1396,7 @@ private fun MentorOverviewCard(classesToday: Int, pendingSubmissions: Int, pendi
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MC_Primary, modifier = Modifier.size(20.dp))
                 }
             }
+        }
         }
     }
 }
@@ -1335,7 +1505,7 @@ private fun QuickAccessTile(tile: QuickTile, modifier: Modifier = Modifier) {
     val borderWidth = if (tile.isSelected) 1.8.dp else 1.dp
     Surface(modifier = modifier.height(128.dp), shape = RoundedCornerShape(16.dp), color = MC_Surface, border = androidx.compose.foundation.BorderStroke(borderWidth, borderColor), shadowElevation = 2.dp, onClick = tile.onClick) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 14.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(modifier = Modifier.size(46.dp).clip(CircleShape).background(tile.iconBg), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(46.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
                 Icon(tile.icon, tile.title, tint = tile.iconTint, modifier = Modifier.size(25.dp))
             }
             Spacer(Modifier.height(8.dp))
@@ -1375,12 +1545,12 @@ private fun MentorBottomTwoColumns(
             course = session.sessionTitle?.takeIf { it.isNotBlank() } ?: cohort?.courseName ?: "Class session",
             section = listOfNotNull(cohort?.code, if (online) "Online" else null).joinToString(" · ").ifBlank { "Scheduled session" },
             status = when {
-                session.conducted -> "Completed"
+                session.isCompletedSession() -> "Completed"
                 online -> "Online"
                 else -> "Scheduled"
             },
             statusColor = when {
-                session.conducted -> MC_Teal
+                session.isCompletedSession() -> MC_Teal
                 online -> MC_Primary
                 else -> MC_Blue
             },
@@ -1443,7 +1613,7 @@ private fun TodayClassCard(cls: TodayClass, onClick: () -> Unit) {
 private fun PendingActionRow(action: PendingAction) {
     Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MC_Surface, border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border), shadowElevation = 1.dp, onClick = action.onClick) {
         Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(action.iconBg), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
                 Icon(action.icon, null, tint = action.iconTint, modifier = Modifier.size(15.dp))
             }
             Spacer(Modifier.width(6.dp))
@@ -1517,7 +1687,8 @@ private fun MentorStudentsTab(
     students: List<StudentProfileDto>,
     assignments: List<AssignmentDto>,
     submissions: List<SubmissionDto>,
-    certificates: List<CertificateDto>
+    certificates: List<CertificateDto>,
+    users: List<UserDto> = emptyList()
 ) {
     var selectedStudent by remember { mutableStateOf<StudentProfileDto?>(null) }
     if (students.isEmpty()) {
@@ -1536,7 +1707,9 @@ private fun MentorStudentsTab(
             }
         }
         items(students, key = { it.id }) { student ->
-            val fullName = listOfNotNull(student.user?.firstName, student.user?.lastName).joinToString(" ").ifBlank { student.studentCode ?: "Student" }
+            val userObj = student.user ?: users.firstOrNull { it.id == student.userId || it.id == student.id }
+            val fullName = resolveStudentName(student, users)
+            val studentCode = student.studentCode ?: "Student ID" 
             val studentSubmissions = submissions.filter { it.student == student.id || it.student == student.userId }
             val certificate = certificates.firstOrNull { it.student == student.id || it.student == student.userId }
             Card(
@@ -1552,8 +1725,13 @@ private fun MentorStudentsTab(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(fullName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
-                        Text(listOfNotNull(student.studentCode, student.cohortCode).joinToString(" · "), fontSize = 11.sp, color = MC_Primary)
+                        Text(fullName, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("ID: ${student.studentCode ?: "Pending"}", fontSize = 11.sp, color = MC_Primary, fontWeight = FontWeight.SemiBold)
+                            student.cohortCode?.let {
+                                Text(" · Cohort $it", fontSize = 11.sp, color = MC_TextSub)
+                            }
+                        }
                         student.college?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 11.sp, color = MC_TextSub, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         if (studentSubmissions.isNotEmpty() || certificate != null) {
                             Text(
@@ -1574,8 +1752,8 @@ private fun MentorStudentsTab(
     }
 
     selectedStudent?.let { student ->
-        val fullName = listOfNotNull(student.user?.firstName, student.user?.lastName)
-            .joinToString(" ").ifBlank { student.studentCode ?: "Student" }
+        val userObj = student.user ?: users.firstOrNull { it.id == student.userId || it.id == student.id }
+        val fullName = resolveStudentName(student, users)
         val studentSubmissions = submissions.filter { it.student == student.id || it.student == student.userId }
         val certificate = certificates.firstOrNull { it.student == student.id || it.student == student.userId }
         AlertDialog(
@@ -1661,8 +1839,9 @@ private fun MentorStudentDetailRow(label: String, value: String?) {
 
 @Composable
 private fun MentorReportsTab(summary: MentorSummary) {
-    val conducted = summary.myAttendance.count { it.conducted }
-    val attendanceRate = if (summary.myAttendance.isEmpty()) 0 else (conducted * 100 / summary.myAttendance.size)
+    val eligibleSessions = summary.myAttendance.filterNot { it.isCancelledSession() }
+    val conducted = eligibleSessions.count { it.isCompletedSession() }
+    val attendanceRate = if (eligibleSessions.isEmpty()) 0 else (conducted * 100 / eligibleSessions.size)
     val evaluatedSubmissions = summary.submissions.filter { it.evaluated }
     val averageMarks = evaluatedSubmissions.mapNotNull { it.marksObtained?.toDoubleOrNull() }
         .takeIf { it.isNotEmpty() }?.average()?.toInt()
@@ -1694,7 +1873,7 @@ private fun MentorReportsTab(summary: MentorSummary) {
                     Spacer(Modifier.height(10.dp))
                     LinearProgressIndicator(progress = { attendanceRate / 100f }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape), color = MC_Teal, trackColor = MC_Border)
                     Spacer(Modifier.height(8.dp))
-                    Text("$conducted of ${summary.myAttendance.size} sessions conducted · $attendanceRate%", fontSize = 12.sp, color = MC_TextSub)
+                    Text("$conducted of ${eligibleSessions.size} sessions completed · $attendanceRate%", fontSize = 12.sp, color = MC_TextSub)
                 }
             }
         }
@@ -1809,6 +1988,7 @@ private fun MentorScheduleTab(
     onRescheduleSession: (String, String, String, String, String) -> Unit,
     onCancelSession: (String, String) -> Unit
 ) {
+    val semanticColors = sureSemanticColors()
     var showCreate by remember { mutableStateOf(false) }
     var rescheduling by remember { mutableStateOf<AttendanceDto?>(null) }
     var cancelling by remember { mutableStateOf<AttendanceDto?>(null) }
@@ -1842,8 +2022,8 @@ private fun MentorScheduleTab(
             items(sessions.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime }), key = { it.id }) { session ->
                 val cohort = cohorts.firstOrNull { it.id == session.cohort }
                 val (time, period) = displayTime(session.startTime)
-                val completed = session.conducted || session.classStatus.equals("COMPLETED", true) || session.effectiveStatus.equals("COMPLETED", true)
-                val isCancelled = session.classStatus.equals("CANCELLED", true)
+                val completed = session.isCompletedSession()
+                val isCancelled = session.isCancelledSession()
                 val isRescheduled = session.classStatus.equals("RESCHEDULED", true)
 
                 Card(colors = CardDefaults.cardColors(containerColor = MC_Surface), shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border), modifier = Modifier.fillMaxWidth()) {
@@ -1861,9 +2041,9 @@ private fun MentorScheduleTab(
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = when {
-                                    isCancelled -> Color(0xFFFEE2E2)
-                                    completed -> Color(0xFFD1FAE5)
-                                    isRescheduled -> Color(0xFFFEF3C7)
+                                    isCancelled -> MaterialTheme.colorScheme.errorContainer
+                                    completed -> semanticColors.successContainer
+                                    isRescheduled -> semanticColors.warningContainer
                                     else -> MC_ActivePill
                                 }
                             ) {
@@ -1877,9 +2057,9 @@ private fun MentorScheduleTab(
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = when {
-                                        isCancelled -> Color(0xFFDC2626)
-                                        completed -> MC_Teal
-                                        isRescheduled -> Color(0xFFD97706)
+                                        isCancelled -> MaterialTheme.colorScheme.onErrorContainer
+                                        completed -> semanticColors.onSuccessContainer
+                                        isRescheduled -> semanticColors.onWarningContainer
                                         else -> MC_Primary
                                     },
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -2029,23 +2209,13 @@ private fun CreateMentorClassDialog(
         ).show()
     }
 
-    val timePattern = Regex("(?:[01]\\d|2[0-3]):[0-5]\\d")
-    val validTimeRange = if (timePattern.matches(startTime) && timePattern.matches(endTime)) {
-        val startMinutes = startTime.substringBefore(":").toInt() * 60 + startTime.substringAfter(":").toInt()
-        val endMinutes = endTime.substringBefore(":").toInt() * 60 + endTime.substringAfter(":").toInt()
-        endMinutes > startMinutes
-    } else false
+    val timeError = remember(startTime, endTime) {
+        ClassSchedulePolicy.getTimeRangeError(startTime, endTime)
+    }
+    val validTimeRange = startTime.isNotBlank() && endTime.isNotBlank() && timeError == null
 
     val conflict = remember(selectedCohort, date, startTime, endTime, sessions) {
-        if (date.isBlank() || startTime.isBlank() || endTime.isBlank()) null
-        else {
-            sessions.firstOrNull { s ->
-                s.cohort == selectedCohort &&
-                    s.date == date &&
-                    !s.classStatus.equals("CANCELLED", true) &&
-                    isClassTimeOverlapping(startTime, endTime, s.startTime?.take(5).orEmpty(), s.endTime?.take(5).orEmpty())
-            }
-        }
+        ClassSchedulePolicy.findConflict(sessions, selectedCohort, date, startTime, endTime)
     }
 
     AlertDialog(
@@ -2081,16 +2251,16 @@ private fun CreateMentorClassDialog(
                     label = "End time",
                     placeholder = "Select end time",
                     icon = Icons.Default.AccessTime,
-                    isError = endTime.isNotBlank() && !validTimeRange,
-                    supportingText = if (endTime.isNotBlank() && !validTimeRange) "End time must be after start time" else null,
+                    isError = timeError != null,
+                    supportingText = timeError,
                     onClick = { showTimePicker(endTime, false) { endTime = it } }
                 )
 
                 if (conflict != null) {
-                    Surface(color = Color(0xFFFEE2E2), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Text(
                             "Schedule Conflict: A class (${conflict.sessionTitle ?: "Session"}) is already scheduled on $date from ${conflict.startTime?.take(5)} to ${conflict.endTime?.take(5)}.",
-                            color = Color(0xFFDC2626), fontSize = 11.sp, modifier = Modifier.padding(8.dp)
+                            color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 11.sp, modifier = Modifier.padding(8.dp)
                         )
                     }
                 }
@@ -2168,21 +2338,23 @@ private fun MentorRescheduleClassDialog(
     }
 
     val conflict = remember(session.cohort, date, start, end, sessions, session.id) {
-        if (date.isBlank() || start.isBlank() || end.isBlank()) null
-        else {
-            sessions.firstOrNull { s ->
-                s.id != session.id &&
-                    s.cohort == session.cohort &&
-                    s.date == date &&
-                    !s.classStatus.equals("CANCELLED", true) &&
-                    isClassTimeOverlapping(start, end, s.startTime?.take(5).orEmpty(), s.endTime?.take(5).orEmpty())
-            }
-        }
+        ClassSchedulePolicy.findConflict(
+            sessions,
+            session.cohort ?: session.cohortCode.orEmpty(),
+            date,
+            start,
+            end,
+            session.id
+        )
     }
 
+    val reschedTimeError = remember(start, end) {
+        ClassSchedulePolicy.getTimeRangeError(start, end)
+    }
     val valid = date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) &&
-        start.matches(Regex("\\d{2}:\\d{2}")) &&
-        end.matches(Regex("\\d{2}:\\d{2}")) &&
+        start.isNotBlank() &&
+        end.isNotBlank() &&
+        reschedTimeError == null &&
         conflict == null
 
     AlertDialog(
@@ -2219,10 +2391,10 @@ private fun MentorRescheduleClassDialog(
                     }
                 }
                 if (conflict != null) {
-                    Surface(color = Color(0xFFFEE2E2), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Text(
                             "Conflict: Another class is scheduled on $date from ${conflict.startTime?.take(5)} to ${conflict.endTime?.take(5)}.",
-                            color = Color(0xFFDC2626), fontSize = 11.sp, modifier = Modifier.padding(8.dp)
+                            color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 11.sp, modifier = Modifier.padding(8.dp)
                         )
                     }
                 }
@@ -2261,7 +2433,8 @@ private fun MentorDateTimePickerField(
             trailingIcon = { Icon(icon, contentDescription = null, tint = if (isError) MaterialTheme.colorScheme.error else MC_Primary) },
             isError = isError,
             supportingText = supportingText?.let { message -> { Text(message) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = SureFormDefaults.outlinedTextFieldColors()
         )
         Box(
             Modifier
@@ -2465,6 +2638,8 @@ private fun MentorInlineEmpty(title: String, subtitle: String, icon: ImageVector
 @Composable
 private fun MentorGradingTab(
     submissions: List<SubmissionDto>,
+    students: List<StudentProfileDto> = emptyList(),
+    users: List<UserDto> = emptyList(),
     readOnly: Boolean,
     onGrade: (SubmissionDto, String, String) -> Unit
 ) {
@@ -2505,7 +2680,8 @@ private fun MentorGradingTab(
                         Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0xFFFEF3C7)), contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.Assignment, null, tint = MC_Amber, modifier = Modifier.size(22.dp)) }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Student: ${submission.student ?: "Unknown"}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MC_TextTitle)
+                            val studentDisplayName = resolveStudentNameFromId(submission.student, students, users)
+                            Text("Student: $studentDisplayName", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MC_TextTitle)
                             Text("Assignment ID: ${submission.assignment ?: "-"}", fontSize = 12.sp, color = MC_TextSub)
                         }
                         Surface(shape = RoundedCornerShape(8.dp), color = if (submission.evaluated) Color(0xFFD1FAE5) else Color(0xFFFEF3C7)) {
@@ -2525,7 +2701,7 @@ private fun MentorGradingTab(
                             Text("🔍 Commit: ${submission.commitSha.take(7)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8), modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                         }
                     }
-                    if (submission.isLate) { Spacer(Modifier.height(4.dp)); Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFFEE2E2)) { Text("Late submission", fontSize = 10.sp, color = MC_Red, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) } }
+                    if (submission.isLate) { Spacer(Modifier.height(4.dp)); Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.errorContainer) { Text("Late submission", fontSize = 10.sp, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) } }
                 }
             }
         }
@@ -2538,11 +2714,12 @@ private fun MentorGradingTab(
 
         AlertDialog(
             onDismissRequest = { selectedSubmission = null },
-            icon = { Icon(Icons.Default.Grading, null, tint = MC_Primary) },
+            icon = { Icon(Icons.AutoMirrored.Filled.Grading, null, tint = MC_Primary) },
             title = { Text(if (canEdit) "Grade submission" else "Submission details") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Student: ${submission.studentName ?: submission.studentCode ?: submission.student ?: "Unknown"}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MC_TextTitle)
+                    val studentDisplayName = resolveStudentNameFromId(submission.student, students, users)
+                    Text("Student: $studentDisplayName", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MC_TextTitle)
                     
                     if (!commitUrl.isNullOrBlank()) {
                         Surface(
@@ -2575,7 +2752,7 @@ private fun MentorGradingTab(
                                         color = Color(0xFF94A3B8)
                                     )
                                 }
-                                Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -3281,6 +3458,8 @@ private fun MentorInterviewsTab(
     cohorts: List<CohortDto>,
     interviews: List<PreScreeningInterviewDto>,
     applications: List<ApplicationDto>,
+    students: List<StudentProfileDto> = emptyList(),
+    users: List<UserDto> = emptyList(),
     readOnly: Boolean,
     onScheduleInterview: (appId: String, scheduledAt: String, meetingLink: String, notes: String) -> Unit,
     onEvaluateInterview: (interviewId: String, marks: String, status: String, feedback: String) -> Unit
@@ -3363,12 +3542,7 @@ private fun MentorInterviewsTab(
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MC_Primary,
-                    unfocusedBorderColor = MC_Border,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White
-                )
+                colors = SureFormDefaults.outlinedTextFieldColors()
             )
         }
 
@@ -3389,10 +3563,10 @@ private fun MentorInterviewsTab(
                     val isSelected = selectedFilter == key
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = if (isSelected) MC_Primary else Color(0xFFF1F5F9),
+                        color = if (isSelected) MC_Primary else MaterialTheme.colorScheme.surfaceVariant,
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
-                            if (isSelected) MC_Primary else Color(0xFFE2E8F0)
+                            if (isSelected) MC_Primary else MC_Border
                         ),
                         modifier = Modifier.clickable { selectedFilter = key }
                     ) {
@@ -3464,6 +3638,8 @@ private fun MentorInterviewsTab(
                 CandidateInterviewCard(
                     interview = interview,
                     applications = applications,
+                    students = students,
+                    users = users,
                     readOnly = readOnly,
                     onJoinCall = { link ->
                         try {
@@ -3485,6 +3661,8 @@ private fun MentorInterviewsTab(
         ScheduleMentorInterviewDialog(
             cohorts = cohorts,
             applications = applications,
+            students = students,
+            users = users,
             onDismiss = { showScheduleDialog = false },
             onSchedule = { appId, scheduledAt, meetingLink, notes ->
                 showScheduleDialog = false
@@ -3498,6 +3676,8 @@ private fun MentorInterviewsTab(
         ScheduleMentorInterviewDialog(
             cohorts = cohorts,
             applications = applications,
+            students = students,
+            users = users,
             initialApplicationId = target.application,
             initialScheduledAt = target.scheduledAt.orEmpty(),
             initialMeetingLink = target.meetingLink.orEmpty(),
@@ -3516,6 +3696,8 @@ private fun MentorInterviewsTab(
         EvaluateCandidateInterviewDialog(
             interview = target,
             applications = applications,
+            students = students,
+            users = users,
             onDismiss = { evaluatingInterview = null },
             onSubmit = { marks, status, feedback ->
                 evaluatingInterview = null
@@ -3525,15 +3707,22 @@ private fun MentorInterviewsTab(
     }
 }
 
-private fun formatApplicationDisplay(appId: String, applications: List<ApplicationDto>): String {
+private fun formatApplicationDisplay(
+    appId: String,
+    applications: List<ApplicationDto>,
+    students: List<StudentProfileDto> = emptyList(),
+    users: List<UserDto> = emptyList()
+): String {
     if (appId.isBlank()) return "Candidate Application"
     val app = applications.firstOrNull { it.id.equals(appId, ignoreCase = true) }
     if (app != null) {
+        val studentName = resolveStudentNameFromId(app.student, students, users)
+        val appNum = if (!app.applicationNumber.isNullOrBlank()) "#${app.applicationNumber}" else ""
+        if (studentName != "Student") {
+            return if (appNum.isNotBlank()) "$studentName ($appNum)" else studentName
+        }
         if (!app.applicationNumber.isNullOrBlank()) {
             return "Application #${app.applicationNumber}"
-        }
-        if (!app.student.isNullOrBlank()) {
-            return "Applicant: ${app.student}"
         }
     }
     val cleanId = if (appId.contains("-") || appId.length > 8) {
@@ -3548,20 +3737,23 @@ private fun formatApplicationDisplay(appId: String, applications: List<Applicati
 private fun CandidateInterviewCard(
     interview: PreScreeningInterviewDto,
     applications: List<ApplicationDto> = emptyList(),
+    students: List<StudentProfileDto> = emptyList(),
+    users: List<UserDto> = emptyList(),
     readOnly: Boolean,
     onJoinCall: (String) -> Unit,
     onEvaluate: () -> Unit,
     onReschedule: () -> Unit
 ) {
+    val semanticColors = sureSemanticColors()
     val isEvaluated = !interview.score.isNullOrBlank() || interview.status.equals("PASSED", true) || interview.status.equals("FAILED", true)
     val statusUpper = (interview.status ?: "SCHEDULED").uppercase(Locale.US)
 
     val (statusLabel, statusBg, statusColor) = when {
-        statusUpper == "PASSED" -> Triple("QUALIFIED / PASSED", Color(0xFFD1FAE5), Color(0xFF065F46))
-        statusUpper == "FAILED" -> Triple("NOT QUALIFIED", Color(0xFFFEE2E2), Color(0xFF991B1B))
-        statusUpper == "RESCHEDULED" -> Triple("RESCHEDULED", Color(0xFFEDE9FE), Color(0xFF5B21B6))
-        isEvaluated -> Triple("EVALUATED", Color(0xFFE0F2FE), Color(0xFF0369A1))
-        else -> Triple("SCHEDULED", Color(0xFFE0E7FF), Color(0xFF3730A3))
+        statusUpper == "PASSED" -> Triple("QUALIFIED / PASSED", semanticColors.successContainer, semanticColors.onSuccessContainer)
+        statusUpper == "FAILED" -> Triple("NOT QUALIFIED", MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
+        statusUpper == "RESCHEDULED" -> Triple("RESCHEDULED", semanticColors.warningContainer, semanticColors.onWarningContainer)
+        isEvaluated -> Triple("EVALUATED", semanticColors.infoContainer, semanticColors.onInfoContainer)
+        else -> Triple("SCHEDULED", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
     }
 
     Card(
@@ -3584,7 +3776,7 @@ private fun CandidateInterviewCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFEDE9FE),
+                        color = MaterialTheme.colorScheme.primaryContainer,
                         modifier = Modifier.size(36.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -3599,7 +3791,7 @@ private fun CandidateInterviewCard(
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = formatApplicationDisplay(interview.application, applications),
+                            text = formatApplicationDisplay(interview.application, applications, students, users),
                             fontSize = 14.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = MC_TextTitle
@@ -3653,8 +3845,8 @@ private fun CandidateInterviewCard(
                 Spacer(Modifier.height(8.dp))
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFF0FDF4),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                    color = semanticColors.successContainer,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -3664,7 +3856,7 @@ private fun CandidateInterviewCard(
                         Icon(
                             Icons.Default.Videocam,
                             contentDescription = null,
-                            tint = Color(0xFF16A34A),
+                            tint = semanticColors.onSuccessContainer,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -3672,7 +3864,7 @@ private fun CandidateInterviewCard(
                             text = interview.meetingLink,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFF15803D),
+                            color = semanticColors.onSuccessContainer,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
@@ -3696,8 +3888,8 @@ private fun CandidateInterviewCard(
             if (!interview.score.isNullOrBlank() || !interview.feedback.isNullOrBlank()) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFF8FAFC),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
@@ -3733,20 +3925,20 @@ private fun CandidateInterviewCard(
             } else {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFFFFBEB),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    color = semanticColors.warningContainer,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.PendingActions, null, tint = Color(0xFFB45309), modifier = Modifier.size(15.dp))
+                        Icon(Icons.Default.PendingActions, null, tint = semanticColors.onWarningContainer, modifier = Modifier.size(15.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
                             text = "Interview scheduled • Pending candidate evaluation",
                             fontSize = 11.5.sp,
-                            color = Color(0xFF92400E)
+                            color = semanticColors.onWarningContainer
                         )
                     }
                 }
@@ -3794,6 +3986,8 @@ private fun CandidateInterviewCard(
 private fun ScheduleMentorInterviewDialog(
     cohorts: List<CohortDto>,
     applications: List<ApplicationDto> = emptyList(),
+    students: List<StudentProfileDto> = emptyList(),
+    users: List<UserDto> = emptyList(),
     initialApplicationId: String = "",
     initialScheduledAt: String = "",
     initialMeetingLink: String = "",
@@ -3869,8 +4063,8 @@ private fun ScheduleMentorInterviewDialog(
                 if (isReschedule) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFF1F5F9),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -3887,7 +4081,7 @@ private fun ScheduleMentorInterviewDialog(
                                     color = MC_TextSub
                                 )
                                 Text(
-                                    text = formatApplicationDisplay(applicationId, applications),
+                                    text = formatApplicationDisplay(applicationId, applications, students, users),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MC_TextTitle
@@ -3902,7 +4096,7 @@ private fun ScheduleMentorInterviewDialog(
                             val displayText = selectedApp?.let {
                                 val num = it.applicationNumber ?: ("APP-" + it.id.take(8).uppercase())
                                 "$num · ${it.student ?: "Applicant"}"
-                            } ?: if (applicationId.isNotBlank()) formatApplicationDisplay(applicationId, applications) else ""
+                            } ?: if (applicationId.isNotBlank()) formatApplicationDisplay(applicationId, applications, students, users) else ""
 
                             OutlinedTextField(
                                 value = displayText,
@@ -4009,6 +4203,8 @@ private fun ScheduleMentorInterviewDialog(
 private fun EvaluateCandidateInterviewDialog(
     interview: PreScreeningInterviewDto,
     applications: List<ApplicationDto> = emptyList(),
+    students: List<StudentProfileDto> = emptyList(),
+    users: List<UserDto> = emptyList(),
     onDismiss: () -> Unit,
     onSubmit: (marks: String, status: String, feedback: String) -> Unit
 ) {
@@ -4022,7 +4218,7 @@ private fun EvaluateCandidateInterviewDialog(
             Column {
                 Text("Candidate Interview Evaluation", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = MC_TextTitle)
                 Text(
-                    text = formatApplicationDisplay(interview.application, applications),
+                    text = formatApplicationDisplay(interview.application, applications, students, users),
                     fontSize = 12.sp,
                     color = MC_Primary,
                     fontWeight = FontWeight.SemiBold
@@ -4069,10 +4265,10 @@ private fun EvaluateCandidateInterviewDialog(
                         val isSelected = status == code
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = if (isSelected) color else Color(0xFFF1F5F9),
+                            color = if (isSelected) color else MaterialTheme.colorScheme.surfaceVariant,
                             border = androidx.compose.foundation.BorderStroke(
                                 1.2.dp,
-                                if (isSelected) color else Color(0xFFCBD5E1)
+                                if (isSelected) color else MaterialTheme.colorScheme.outlineVariant
                             ),
                             modifier = Modifier
                                 .weight(1f)
@@ -4082,7 +4278,7 @@ private fun EvaluateCandidateInterviewDialog(
                                 text = label,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.White else Color(0xFF334155),
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
                                 maxLines = 1,

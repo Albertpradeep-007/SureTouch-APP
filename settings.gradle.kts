@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SureTouch APP"
+rootProject.name = "SURE ProEd Touch"
 include(":app")

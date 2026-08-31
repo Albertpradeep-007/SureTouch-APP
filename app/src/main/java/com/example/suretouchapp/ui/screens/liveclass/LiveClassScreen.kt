@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.model.AttendanceDto
+import com.example.suretouchapp.data.repository.LiveClassSelector
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 import kotlinx.coroutines.launch
@@ -48,12 +49,12 @@ import kotlinx.coroutines.launch
 // ELEGANT COLOR TOKENS (MATCHING SURE TRUST THEME)
 // =======================================================
 private val ColorDarkHeader = Color(0xFF262626)
-private val ColorCanvasBg = Color(0xFFFAFAFA)
-private val ColorPrimaryPurple = Color(0xFF6821A8)
-private val ColorPurpleLight = Color(0xFFF3E8FF)
-private val ColorTextDark = Color(0xFF1E293B)
-private val ColorTextSub = Color(0xFF475569)
-private val ColorBorderHairline = Color(0xFFE2E8F0)
+private val ColorCanvasBg @Composable get() = MaterialTheme.colorScheme.background
+private val ColorPrimaryPurple @Composable get() = MaterialTheme.colorScheme.primary
+private val ColorPurpleLight @Composable get() = MaterialTheme.colorScheme.primaryContainer
+private val ColorTextDark @Composable get() = MaterialTheme.colorScheme.onSurface
+private val ColorTextSub @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val ColorBorderHairline @Composable get() = MaterialTheme.colorScheme.outlineVariant
 private val ColorLiveRed = Color(0xFFDC2626)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +75,11 @@ fun LiveClassScreen(
             if (response.isSuccessful) {
                 val list = response.body()?.results.orEmpty()
                 SureProEdNotificationManager.syncTimetableAndClasses(context, list)
-                list.firstOrNull { !it.meetingLink.isNullOrBlank() } ?: list.firstOrNull()
+                val cohort = tokenManager.getCohortCode().takeIf(String::isNotBlank)
+                LiveClassSelector.activeSession(
+                    sessions = list,
+                    allowedCohorts = cohort?.let(::setOf).orEmpty()
+                )
             } else null
         } catch (_: Exception) { null }
         isLoading = false
@@ -139,18 +144,6 @@ fun LiveClassScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Translucent SURE TRUST Official Logo Watermark
-            Image(
-                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .size(280.dp)
-                    .align(Alignment.Center)
-                    .padding(top = 40.dp)
-                    .graphicsLayer { alpha = 0.08f }
-            )
-
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
@@ -163,7 +156,7 @@ fun LiveClassScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         border = BorderStroke(1.dp, ColorBorderHairline),
                         elevation = CardDefaults.cardElevation(3.dp)
                     ) {
@@ -176,38 +169,40 @@ fun LiveClassScreen(
                             ) {
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFFFEE2E2)
+                                    color = if (googleMeetUrl.isBlank()) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(9.dp)
-                                                .graphicsLayer { alpha = alphaPulse }
-                                                .clip(CircleShape)
-                                                .background(ColorLiveRed)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                        if (googleMeetUrl.isNotBlank()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(9.dp)
+                                                    .graphicsLayer { alpha = alphaPulse }
+                                                    .clip(CircleShape)
+                                                    .background(ColorLiveRed)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                        }
                                         Text(
                                             text = if (googleMeetUrl.isBlank()) "NO LIVE CLASS" else "LIVE NOW",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = ColorLiveRed
+                                            color = if (googleMeetUrl.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else ColorLiveRed
                                         )
                                     }
                                 }
 
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = ColorPurpleLight
+                                    color = MaterialTheme.colorScheme.primaryContainer
                                 ) {
                                     Text(
                                         text = "Cohort: ${tokenManager.getCohortCode().ifBlank { "Pending" }}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = ColorPrimaryPurple,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                     )
                                 }
@@ -217,7 +212,7 @@ fun LiveClassScreen(
 
                             // Course Title & Code
                             Text(
-                                text = liveSession?.sessionTitle ?: "No live class scheduled",
+                                text = liveSession?.sessionTitle ?: "No Live Class Scheduled",
                                 fontSize = 17.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ColorTextDark
@@ -225,12 +220,12 @@ fun LiveClassScreen(
 
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            // Module Title
+                            // Module Title / Notes
                             Text(
-                                text = liveSession?.notes ?: "The next live session will appear after it is published.",
+                                text = liveSession?.notes ?: "Live session details will update here once your mentor starts or schedules a class.",
                                 fontSize = 13.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = ColorPrimaryPurple
+                                fontWeight = FontWeight.Normal,
+                                color = ColorTextSub
                             )
 
                             Spacer(modifier = Modifier.height(12.dp))
@@ -254,7 +249,7 @@ fun LiveClassScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = liveSession?.conductedBy ?: "Trainer pending",
+                                        text = liveSession?.conductedByName ?: "Trainer pending",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = ColorTextSub
@@ -281,7 +276,7 @@ fun LiveClassScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = if (googleMeetUrl.isBlank()) "Waiting for a backend session link" else "Online class • Backend synchronized",
+                                text = if (googleMeetUrl.isBlank()) "Waiting for a live session link from trainer" else "Online class • Google Meet synchronized",
                                 fontSize = 12.sp,
                                 color = ColorTextSub
                             )
@@ -299,7 +294,10 @@ fun LiveClassScreen(
                                     }
                                 },
                                 enabled = googleMeetUrl.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(containerColor = ColorPrimaryPurple),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ColorPrimaryPurple,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                                ),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -308,13 +306,15 @@ fun LiveClassScreen(
                                 Icon(
                                     imageVector = Icons.Default.VideoCall,
                                     contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (googleMeetUrl.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = if (isAgreed) "Join Google Meet Class →" else "Join Live Class →",
+                                    text = if (googleMeetUrl.isBlank()) "No Active Class to Join" else if (isAgreed) "Join Google Meet Class →" else "Join Live Class →",
                                     fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (googleMeetUrl.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                 )
                             }
                         }
@@ -333,7 +333,7 @@ fun LiveClassScreen(
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, ColorBorderHairline),
                             elevation = CardDefaults.cardElevation(2.dp)
                         ) {
@@ -360,7 +360,7 @@ fun LiveClassScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFFF1F5F9))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
                                         .border(1.dp, ColorBorderHairline, RoundedCornerShape(8.dp))
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -412,7 +412,7 @@ fun LiveClassScreen(
             AlertDialog(
                 onDismissRequest = { showGuidelinesDialog = false },
                 shape = RoundedCornerShape(16.dp),
-                containerColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.surface,
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -426,7 +426,7 @@ fun LiveClassScreen(
                             text = "Live Class Guidelines & Rules",
                             fontSize = 16.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E3A8A)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
@@ -439,8 +439,8 @@ fun LiveClassScreen(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
@@ -448,10 +448,10 @@ fun LiveClassScreen(
                                            "2. Camera Mandatory: Keep your video/camera ON throughout the live class session.\n\n" +
                                            "3. Quiet Workspace: Do NOT travel while attending class; sit in a quiet, professional environment.\n\n" +
                                            "4. Mic & Doubts: Mute microphone upon entry; use 'Raise Hand' feature for Q&A.\n\n" +
-                                           "5. Attendance: Minimum 75% class duration attendance required for log credit.\n\n" +
+                                           "5. Attendance: Attend at least 40% of the measured class duration to be marked present, as defined by the server attendance policy.\n\n" +
                                            "6. Strict Disciplinary Action: Any unfair practices, disruptive misconduct, or unprofessional behavior will result in immediate account suspension and complete termination from the cohort.",
                                     fontSize = 12.sp,
-                                    color = Color(0xFF1E40AF),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     lineHeight = 18.sp
                                 )
                             }
@@ -493,7 +493,7 @@ fun LiveClassScreen(
                         enabled = dialogCheckboxChecked,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ColorPrimaryPurple,
-                            disabledContainerColor = Color(0xFFCBD5E1)
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {

@@ -49,7 +49,9 @@ import com.example.suretouchapp.data.model.TokenObtainRequest
 import com.example.suretouchapp.ui.components.SureTrustLogo
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.theme.SureBackgroundDark
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 import com.example.suretouchapp.ui.theme.SurePurpleDark
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import com.example.suretouchapp.data.ota.AppUpdateManager
 import com.example.suretouchapp.data.ota.UpdateState
 import androidx.compose.foundation.clickable
@@ -153,6 +155,7 @@ fun AuthScreen(
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+    val semanticColors = sureSemanticColors()
 
     val updateState by AppUpdateManager.updateState.collectAsState()
 
@@ -237,7 +240,7 @@ fun AuthScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "SURE ProEd",
+                        text = "SURE ProEd Touch",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.primary,
@@ -290,7 +293,8 @@ fun AuthScreen(
                             ),
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         OutlinedTextField(
@@ -315,7 +319,8 @@ fun AuthScreen(
                             },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = SureFormDefaults.outlinedTextFieldColors()
                         )
                         TextButton(
                             onClick = {
@@ -475,8 +480,8 @@ fun AuthScreen(
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFF3E8FF),
-                                border = BorderStroke(1.dp, Color(0xFFD8B4FE))
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                             ) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Row(
@@ -488,7 +493,7 @@ fun AuthScreen(
                                             Icon(
                                                 imageVector = Icons.Default.Lock,
                                                 contentDescription = null,
-                                                tint = SurePurpleDark,
+                                                tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
@@ -496,7 +501,7 @@ fun AuthScreen(
                                                 text = "Details Locked for Verification",
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = SurePurpleDark
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
                                             )
                                         }
                                         TextButton(
@@ -512,7 +517,7 @@ fun AuthScreen(
                                                 text = "Edit Email",
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = SurePurpleDark
+                                                color = MaterialTheme.colorScheme.primary
                                             )
                                         }
                                     }
@@ -563,6 +568,7 @@ fun AuthScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 shape = RoundedCornerShape(12.dp),
+                                colors = SureFormDefaults.outlinedTextFieldColors(),
                                 textStyle = LocalTextStyle.current.copy(
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
@@ -746,7 +752,8 @@ fun AuthScreen(
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -759,7 +766,8 @@ fun AuthScreen(
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -789,21 +797,22 @@ fun AuthScreen(
                                             Icon(
                                                 imageVector = Icons.Default.CheckCircle,
                                                 contentDescription = "Email Verified",
-                                                tint = Color(0xFF16A34A)
+                                                tint = semanticColors.success
                                             )
                                         }
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
-                                    shape = RoundedCornerShape(12.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = SureFormDefaults.outlinedTextFieldColors()
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
 
                                 if (isEmailVerified) {
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = Color(0xFFDCFCE7),
-                                        border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                        color = semanticColors.successContainer,
+                                        border = BorderStroke(1.dp, semanticColors.success.copy(alpha = 0.55f)),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Row(
@@ -814,7 +823,7 @@ fun AuthScreen(
                                             Icon(
                                                 imageVector = Icons.Default.CheckCircle,
                                                 contentDescription = null,
-                                                tint = Color(0xFF15803D),
+                                                tint = semanticColors.success,
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
@@ -822,7 +831,7 @@ fun AuthScreen(
                                                 text = "Email Verified",
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF15803D)
+                                                color = semanticColors.onSuccessContainer
                                             )
                                         }
                                     }
@@ -921,8 +930,8 @@ fun AuthScreen(
                                             .height(44.dp),
                                         enabled = !isLoading,
                                         shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = SurePurpleDark),
-                                        border = BorderStroke(1.dp, SurePurpleDark)
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
                                     ) {
                                         if (isLoading) {
                                             SureTrustLoadingIndicator(size = 24.dp, logoSize = 15.dp)
@@ -967,7 +976,8 @@ fun AuthScreen(
                                 ),
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -983,7 +993,7 @@ fun AuthScreen(
                                     readOnly = true,
                                     label = { Text("Gender *") },
                                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isGenderDropdownExpanded) },
-                                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                                    colors = SureFormDefaults.outlinedTextFieldColors(),
                                     modifier = Modifier
                                         .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                         .fillMaxWidth(),
@@ -1017,14 +1027,15 @@ fun AuthScreen(
                                         Icon(
                                             imageVector = Icons.Default.DateRange,
                                             contentDescription = "Select Date of Birth",
-                                            tint = SurePurpleDark
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 },
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -1040,7 +1051,7 @@ fun AuthScreen(
                                     readOnly = true,
                                     label = { Text("Highest Education / Degree *") },
                                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isEducationDropdownExpanded) },
-                                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                                    colors = SureFormDefaults.outlinedTextFieldColors(),
                                     modifier = Modifier
                                         .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                         .fillMaxWidth(),
@@ -1096,7 +1107,8 @@ fun AuthScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -1124,7 +1136,8 @@ fun AuthScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = SureFormDefaults.outlinedTextFieldColors()
                             )
                             Spacer(modifier = Modifier.height(16.dp))
 
@@ -1132,8 +1145,8 @@ fun AuthScreen(
                             if (!isEmailVerified) {
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFFFFBEB),
-                                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                    color = semanticColors.warningContainer,
+                                    border = BorderStroke(1.dp, semanticColors.warning.copy(alpha = 0.55f)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -1149,7 +1162,7 @@ fun AuthScreen(
                                             text = "Please verify your email above before creating your account.",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFFB45309),
+                                            color = semanticColors.onWarningContainer,
                                             lineHeight = 16.sp
                                         )
                                     }
@@ -1309,7 +1322,7 @@ fun AuthScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = msg,
-                            color = Color(0xFF15803D),
+                            color = semanticColors.success,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -1320,8 +1333,8 @@ fun AuthScreen(
                         val updateInfo = (updateState as UpdateState.UpdateAvailable).info
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFF3E8FF),
-                            border = BorderStroke(1.dp, Color(0xFFA855F7)),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 16.dp)
@@ -1338,7 +1351,7 @@ fun AuthScreen(
                                 Icon(
                                     imageVector = Icons.Default.SystemUpdate,
                                     contentDescription = "Update Available",
-                                    tint = Color(0xFF7E22CE),
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(22.dp)
                                 )
                                 Spacer(Modifier.width(10.dp))
@@ -1347,18 +1360,18 @@ fun AuthScreen(
                                         text = "New Update Available: v${updateInfo.versionName}",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF581C87)
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                     Text(
                                         text = "Tap to install the latest version now",
                                         fontSize = 11.sp,
-                                        color = Color(0xFF7E22CE)
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                 }
                                 Icon(
                                     imageVector = Icons.Default.ArrowForward,
                                     contentDescription = null,
-                                    tint = Color(0xFF7E22CE),
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -1380,7 +1393,7 @@ fun AuthScreen(
                         text = if (updateState is UpdateState.UpdateAvailable) {
                             "⚠️ Installed: v${AppUpdateManager.currentVersionName} • Latest: v${(updateState as UpdateState.UpdateAvailable).info.versionName}"
                         } else {
-                            "SURE ProEd v${AppUpdateManager.currentVersionName} • Latest version"
+                            "SURE ProEd Touch v${AppUpdateManager.currentVersionName} • Latest version"
                         },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
@@ -1556,7 +1569,7 @@ private fun LinkedInOAuthSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         dragHandle = {
             Box(
@@ -1565,7 +1578,7 @@ private fun LinkedInOAuthSheet(
                     .width(40.dp)
                     .height(4.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFE2E8F0))
+                    .background(MaterialTheme.colorScheme.outlineVariant)
             )
         }
     ) {
@@ -1597,7 +1610,7 @@ private fun LinkedInOAuthSheet(
                         text = "LinkedIn Sign In",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -1612,7 +1625,7 @@ private fun LinkedInOAuthSheet(
                     color = Color(0xFF0A66C2)
                 )
             } else {
-                HorizontalDivider(color = Color(0xFFE2E8F0))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
 
             AndroidView(
@@ -1717,6 +1730,7 @@ private fun ForgotPasswordSheet(
     var resendCountdown by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val semanticColors = sureSemanticColors()
 
     LaunchedEffect(resendCountdown) {
         if (resendCountdown > 0) {
@@ -1727,7 +1741,7 @@ private fun ForgotPasswordSheet(
 
     ModalBottomSheet(
         onDismissRequest = { if (!isLoading) onDismiss() },
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(
@@ -1736,7 +1750,7 @@ private fun ForgotPasswordSheet(
                     .width(42.dp)
                     .height(4.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFE2E8F0))
+                    .background(MaterialTheme.colorScheme.outlineVariant)
             )
         }
     ) {
@@ -1757,14 +1771,14 @@ private fun ForgotPasswordSheet(
             ) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFFF3E8FF),
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.size(48.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             if (isOtpSent) Icons.Default.MarkEmailRead else Icons.Default.LockReset,
                             contentDescription = null,
-                            tint = SurePurpleDark,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(26.dp)
                         )
                     }
@@ -1775,7 +1789,7 @@ private fun ForgotPasswordSheet(
                     enabled = !isLoading,
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF64748B))
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
@@ -1785,7 +1799,7 @@ private fun ForgotPasswordSheet(
                     text = if (isOtpSent) "Enter Verification Code" else "Reset Password",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Black,
-                    color = Color(0xFF0F172A)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = if (isOtpSent) {
@@ -1794,7 +1808,7 @@ private fun ForgotPasswordSheet(
                         "Enter your registered email address and we'll send you a 6-digit OTP to reset your password."
                     },
                     fontSize = 13.sp,
-                    color = Color(0xFF64748B),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp
                 )
             }
@@ -1802,8 +1816,8 @@ private fun ForgotPasswordSheet(
             // Step Indicator Badge
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = if (isOtpSent) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
-                border = BorderStroke(1.dp, if (isOtpSent) Color(0xFFA7F3D0) else Color(0xFFE2E8F0))
+                color = if (isOtpSent) semanticColors.successContainer else MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, if (isOtpSent) semanticColors.success.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1820,7 +1834,7 @@ private fun ForgotPasswordSheet(
                         text = if (isOtpSent) "Step 2 of 2: Verify OTP & Choose New Password" else "Step 1 of 2: Registered Email",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (isOtpSent) Color(0xFF065F46) else Color(0xFF475569)
+                        color = if (isOtpSent) semanticColors.onSuccessContainer else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -1829,13 +1843,13 @@ private fun ForgotPasswordSheet(
             errorMessage?.let { error ->
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFFEF2F2),
-                    border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.55f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = error,
-                        color = Color(0xFFDC2626),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -1846,13 +1860,13 @@ private fun ForgotPasswordSheet(
             infoMessage?.let { info ->
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFF0FDF4),
-                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                    color = semanticColors.successContainer,
+                    border = BorderStroke(1.dp, semanticColors.success.copy(alpha = 0.55f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = info,
-                        color = Color(0xFF16A34A),
+                        color = semanticColors.onSuccessContainer,
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -1867,7 +1881,7 @@ private fun ForgotPasswordSheet(
                     onValueChange = { email = it; errorMessage = null },
                     label = { Text("Registered Email Address") },
                     placeholder = { Text("e.g. yourname@example.com") },
-                    leadingIcon = { Icon(Icons.Default.Email, null, tint = SurePurpleDark) },
+                    leadingIcon = { Icon(Icons.Default.Email, null, tint = MaterialTheme.colorScheme.primary) },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Email,
                         imeAction = ImeAction.Done
@@ -1875,11 +1889,7 @@ private fun ForgotPasswordSheet(
                     keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SurePurpleDark,
-                        unfocusedBorderColor = Color(0xFFCBD5E1),
-                        focusedLabelColor = SurePurpleDark
-                    ),
+                    colors = SureFormDefaults.outlinedTextFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -1934,7 +1944,7 @@ private fun ForgotPasswordSheet(
                         "6-Digit Verification Code",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF334155)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     // Modern OTP Box Component
@@ -1956,14 +1966,14 @@ private fun ForgotPasswordSheet(
                             onClick = { isOtpSent = false; otp = "" },
                             contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text("← Change email", fontSize = 12.sp, color = Color(0xFF64748B))
+                            Text("← Change email", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
 
                         if (resendCountdown > 0) {
                             Text(
                                 "Resend code in ${resendCountdown}s",
                                 fontSize = 12.sp,
-                                color = Color(0xFF94A3B8),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.SemiBold
                             )
                         } else {
@@ -1993,19 +2003,19 @@ private fun ForgotPasswordSheet(
                                 enabled = !isLoading,
                                 contentPadding = PaddingValues(0.dp)
                             ) {
-                                Text("Resend Code", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SurePurpleDark)
+                                Text("Resend Code", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
 
-                    HorizontalDivider(color = Color(0xFFF1F5F9))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                     // New Password Fields
                     Text(
                         "Create New Password",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF334155)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     OutlinedTextField(
@@ -2013,13 +2023,13 @@ private fun ForgotPasswordSheet(
                         onValueChange = { newPassword = it; errorMessage = null },
                         label = { Text("New Password") },
                         placeholder = { Text("At least 8 characters") },
-                        leadingIcon = { Icon(Icons.Default.Lock, null, tint = SurePurpleDark) },
+                        leadingIcon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
                         trailingIcon = {
                             IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
                                 Icon(
                                     if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                     contentDescription = null,
-                                    tint = Color(0xFF94A3B8)
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         },
@@ -2030,11 +2040,7 @@ private fun ForgotPasswordSheet(
                         ),
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SurePurpleDark,
-                            unfocusedBorderColor = Color(0xFFCBD5E1),
-                            focusedLabelColor = SurePurpleDark
-                        ),
+                        colors = SureFormDefaults.outlinedTextFieldColors(),
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -2042,13 +2048,13 @@ private fun ForgotPasswordSheet(
                         value = confirmPassword,
                         onValueChange = { confirmPassword = it; errorMessage = null },
                         label = { Text("Confirm New Password") },
-                        leadingIcon = { Icon(Icons.Default.Lock, null, tint = SurePurpleDark) },
+                        leadingIcon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
                         trailingIcon = {
                             IconButton(onClick = { isConfirmPasswordVisible = !isConfirmPasswordVisible }) {
                                 Icon(
                                     if (isConfirmPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                     contentDescription = null,
-                                    tint = Color(0xFF94A3B8)
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         },
@@ -2060,11 +2066,7 @@ private fun ForgotPasswordSheet(
                         keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SurePurpleDark,
-                            unfocusedBorderColor = Color(0xFFCBD5E1),
-                            focusedLabelColor = SurePurpleDark
-                        ),
+                        colors = SureFormDefaults.outlinedTextFieldColors(),
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -2078,13 +2080,13 @@ private fun ForgotPasswordSheet(
                             Icon(
                                 if (matches) Icons.Default.CheckCircle else Icons.Default.Close,
                                 contentDescription = null,
-                                tint = if (matches) Color(0xFF16A34A) else Color(0xFFDC2626),
+                                tint = if (matches) semanticColors.success else MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
                                 if (matches) "Passwords match" else "Passwords do not match",
                                 fontSize = 11.5.sp,
-                                color = if (matches) Color(0xFF16A34A) else Color(0xFFDC2626)
+                                color = if (matches) semanticColors.success else MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -2158,6 +2160,7 @@ private fun ResetOtpCodeField(
     value: String,
     onValueChange: (String) -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
@@ -2187,16 +2190,16 @@ private fun ResetOtpCodeField(
                                 .height(56.dp),
                             shape = RoundedCornerShape(14.dp),
                             color = when {
-                                isFilled -> Color(0xFFF3E8FF)
-                                isActive -> Color(0xFFFAF5FF)
-                                else -> Color(0xFFF8FAFC)
+                                isFilled -> colors.primaryContainer
+                                isActive -> colors.surfaceVariant
+                                else -> colors.surface
                             },
                             border = BorderStroke(
                                 width = if (isActive) 2.dp else 1.dp,
                                 color = when {
-                                    isActive -> SurePurpleDark
-                                    isFilled -> SurePurpleDark.copy(alpha = 0.5f)
-                                    else -> Color(0xFFCBD5E1)
+                                    isActive -> colors.primary
+                                    isFilled -> colors.primary.copy(alpha = 0.5f)
+                                    else -> colors.outline
                                 }
                             ),
                             shadowElevation = if (isActive) 3.dp else 0.dp
@@ -2204,7 +2207,7 @@ private fun ResetOtpCodeField(
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
                                     text = digit.ifEmpty { "•" },
-                                    color = if (isFilled) SurePurpleDark else Color(0xFF94A3B8),
+                                    color = if (isFilled) colors.onPrimaryContainer else colors.onSurfaceVariant,
                                     fontSize = if (isFilled) 22.sp else 16.sp,
                                     fontWeight = if (isFilled) FontWeight.Black else FontWeight.Normal,
                                     textAlign = TextAlign.Center,

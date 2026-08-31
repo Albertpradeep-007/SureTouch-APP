@@ -32,15 +32,16 @@ import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.CertificateDto
 import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import java.util.Locale
 
 private val CertificateHeader = Color(0xFF262626)
-private val CertificateCanvas = Color(0xFFFAFAFA)
-private val CertificatePurple = Color(0xFF6821A8)
-private val CertificatePurpleLight = Color(0xFFF3E8FF)
-private val CertificateText = Color(0xFF1E293B)
-private val CertificateSubtext = Color(0xFF475569)
-private val CertificateBorder = Color(0xFFE2E8F0)
+private val CertificateCanvas @Composable get() = MaterialTheme.colorScheme.background
+private val CertificatePurple @Composable get() = MaterialTheme.colorScheme.primary
+private val CertificatePurpleLight @Composable get() = MaterialTheme.colorScheme.primaryContainer
+private val CertificateText @Composable get() = MaterialTheme.colorScheme.onSurface
+private val CertificateSubtext @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val CertificateBorder @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,13 +119,6 @@ fun CertificatesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
         containerColor = CertificateCanvas
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            Image(
-                painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(280.dp).align(Alignment.Center).graphicsLayer { alpha = 0.08f }
-            )
-
             when {
                 isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     SureTrustLoadingIndicator(message = "Loading certificates")
@@ -159,7 +153,7 @@ private fun CertificateEmptyState(cohortCode: String?, onBack: () -> Unit) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = BorderStroke(1.dp, CertificateBorder),
             elevation = CardDefaults.cardElevation(3.dp)
         ) {
@@ -208,12 +202,13 @@ private fun CertificateEmptyState(cohortCode: String?, onBack: () -> Unit) {
 
 @Composable
 private fun BackendCertificateCard(certificate: CertificateDto) {
+    val semanticColors = sureSemanticColors()
     val status = certificate.status?.uppercase(Locale.US) ?: "ISSUED"
     val valid = status !in setOf("REVOKED", "CANCELLED")
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, CertificateBorder),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -233,9 +228,9 @@ private fun BackendCertificateCard(certificate: CertificateDto) {
                     )
                     Text(certificate.certificateNumber ?: "Certificate record", fontSize = 11.5.sp, color = CertificateSubtext)
                 }
-                Surface(shape = CircleShape, color = if (valid) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)) {
+                Surface(shape = CircleShape, color = if (valid) semanticColors.successContainer else MaterialTheme.colorScheme.errorContainer) {
                     Text(status, Modifier.padding(horizontal = 9.dp, vertical = 5.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                        color = if (valid) Color(0xFF15803D) else Color(0xFFB91C1C))
+                        color = if (valid) semanticColors.onSuccessContainer else MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -247,7 +242,7 @@ private fun BackendCertificateCard(certificate: CertificateDto) {
             }
             certificate.revocationReason?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(6.dp))
-                Text(it, fontSize = 12.sp, color = Color(0xFFB91C1C))
+                Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
             }
         }
     }

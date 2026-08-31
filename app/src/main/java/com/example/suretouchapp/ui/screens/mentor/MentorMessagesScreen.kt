@@ -29,14 +29,15 @@ import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.UserResponse
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val MessagePurple = Color(0xFF6D28D9)
 private val MessagePink = Color(0xFFDB2777)
-private val MessageInk = Color(0xFF172033)
-private val MessageMuted = Color(0xFF64748B)
-private val MessageBorder = Color(0xFFE2E8F0)
+private val MessageInk @Composable get() = MaterialTheme.colorScheme.onSurface
+private val MessageMuted @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val MessageBorder @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 private data class RecipientRole(val value: String, val label: String)
 
@@ -77,7 +78,7 @@ fun MentorMessagesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = Color(0xFFF8FAFC),
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
@@ -92,7 +93,7 @@ fun MentorMessagesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MessagePurple)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { padding ->
@@ -106,13 +107,13 @@ fun MentorMessagesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
         ) {
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = Color(0xFFF3E8FF),
-                border = BorderStroke(1.dp, Color(0xFFDDD0F8))
+                color = MaterialTheme.colorScheme.primaryContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Text(
                     "Students are limited to your assigned cohorts. Volunteers must share one of those cohorts. Admin and Company recipients are selected explicitly.",
                     modifier = Modifier.padding(14.dp),
-                    color = Color(0xFF4C1D95),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
@@ -132,7 +133,7 @@ fun MentorMessagesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                             { Icon(roleIcon(role.value), null, modifier = Modifier.size(17.dp)) }
                         } else null,
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFFEDE9FE),
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                             selectedLabelColor = MessagePurple,
                             selectedLeadingIconColor = MessagePurple
                         )
@@ -147,13 +148,13 @@ fun MentorMessagesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MessagePurple)
+                colors = SureFormDefaults.outlinedTextFieldColors()
             )
 
             Text("Select recipient", fontWeight = FontWeight.Bold, color = MessageInk, fontSize = 13.sp)
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MessageBorder)
             ) {
                 when {
@@ -185,7 +186,7 @@ fun MentorMessagesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 label = { Text("Subject") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MessagePurple)
+                colors = SureFormDefaults.outlinedTextFieldColors()
             )
             OutlinedTextField(
                 value = message,
@@ -193,7 +194,7 @@ fun MentorMessagesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 label = { Text("Message") },
                 minLines = 5,
                 modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MessagePurple)
+                colors = SureFormDefaults.outlinedTextFieldColors()
             )
 
             Button(
@@ -251,7 +252,7 @@ private fun RecipientRow(recipient: UserResponse, selected: Boolean, onClick: ()
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(shape = CircleShape, color = if (selected) Color(0xFFEDE9FE) else Color(0xFFF1F5F9)) {
+        Surface(shape = CircleShape, color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
             Icon(
                 roleIcon(recipient.role.orEmpty()),
                 null,

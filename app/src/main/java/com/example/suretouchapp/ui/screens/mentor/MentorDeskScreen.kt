@@ -30,15 +30,18 @@ import com.example.suretouchapp.data.model.NotificationDto
 import com.example.suretouchapp.data.repository.DashboardRepository
 import com.example.suretouchapp.data.repository.DashboardSnapshot
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 private val MentorHeader = Color(0xFF262626)
-private val MentorCanvas = Color(0xFFFAFAFA)
-private val MentorPurple = Color(0xFF6821A8)
-private val MentorPurpleLight = Color(0xFFF3E8FF)
-private val MentorText = Color(0xFF1E293B)
-private val MentorSubtext = Color(0xFF475569)
-private val MentorBorder = Color(0xFFE2E8F0)
+private val MentorCanvas @Composable get() = MaterialTheme.colorScheme.background
+private val MentorPurple @Composable get() = MaterialTheme.colorScheme.primary
+private val MentorPurpleLight @Composable get() = MaterialTheme.colorScheme.primaryContainer
+private val MentorText @Composable get() = MaterialTheme.colorScheme.onSurface
+private val MentorSubtext @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val MentorBorder @Composable get() = MaterialTheme.colorScheme.outlineVariant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,12 +98,6 @@ fun MentorDeskScreen(tokenManager: TokenManager, onBack: () -> Unit) {
         containerColor = MentorCanvas
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            Image(
-                painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(280.dp).align(Alignment.Center).graphicsLayer { alpha = 0.08f }
-            )
             when {
                 isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     SureTrustLoadingIndicator(message = "Loading mentor details")
@@ -128,14 +125,16 @@ fun MentorDeskScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                         onValueChange = { querySubject = it },
                         label = { Text("Subject / Topic") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
                     )
                     OutlinedTextField(
                         value = queryMessage,
                         onValueChange = { queryMessage = it },
                         label = { Text("Detailed Doubt or Request") },
                         minLines = 3,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SureFormDefaults.outlinedTextFieldColors()
                     )
                 }
             },
@@ -145,20 +144,25 @@ fun MentorDeskScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                         coroutineScope.launch {
                             isSubmitting = true
                             val api = ApiClient.getService(tokenManager)
-                            val body = mapOf<String, Any?>(
-                                "feedback_type" to "MENTOR_QUERY",
-                                "subject" to querySubject.trim(),
-                                "message" to queryMessage.trim(),
-                                "cohort" to snapshot.cohortCode
-                            )
-                            val res = runCatching { api.submitFeedback(body) }.getOrNull()
+                            val textType = "text/plain".toMediaTypeOrNull()
+                            val description = buildString {
+                                append(queryMessage.trim())
+                                snapshot.cohortCode?.let { append("\n\nCohort: $it") }
+                            }
+                            val res = runCatching {
+                                api.createUserRequest(
+                                    "MENTOR_SUPPORT".toRequestBody(textType),
+                                    querySubject.trim().toRequestBody(textType),
+                                    description.toRequestBody(textType),
+                                    null
+                                )
+                            }.getOrNull()
                             isSubmitting = false
                             if (res?.isSuccessful == true) {
                                 showDoubtDialog = false
                                 snackbar.showSnackbar("Query sent to mentor successfully!")
                             } else {
-                                snackbar.showSnackbar("Doubt query recorded.")
-                                showDoubtDialog = false
+                                snackbar.showSnackbar("Unable to send the mentor request. Please try again.")
                             }
                         }
                     },
@@ -186,7 +190,7 @@ private fun NoMentorCohortState() {
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = BorderStroke(1.dp, MentorBorder),
             elevation = CardDefaults.cardElevation(3.dp)
         ) {
@@ -220,7 +224,7 @@ private fun AssignedMentorContent(snapshot: DashboardSnapshot, messages: List<No
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 border = BorderStroke(1.dp, MentorBorder),
                 elevation = CardDefaults.cardElevation(3.dp)
             ) {
@@ -249,7 +253,7 @@ private fun AssignedMentorContent(snapshot: DashboardSnapshot, messages: List<No
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, MentorBorder)
                 ) {
                     Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -264,7 +268,7 @@ private fun AssignedMentorContent(snapshot: DashboardSnapshot, messages: List<No
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, MentorBorder)
                 ) {
                     Column(Modifier.padding(16.dp)) {

@@ -50,6 +50,7 @@ import com.example.suretouchapp.data.repository.StudentProfileRepository
 import com.example.suretouchapp.data.repository.StudentStatisticsRepository
 import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.LocalBackendConnected
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -153,6 +154,7 @@ private fun StudentProfileContent(
     val uriHandler = LocalUriHandler.current
     val isLocalBackendConnected = LocalBackendConnected.current
     val graphicsLayer = rememberGraphicsLayer()
+    val semanticColors = sureSemanticColors()
 
     var showEditSheet by remember { mutableStateOf(false) }
     var showPhotoOptionsSheet by remember { mutableStateOf(false) }
@@ -395,16 +397,6 @@ private fun StudentProfileContent(
             .fillMaxSize()
             .background(ScreenBg)
     ) {
-        Image(
-            painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(320.dp)
-                .align(Alignment.Center)
-                .graphicsLayer { alpha = 0.03f; scaleX = 1.4f; scaleY = 1.4f }
-        )
-
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -532,9 +524,6 @@ private fun StudentProfileContent(
                 }
             }
 
-            
-
-            // ── 2. Credentials & Identity Header ──
             item {
                 Column(
                     modifier = Modifier
@@ -576,8 +565,8 @@ private fun StudentProfileContent(
                                 .clip(CircleShape)
                                 .clickable { showEditSheet = true },
                             shape = CircleShape,
-                            color = Color.White,
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             shadowElevation = 1.dp
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -597,7 +586,7 @@ private fun StudentProfileContent(
                         text = tagline,
                         fontSize = 14.5.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF334155),
+                        color = TextMuted,
                         lineHeight = 20.sp
                     )
 
@@ -627,7 +616,7 @@ private fun StudentProfileContent(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.surface,
                             border = BorderStroke(1.2.dp, PrimaryPurple),
                             shadowElevation = 1.dp
                         ) {
@@ -653,8 +642,8 @@ private fun StudentProfileContent(
 
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color.White,
-                            border = BorderStroke(1.2.dp, if (isVerifiedStudent) Color(0xFF059669) else Color(0xFFCBD5E1)),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.2.dp, if (isVerifiedStudent) Color(0xFF059669) else MaterialTheme.colorScheme.outlineVariant),
                             shadowElevation = 1.dp
                         ) {
                             Row(
@@ -701,7 +690,7 @@ private fun StudentProfileContent(
                             onClick = { showQrModal = true },
                             modifier = Modifier.height(42.dp),
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
                         ) {
                             Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -835,14 +824,14 @@ private fun StudentProfileContent(
                         Text(
                             text = bio,
                             fontSize = 14.sp,
-                            color = Color(0xFF334155),
+                            color = TextMuted,
                             lineHeight = 22.sp
                         )
                     } else {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
                                 .padding(12.dp)
                         ) {
                             Text(
@@ -875,14 +864,14 @@ private fun StudentProfileContent(
                             skills.forEach { skill ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFF1F5F9),
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                                 ) {
                                     Text(
                                         text = skill,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF1E293B),
+                                        color = TextMain,
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                     )
                                 }
@@ -892,7 +881,7 @@ private fun StudentProfileContent(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
                                 .padding(12.dp)
                         ) {
                             Text(
@@ -925,8 +914,8 @@ private fun StudentProfileContent(
                             hobbies.forEach { hobby ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFFAF5FF),
-                                    border = BorderStroke(1.dp, Color(0xFFE9D5FF))
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                                 ) {
                                     Text(
                                         text = hobby,
@@ -954,14 +943,14 @@ private fun StudentProfileContent(
                             languages.forEach { lang ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFF0FDF4),
-                                    border = BorderStroke(1.dp, Color(0xFFBBF7D0))
+                                    color = semanticColors.successContainer,
+                                    border = BorderStroke(1.dp, semanticColors.success.copy(alpha = 0.55f))
                                 ) {
                                     Text(
                                         text = lang,
                                         fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = Color(0xFF15803D),
+                                        color = semanticColors.onSuccessContainer,
                                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
                                     )
                                 }
@@ -978,8 +967,8 @@ private fun StudentProfileContent(
                         if (!resumeUrl.isNullOrBlank()) {
                             Card(
                                 shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { showInAppResumeViewer = true }
@@ -1026,8 +1015,8 @@ private fun StudentProfileContent(
                         } else {
                             Card(
                                 shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
-                                border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -1036,14 +1025,14 @@ private fun StudentProfileContent(
                                 ) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = Color(0xFFF97316).copy(alpha = 0.15f),
+                                        color = semanticColors.warningContainer,
                                         modifier = Modifier.size(40.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
                                                 Icons.Default.UploadFile,
                                                 contentDescription = null,
-                                                tint = Color(0xFFEA580C),
+                                                tint = semanticColors.warning,
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -1054,12 +1043,12 @@ private fun StudentProfileContent(
                                             text = "No resume uploaded yet",
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 13.5.sp,
-                                            color = Color(0xFF92400E)
+                                            color = TextMain
                                         )
                                         Text(
                                             text = "Upload your CV below to make it visible to mentors and employers",
                                             fontSize = 11.5.sp,
-                                            color = Color(0xFFC2410C)
+                                            color = TextMuted
                                         )
                                     }
                                 }
@@ -1169,7 +1158,7 @@ private fun StudentProfileContent(
         if (showPhotoOptionsSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showPhotoOptionsSheet = false },
-                containerColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
                 Column(
@@ -1200,8 +1189,8 @@ private fun StudentProfileContent(
                                 showPhotoOptionsSheet = false
                                 avatarLauncher.launch("image/*")
                             },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
@@ -1232,8 +1221,8 @@ private fun StudentProfileContent(
                                 showPhotoOptionsSheet = false
                                 launchLinkedInConnect()
                             },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F7FF)),
-                        border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
@@ -1251,8 +1240,8 @@ private fun StudentProfileContent(
                             }
                             Spacer(Modifier.width(14.dp))
                             Column {
-                                Text("Connect & Fetch from LinkedIn", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF0369A1))
-                                Text("Sync your verified LinkedIn profile avatar", fontSize = 12.sp, color = Color(0xFF0284C7))
+                                Text("Connect & Fetch from LinkedIn", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextMain)
+                                Text("Sync your verified LinkedIn profile avatar", fontSize = 12.sp, color = TextMuted)
                             }
                         }
                     }
@@ -1264,8 +1253,8 @@ private fun StudentProfileContent(
                                 showPhotoOptionsSheet = false
                                 showEditSheet = true
                             },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
@@ -1278,7 +1267,7 @@ private fun StudentProfileContent(
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.Link, null, tint = Color(0xFF334155), modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Default.Link, null, tint = TextMuted, modifier = Modifier.size(20.dp))
                                 }
                             }
                             Spacer(Modifier.width(14.dp))
@@ -1573,20 +1562,20 @@ fun EditStudentProfileBottomSheet(
                 Spacer(Modifier.height(10.dp))
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFFEF2F2),
-                    border = BorderStroke(1.dp, Color(0xFFFECDD3)),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.55f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.CloudOff, null, tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.CloudOff, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Offline Mode: Changes will be saved locally and sync upon reconnecting.",
                             fontSize = 11.5.sp,
-                            color = Color(0xFF991B1B)
+                            color = MaterialTheme.colorScheme.onErrorContainer
                         )
                     }
                 }
