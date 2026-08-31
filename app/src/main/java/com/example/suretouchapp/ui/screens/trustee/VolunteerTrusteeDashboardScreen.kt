@@ -550,50 +550,221 @@ private fun VolunteerScheduleCard(
     onAttendance: () -> Unit,
     onRecurringSchedule: () -> Unit
 ) {
+    val nextSession = sessions.firstOrNull()
+    val todayDateStr = remember {
+        SimpleDateFormat("dd-MMM-yyyy", Locale.US).format(Date()).uppercase(Locale.US)
+    }
+
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SureTrustLogo(size = 32.dp, showSubtext = false)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Class Timetable & Schedule", color = Ink, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
-                Text("Upcoming sessions in your assigned cohorts", color = Slate, fontSize = 11.5.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SureTrustLogo(size = 34.dp, showSubtext = false)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Today’s Timetable", color = Ink, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = Purple, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = nextSession?.date?.takeIf(String::isNotBlank) ?: todayDateStr,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Purple
+                        )
+                    }
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onRecurringSchedule) {
-                    Icon(Icons.Default.Add, null, tint = Purple, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(2.dp))
-                    Text("Schedule", color = Purple, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.clickable(onClick = onRecurringSchedule)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = Purple, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Schedule", color = Purple, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
                 }
-                TextButton(onClick = onAttendance) { Text("View all", color = Purple, fontWeight = FontWeight.Bold, fontSize = 11.5.sp) }
+                Spacer(Modifier.width(6.dp))
+                TextButton(onClick = onAttendance, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                    Text("View all", color = Purple, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        if (sessions.isEmpty()) {
-            Surface(shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, Line)) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.EventAvailable, null, tint = Purple)
-                    Spacer(Modifier.width(10.dp))
-                    Text("No upcoming assigned sessions", color = Slate, fontSize = 12.sp)
-                }
-            }
-        } else {
-            sessions.forEach { session ->
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable(onClick = onAttendance),
-                    shape = RoundedCornerShape(15.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, Line)
+
+        Spacer(Modifier.height(10.dp))
+
+        // Hero Timetable Card with SURE Trust Logo Watermark
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(210.dp)
+                .clickable(onClick = onAttendance),
+            shape = RoundedCornerShape(22.dp),
+            elevation = CardDefaults.cardElevation(5.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF7027E5), DeepPurple)
+                        )
+                    )
+            ) {
+                // Official SURE Trust Logo Watermark
+                androidx.compose.foundation.Image(
+                    painter = painterResource(id = R.drawable.sure_trust_official_logo),
+                    contentDescription = "SURE Trust Official Logo Watermark",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(160.dp)
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 22.dp)
+                        .graphicsLayer {
+                            alpha = 0.18f
+                            scaleX = 1.35f
+                            scaleY = 1.35f
+                        }
+                )
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.VideoCall, null, tint = MaterialTheme.colorScheme.primary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Left Time Rail
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.width(58.dp)
+                        ) {
+                            Text(
+                                text = nextSession?.startTime?.take(5) ?: "--:--",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Box(contentAlignment = Alignment.TopCenter) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .width(2.dp)
+                                        .height(28.dp)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                listOf(Color.White.copy(alpha = 0.7f), Color.White.copy(alpha = 0.2f))
+                                            )
+                                        )
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                )
+                            }
+                            Text(
+                                text = nextSession?.endTime?.take(5) ?: "--:--",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.85f)
+                            )
+                            Text(
+                                text = "IST",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF86EFAC)
+                            )
                         }
-                        Spacer(Modifier.width(11.dp))
+
+                        Spacer(Modifier.width(14.dp))
+                        Box(Modifier.width(1.dp).height(80.dp).background(Color.White.copy(alpha = 0.25f)))
+                        Spacer(Modifier.width(14.dp))
+
+                        // Middle Session Info
                         Column(Modifier.weight(1f)) {
-                            Text(session.sessionTitle ?: "Class session", color = Ink, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
-                            Text(listOfNotNull(session.date, session.startTime?.take(5)).joinToString(" • "), color = Slate, fontSize = 11.sp)
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color.White.copy(alpha = 0.18f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = nextSession?.cohortCode?.takeIf(String::isNotBlank) ?: "Assigned Cohort",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = nextSession?.sessionTitle ?: "Assigned Class Session",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = if (sessions.isEmpty()) "No active sessions today" else "${sessions.size} sessions in assigned schedule",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
                         }
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Purple, modifier = Modifier.size(19.dp))
+                    }
+
+                    // Bottom Bar
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.Black.copy(alpha = 0.22f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(if (sessions.isNotEmpty()) Color(0xFF4ADE80) else Color(0xFFFBBF24))
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = if (sessions.isNotEmpty()) "LIVE CLASS AVAILABLE" else "TIMETABLE UP TO DATE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Open Timetable",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Color.White, modifier = Modifier.size(13.dp))
+                            }
+                        }
                     }
                 }
             }
