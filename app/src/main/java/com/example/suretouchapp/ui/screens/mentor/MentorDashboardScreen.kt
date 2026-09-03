@@ -1269,19 +1269,6 @@ private fun MentorHomeContent(
             )
         }
         item {
-            MentorDashboardClassesSection(
-                cohort = selectedCohort,
-                todayClasses = todayAttendance,
-                upcomingClasses = upcomingAttendance,
-                isReadOnly = isReadOnly,
-                onSchedule = onSchedule,
-                onCreateSession = onCreateSession,
-                onRescheduleSession = onRescheduleSession,
-                onCancelSession = onCancelSession,
-                onJoinMeet = onJoinMeet
-            )
-        }
-        item {
             MentorQuickAccessSection(
                 onCourses = onCourses,
                 onStudents = onStudents,
@@ -1294,16 +1281,6 @@ private fun MentorHomeContent(
                 onMessages = onMessages,
                 onInterviews = onInterviews,
                 onSupport = onSupport
-            )
-        }
-        item {
-            MentorPendingActionsSection(
-                submissions = cohortSubmissions.size,
-                pendingInterviews = pendingInterviewsCount,
-                attendancePending = attendancePending,
-                onSubmissions = onSubmissions,
-                onInterviews = onInterviews,
-                onAttendance = onAttendance
             )
         }
     }
@@ -2531,6 +2508,20 @@ private fun MentorScheduleTab(
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MC_Primary.copy(alpha = 0.25f)),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                        contentDescription = "SURE Trust Official Logo",
+                        modifier = Modifier.padding(3.dp)
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Class Timetable", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
                     Text(if (readOnly) "Completed cohort · Timetable history" else "Schedule for the selected assigned cohort", fontSize = 11.sp, color = MC_TextSub)

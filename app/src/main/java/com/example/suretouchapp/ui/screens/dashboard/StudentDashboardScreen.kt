@@ -1437,28 +1437,44 @@ fun CleanTimetableDashboardView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "Today’s Timetable",
-                            fontSize = 21.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ColorTextTitles
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.CalendarMonth,
-                                contentDescription = null,
-                                tint = ColorPrimaryPurple,
-                                modifier = Modifier.size(13.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White,
+                            border = BorderStroke(1.dp, ColorPrimaryPurple.copy(alpha = 0.25f)),
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                contentDescription = "SURE Trust Official Logo",
+                                modifier = Modifier.padding(3.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
                             Text(
-                                text = timetableSessions[pagerState.currentPage].dateStr,
-                                fontSize = 13.5.sp,
+                                text = "Today’s Timetable",
+                                fontSize = 21.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ColorPrimaryPurple,
-                                letterSpacing = 0.4.sp
+                                color = ColorTextTitles
                             )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = ColorPrimaryPurple,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = timetableSessions[pagerState.currentPage].dateStr,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorPrimaryPurple,
+                                    letterSpacing = 0.4.sp
+                                )
+                            }
                         }
                     }
                     Surface(
@@ -1475,10 +1491,9 @@ fun CleanTimetableDashboardView(
                             if (isDashboardLoading) {
                                 SureTrustLoadingIndicator(size = 28.dp, logoSize = 17.dp)
                             } else {
-                                Icon(
-                                    imageVector = Icons.Default.School,
+                                Image(
+                                    painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
                                     contentDescription = null,
-                                    tint = ColorPrimaryPurple,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -1545,6 +1560,22 @@ fun CleanTimetableDashboardView(
                                     )
                                 )
                         ) {
+                            // Official SURE Trust Logo Watermark inside Timetable Card
+                            Image(
+                                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                contentDescription = "SURE Trust Official Logo Watermark",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .size(175.dp)
+                                    .align(Alignment.CenterEnd)
+                                    .offset(x = 24.dp, y = (-10).dp)
+                                    .graphicsLayer {
+                                        alpha = 0.09f
+                                        scaleX = 1.3f
+                                        scaleY = 1.3f
+                                    }
+                            )
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1649,14 +1680,13 @@ fun CleanTimetableDashboardView(
                                         Surface(
                                             modifier = Modifier.size(36.dp),
                                             shape = CircleShape,
-                                            color = Color.White.copy(alpha = 0.94f),
-                                            border = BorderStroke(1.dp, Color.White)
+                                            color = Color.White,
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.8f))
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Person,
-                                                contentDescription = null,
-                                                tint = ColorPrimaryPurple,
-                                                modifier = Modifier.padding(6.dp)
+                                            Image(
+                                                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                                contentDescription = "SURE Trust Official Logo",
+                                                modifier = Modifier.padding(3.dp)
                                             )
                                         }
                                         Spacer(modifier = Modifier.width(9.dp))
@@ -1703,20 +1733,24 @@ fun CleanTimetableDashboardView(
                                     .padding(horizontal = 18.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = if (session.isPlaceholder) {
-                                        if (dashboardSnapshot.cohortCode != null) Icons.Default.CalendarMonth
-                                        else if (dashboardSnapshot.applicationStatus == null) Icons.Default.School
-                                        else Icons.Default.Quiz
-                                    } else when (session.sessionState) {
-                                        SessionState.LIVE_NOW -> Icons.Default.Videocam
-                                        SessionState.UPCOMING -> Icons.Default.CalendarMonth
-                                        SessionState.COMPLETED -> Icons.Default.Schedule
-                                    },
-                                    contentDescription = null,
-                                    tint = ColorPrimaryPurple,
-                                    modifier = Modifier.size(23.dp)
-                                )
+                                if (session.isPlaceholder) {
+                                    Image(
+                                        painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                        contentDescription = "SURE Trust",
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = when (session.sessionState) {
+                                            SessionState.LIVE_NOW -> Icons.Default.Videocam
+                                            SessionState.UPCOMING -> Icons.Default.CalendarMonth
+                                            SessionState.COMPLETED -> Icons.Default.Schedule
+                                        },
+                                        contentDescription = null,
+                                        tint = ColorPrimaryPurple,
+                                        modifier = Modifier.size(23.dp)
+                                    )
+                                }
                                 val hasCohortAssigned = dashboardSnapshot.cohortCode != null
                                 Text(
                                     text = when {

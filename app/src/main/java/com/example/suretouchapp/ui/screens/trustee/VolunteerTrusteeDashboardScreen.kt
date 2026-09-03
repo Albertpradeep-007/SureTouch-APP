@@ -294,13 +294,6 @@ fun VolunteerTrusteeDashboardScreen(
                         }
                         item { OperationsCard(summary, isLoading, onNavigateToProgrammes) }
                         item {
-                            VolunteerScheduleCard(
-                                sessions = summary.upcomingSessions,
-                                onAttendance = onNavigateToAttendance,
-                                onRecurringSchedule = { showRecurringScheduleDialog = true }
-                            )
-                        }
-                        item {
                             QuickAccess(
                                 onAttendance = onNavigateToAttendance,
                                 onProgrammes = onNavigateToProgrammes,
@@ -506,6 +499,20 @@ private fun OperationsCard(summary: VolunteerDashboardSummary, isLoading: Boolea
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Box(Modifier.background(Brush.linearGradient(listOf(Color(0xFF7027E5), DeepPurple)))) {
+            androidx.compose.foundation.Image(
+                painter = painterResource(R.drawable.sure_trust_official_logo),
+                contentDescription = "SURE Trust official logo watermark",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(165.dp)
+                    .align(Alignment.CenterEnd)
+                    .offset(x = 24.dp)
+                    .graphicsLayer {
+                        alpha = 0.18f
+                        scaleX = 1.35f
+                        scaleY = 1.35f
+                    }
+            )
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // SURE Trust logo in white circle
