@@ -3055,6 +3055,13 @@ private fun MentorInlineEmpty(title: String, subtitle: String, icon: ImageVector
 // ============================================================
 // TAB 2: GRADING
 // ============================================================
+private data class SubmissionLinkBadge(
+    val title: String,
+    val subtitle: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val tint: Color
+)
+
 @Composable
 private fun MentorGradingTab(
     submissions: List<SubmissionDto>,
@@ -3114,11 +3121,26 @@ private fun MentorGradingTab(
                             )
                         }
                     }
+                    val cardLink = submission.submissionUrl ?: submission.githubCommitUrl ?: submission.githubRepoUrl ?: submission.submissionText?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
                     submission.submittedAt?.let { Spacer(Modifier.height(8.dp)); Text("Submitted: ${it.take(16).replace('T', ' ')}", fontSize = 10.sp, color = MC_TextSub) }
                     if (!submission.commitSha.isNullOrBlank()) {
                         Spacer(Modifier.height(4.dp))
                         Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFF0F172A)) {
                             Text("🔍 Commit: ${submission.commitSha.take(7)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8), modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                        }
+                    } else if (!cardLink.isNullOrBlank()) {
+                        val clean = cardLink.lowercase(java.util.Locale.US)
+                        val badgeLabel = when {
+                            clean.contains("drive.google.com") || clean.contains("docs.google.com") -> "📁 Google Drive Submission"
+                            clean.contains("dropbox.com") || clean.contains("onedrive") || clean.contains("1drv.ms") -> "📁 Cloud Drive Submission"
+                            clean.contains("github.com") || clean.contains("gitlab.com") -> "💻 GitHub Repository"
+                            clean.contains("figma.com") -> "🎨 Figma Design"
+                            clean.endsWith(".pdf") || clean.contains("/pdf") -> "📄 Document / PDF"
+                            else -> "🔗 Submitted Link"
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFF0F172A)) {
+                            Text(badgeLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8), modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                         }
                     }
                     if (submission.isLate) { Spacer(Modifier.height(4.dp)); Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.errorContainer) { Text("Late submission", fontSize = 10.sp, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) } }
@@ -3129,8 +3151,12 @@ private fun MentorGradingTab(
     selectedSubmission?.let { submission ->
         val canEdit = !readOnly && !submission.evaluated
         val context = androidx.compose.ui.platform.LocalContext.current
-        val commitUrl = submission.githubCommitUrl ?: submission.submissionUrl ?: submission.githubRepoUrl
+        val linkUrl = submission.submissionUrl
+            ?: submission.githubCommitUrl
+            ?: submission.githubRepoUrl
+            ?: submission.submissionText?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
         val commitSha = submission.commitSha
+        val cleanUrl = linkUrl?.trim()?.lowercase(java.util.Locale.US).orEmpty()
 
         AlertDialog(
             onDismissRequest = { selectedSubmission = null },
@@ -3141,7 +3167,57 @@ private fun MentorGradingTab(
                     val studentDisplayName = resolveStudentNameFromId(submission.student, students, users)
                     Text("Student: $studentDisplayName", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MC_TextTitle)
                     
-                    if (!commitUrl.isNullOrBlank()) {
+                    if (!linkUrl.isNullOrBlank()) {
+                        val badge = when {
+                            cleanUrl.contains("drive.google.com") || cleanUrl.contains("docs.google.com") -> SubmissionLinkBadge(
+                                title = "📁 Open Google Drive Submission",
+                                subtitle = "View uploaded documents, drive files or project video",
+                                icon = Icons.Default.CloudQueue,
+                                tint = Color(0xFF38BDF8)
+                            )
+                            cleanUrl.contains("dropbox.com") || cleanUrl.contains("1drv.ms") || cleanUrl.contains("onedrive") -> SubmissionLinkBadge(
+                                title = "📁 Open Cloud Storage Submission",
+                                subtitle = "View student files on cloud storage",
+                                icon = Icons.Default.Cloud,
+                                tint = Color(0xFF38BDF8)
+                            )
+                            cleanUrl.contains("github.com") || cleanUrl.contains("gitlab.com") || cleanUrl.contains("bitbucket.org") -> {
+                                if (!commitSha.isNullOrBlank()) {
+                                    SubmissionLinkBadge(
+                                        title = "🔍 Inspect Commit (${commitSha.take(7)})",
+                                        subtitle = "Inspect student code diff at this specific commit",
+                                        icon = Icons.Default.Terminal,
+                                        tint = Color(0xFF38BDF8)
+                                    )
+                                } else {
+                                    SubmissionLinkBadge(
+                                        title = "💻 Open GitHub Repo / Code",
+                                        subtitle = "Browse student workspace repository and source files",
+                                        icon = Icons.Default.Code,
+                                        tint = Color(0xFF38BDF8)
+                                    )
+                                }
+                            }
+                            cleanUrl.contains("figma.com") -> SubmissionLinkBadge(
+                                title = "🎨 Open Figma Design Submission",
+                                subtitle = "Inspect UI/UX design board and prototype",
+                                icon = Icons.Default.Palette,
+                                tint = Color(0xFFA855F7)
+                            )
+                            cleanUrl.endsWith(".pdf") || cleanUrl.contains("/pdf") -> SubmissionLinkBadge(
+                                title = "📄 Open Submitted Document (PDF)",
+                                subtitle = "Read attached report or assignment document",
+                                icon = Icons.Default.Description,
+                                tint = Color(0xFFF59E0B)
+                            )
+                            else -> SubmissionLinkBadge(
+                                title = "🔗 Open Student Submission Link",
+                                subtitle = "Open submitted project URL in external browser",
+                                icon = Icons.Default.Link,
+                                tint = Color(0xFF38BDF8)
+                            )
+                        }
+
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = Color(0xFF0F172A),
@@ -3149,8 +3225,10 @@ private fun MentorGradingTab(
                                 .fillMaxWidth()
                                 .clickable {
                                     try {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(commitUrl)))
-                                    } catch (_: Exception) {}
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(linkUrl)))
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "Could not open: $linkUrl", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                         ) {
                             Row(
@@ -3158,21 +3236,44 @@ private fun MentorGradingTab(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(Icons.Default.Terminal, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
+                                Icon(badge.icon, contentDescription = null, tint = badge.tint, modifier = Modifier.size(22.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        if (!commitSha.isNullOrBlank()) "🔍 Inspect Commit (${commitSha.take(7)})" else "🔍 Open GitHub Repo / Code",
-                                        fontSize = 12.sp,
+                                        text = badge.title,
+                                        fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )
                                     Text(
-                                        if (!commitSha.isNullOrBlank()) "Inspect student code diff at this specific commit" else "Browse student workspace repository",
+                                        text = badge.subtitle,
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF94A3B8),
+                                        lineHeight = 14.sp
+                                    )
+                                    Text(
+                                        text = linkUrl,
                                         fontSize = 10.sp,
-                                        color = Color(0xFF94A3B8)
+                                        color = Color(0xFF38BDF8),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+
+                    val studentNotes = submission.submissionText?.trim().orEmpty()
+                    if (studentNotes.isNotBlank() && studentNotes != linkUrl) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Student Note:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MC_TextSub)
+                                Spacer(Modifier.height(2.dp))
+                                Text(studentNotes, fontSize = 12.sp, color = MC_TextTitle)
                             }
                         }
                     }
