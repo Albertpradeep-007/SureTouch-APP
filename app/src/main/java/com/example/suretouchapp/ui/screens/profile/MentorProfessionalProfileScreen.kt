@@ -109,7 +109,7 @@ fun MentorProfessionalProfileContent(
     val api = remember(tokenManager) { ApiClient.getService(tokenManager) }
     var profile by remember { mutableStateOf<MentorProfileDto?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }

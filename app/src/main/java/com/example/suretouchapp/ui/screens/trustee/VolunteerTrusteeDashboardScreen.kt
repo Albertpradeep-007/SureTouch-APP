@@ -125,7 +125,7 @@ fun VolunteerTrusteeDashboardScreen(
     val volunteerRepository = remember(tokenManager) { VolunteerRepository(tokenManager) }
     var summary by remember { mutableStateOf(VolunteerDashboardSummary()) }
     var isLoading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }
@@ -263,8 +263,7 @@ fun VolunteerTrusteeDashboardScreen(
         PullToRefreshBox(
             isRefreshing = isLoading,
             onRefresh = { scope.launch { loadDashboard() } },
-            modifier = Modifier.fillMaxSize().padding(inner),
-            indicator = {}
+            modifier = Modifier.fillMaxSize().padding(inner)
         ) {
             BackendSyncedDashboard(
                 isLoading = isLoading,
@@ -294,6 +293,13 @@ fun VolunteerTrusteeDashboardScreen(
                             )
                         }
                         item { OperationsCard(summary, isLoading, onNavigateToProgrammes) }
+                        item {
+                            VolunteerScheduleCard(
+                                sessions = summary.upcomingSessions,
+                                onAttendance = onNavigateToAttendance,
+                                onRecurringSchedule = { showRecurringScheduleDialog = true }
+                            )
+                        }
                         item {
                             QuickAccess(
                                 onAttendance = onNavigateToAttendance,

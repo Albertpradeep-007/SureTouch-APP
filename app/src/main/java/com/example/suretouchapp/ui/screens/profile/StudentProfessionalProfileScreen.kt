@@ -80,7 +80,7 @@ fun StudentProfessionalProfileScreen(
     var profile by remember { mutableStateOf<StudentProfileDto?>(null) }
     var stats by remember { mutableStateOf<StudentStatisticsDto?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }

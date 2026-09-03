@@ -117,7 +117,7 @@ fun TimetableScreen(
 
     val currentWeekDays = remember(now.toLocalDate()) {
         val monday = now.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-        (0L..5L).map { monday.plusDays(it) }
+        (0L..6L).map { monday.plusDays(it) }
     }
 
     var selectedDate by remember {
@@ -126,12 +126,14 @@ fun TimetableScreen(
         mutableStateOf(initial)
     }
 
+    var showAllWeek by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
     var mode by remember { mutableStateOf(TimetableMode.UPCOMING) }
     var selectedHistoryDate by remember { mutableStateOf<LocalDate?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
     var attendance by remember { mutableStateOf<List<AttendanceDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }
@@ -163,37 +165,65 @@ fun TimetableScreen(
         }
     }
 
-    LaunchedEffect(selectedHistoryDate) {
-        isLoading = true
+    LaunchedEffect(refreshTrigger) {
+        isLoading = attendance.isEmpty()
         loadError = null
         errorTitle = null
         try {
-            val response = ApiClient.getService(tokenManager).getAttendance(
-                classDate = selectedHistoryDate?.toString()
-            )
+            val api = ApiClient.getService(tokenManager)
+            val response = api.getAttendance()
             if (response.isSuccessful) {
-                attendance = response.body()?.results.orEmpty()
+                val results = response.body()?.results.orEmpty()
+                if (results.isNotEmpty()) {
+                    attendance = results
+                } else {
+                    val stats = runCatching { api.getStudentStatistics() }.getOrNull()?.body()
+                    val statsSessions = stats?.upcomingSessions.orEmpty()
+                    if (statsSessions.isNotEmpty()) {
+                        attendance = statsSessions
+                    } else {
+                        attendance = results
+                    }
+                }
                 SureProEdNotificationManager.syncTimetableAndClasses(context, attendance)
                 isConnected = true
                 hasLoadedOnce = true
                 isOffline = false
                 loadError = null
-                errorTitle = null
             } else {
-                val errorInfo = NetworkUtils.getNetworkErrorInfo(context, null)
+                val stats = runCatching { api.getStudentStatistics() }.getOrNull()?.body()
+                val statsSessions = stats?.upcomingSessions.orEmpty()
+                if (statsSessions.isNotEmpty()) {
+                    attendance = statsSessions
+                    isConnected = true
+                    hasLoadedOnce = true
+                    loadError = null
+                } else {
+                    val errorInfo = NetworkUtils.getNetworkErrorInfo(context, null)
+                    isConnected = false
+                    isOffline = errorInfo.isOffline
+                    errorTitle = errorInfo.title
+                    loadError = errorInfo.message
+                }
+            }
+        } catch (e: Exception) {
+            val stats = runCatching { ApiClient.getService(tokenManager).getStudentStatistics() }.getOrNull()?.body()
+            val statsSessions = stats?.upcomingSessions.orEmpty()
+            if (statsSessions.isNotEmpty()) {
+                attendance = statsSessions
+                isConnected = true
+                hasLoadedOnce = true
+                loadError = null
+            } else {
+                val errorInfo = NetworkUtils.getNetworkErrorInfo(context, e)
                 isConnected = false
                 isOffline = errorInfo.isOffline
                 errorTitle = errorInfo.title
                 loadError = errorInfo.message
             }
-        } catch (e: Exception) {
-            val errorInfo = NetworkUtils.getNetworkErrorInfo(context, e)
-            isConnected = false
-            isOffline = errorInfo.isOffline
-            errorTitle = errorInfo.title
-            loadError = errorInfo.message
         } finally {
             isLoading = false
+            hasLoadedOnce = true
         }
     }
 
@@ -237,19 +267,31 @@ fun TimetableScreen(
         }.sortedWith(compareBy<TimetableSlot> { it.rawDate }.thenBy { it.timeSlot })
     }
 
-    val activeSlots = remember(slots, mode, selectedDate, selectedHistoryDate, now) {
-        val weekRange = TimetableSessionPolicy.getWeekDateRange(now.toLocalDate())
+    val weekRange = remember(now.toLocalDate()) {
+        TimetableSessionPolicy.getWeekDateRange(now.toLocalDate())
+    }
+
+    val weekSlots = remember(slots, weekRange) {
+        slots.filter { it.rawDate in weekRange }
+    }
+
+    val activeSlots = remember(slots, weekSlots, mode, selectedDate, showAllWeek, selectedHistoryDate, now, weekRange) {
         when (mode) {
             TimetableMode.UPCOMING -> {
-                slots.filter { it.rawDate in weekRange && it.rawDate == selectedDate }
+                if (showAllWeek) {
+                    weekSlots
+                } else {
+                    weekSlots.filter { it.rawDate == selectedDate }
+                }
             }
             TimetableMode.HISTORY -> {
                 slots.filter { slot ->
                     val isPastWeek = slot.rawDate.isBefore(weekRange.start)
-                    val isCompletedOrModified = slot.state == TimetableClassStatus.ENDED ||
+                    val isCompletedOrPast = slot.state == TimetableClassStatus.ENDED ||
                         slot.state == TimetableClassStatus.CANCELLED ||
-                        slot.state == TimetableClassStatus.RESCHEDULED
-                    (isPastWeek || isCompletedOrModified) &&
+                        slot.state == TimetableClassStatus.RESCHEDULED ||
+                        slot.rawDate.isBefore(now.toLocalDate())
+                    (isPastWeek || isCompletedOrPast) &&
                         (selectedHistoryDate == null || slot.rawDate == selectedHistoryDate)
                 }.sortedWith(compareByDescending<TimetableSlot> { it.rawDate }.thenByDescending { it.timeSlot })
             }
@@ -284,18 +326,36 @@ fun TimetableScreen(
         errorMessage = loadError,
         loadingMessage = "Connecting to SURE Trust Timetable...",
         onRetry = {
-            isLoading = true
-            selectedHistoryDate = selectedHistoryDate
+            refreshTrigger++
         },
         onLogout = null
     ) {
         Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text("Class Timetable", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White) },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Image(
+                                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                contentDescription = "SURE Trust Official Logo",
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White)
+                                    .padding(2.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text("Class Timetable", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        }
+                    },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { refreshTrigger++ }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color.White)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = ColorDarkHeader)
@@ -352,6 +412,20 @@ fun TimetableScreen(
                                     .padding(14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(Color.White, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                        contentDescription = "SURE Trust Logo",
+                                        modifier = Modifier.size(26.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(10.dp))
+
                                 if (nextSessionStatus == TimetableClassStatus.ONGOING) {
                                     Box(
                                         modifier = Modifier
@@ -416,7 +490,7 @@ fun TimetableScreen(
                         }
                     }
 
-                    // Week Day Filter Chips (Monday through Saturday)
+                    // Week Day Filter Chips (All Week + Monday through Sunday)
                     if (mode == TimetableMode.UPCOMING) {
                         LazyRow(
                             modifier = Modifier
@@ -425,16 +499,35 @@ fun TimetableScreen(
                                 .padding(vertical = 10.dp, horizontal = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(currentWeekDays) { dayDate ->
-                                val isSelected = dayDate == selectedDate
-                                val isToday = dayDate.isEqual(now.toLocalDate())
-                                val dayName = dayDate.format(DateTimeFormatter.ofPattern("EEE, dd MMM", Locale.US))
+                            item {
                                 FilterChip(
-                                    selected = isSelected,
-                                    onClick = { selectedDate = dayDate },
+                                    selected = showAllWeek,
+                                    onClick = { showAllWeek = true },
                                     label = {
                                         Text(
-                                            text = if (isToday) "$dayName (Today)" else dayName,
+                                            text = "All Week (${weekSlots.size})",
+                                            fontWeight = if (showAllWeek) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.ViewWeek, null, modifier = Modifier.size(14.dp))
+                                    }
+                                )
+                            }
+                            items(currentWeekDays) { dayDate ->
+                                val isSelected = !showAllWeek && dayDate == selectedDate
+                                val isToday = dayDate.isEqual(now.toLocalDate())
+                                val dayName = dayDate.format(DateTimeFormatter.ofPattern("EEE, dd MMM", Locale.US))
+                                val dayCount = weekSlots.count { it.rawDate == dayDate }
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedDate = dayDate
+                                        showAllWeek = false
+                                    },
+                                    label = {
+                                        Text(
+                                            text = if (isToday) "$dayName (Today - $dayCount)" else "$dayName ($dayCount)",
                                             fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium
                                         )
                                     },
@@ -468,8 +561,11 @@ fun TimetableScreen(
 
                     Text(
                         text = if (mode == TimetableMode.UPCOMING) {
-                            selectedDate.format(DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy", Locale.US))
-                        } else "Archived Sessions & History",
+                            if (showAllWeek) "All Week Schedule (${activeSlots.size} classes)"
+                            else selectedDate.format(DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy", Locale.US))
+                        } else if (selectedHistoryDate != null) {
+                            "Archived: ${selectedHistoryDate!!.format(DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.US))} (${activeSlots.size})"
+                        } else "Archived Sessions & History (${activeSlots.size})",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = ColorTextDark,
@@ -501,14 +597,25 @@ fun TimetableScreen(
                                     Spacer(Modifier.height(8.dp))
                                     Text(
                                         loadError ?: if (mode == TimetableMode.HISTORY) {
-                                            "No completed or archived classes match this date."
+                                            if (selectedHistoryDate != null) "No completed classes found for ${selectedHistoryDate!!.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))}."
+                                            else "No completed or archived classes found."
                                         } else {
                                             "No classes scheduled for ${selectedDate.format(DateTimeFormatter.ofPattern("EEEE", Locale.US))}."
                                         },
                                         textAlign = TextAlign.Center,
                                         color = ColorTextSub,
-                                        fontSize = 13.sp
+                                        fontSize = 13.5.sp
                                     )
+                                    if (mode == TimetableMode.UPCOMING && !showAllWeek && weekSlots.isNotEmpty()) {
+                                        Spacer(Modifier.height(12.dp))
+                                        Button(
+                                            onClick = { showAllWeek = true },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ColorDarkHeader),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("View All Week Classes (${weekSlots.size})", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                             }
                         }

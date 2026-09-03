@@ -99,7 +99,7 @@ fun BackendConnectionGate(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = if (isOffline) "No Internet" else "Server offline",
+                            text = if (isOffline) "No Internet Connection" else (errorMessage?.takeIf { it.isNotBlank() } ?: "Connecting to server..."),
                             fontSize = 12.sp,
                             color = Color.White,
                             fontWeight = FontWeight.SemiBold,

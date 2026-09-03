@@ -222,7 +222,7 @@ fun StudentDashboardScreen(
         mutableStateOf(DashboardSnapshot(cohortCode = tokenManager.getCohortCode().ifBlank { null }))
     }
     var isDashboardLoading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }
@@ -1332,8 +1332,7 @@ fun CleanTimetableDashboardView(
     PullToRefreshBox(
         isRefreshing = isDashboardLoading,
         onRefresh = onRefreshDashboard,
-        modifier = Modifier.fillMaxSize(),
-        indicator = {}
+        modifier = Modifier.fillMaxSize()
     ) {
         BackendSyncedDashboard(isLoading = isDashboardLoading) {
             Box(modifier = Modifier.fillMaxSize()) {

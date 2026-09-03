@@ -69,7 +69,7 @@ fun LifeSkillsScreen(
     val tabs = listOf("Sessions & Schedule", "LST Attendance", "LST Feedback")
     var training by remember { mutableStateOf<TrainingSnapshot?>(null) }
     var isLoading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }

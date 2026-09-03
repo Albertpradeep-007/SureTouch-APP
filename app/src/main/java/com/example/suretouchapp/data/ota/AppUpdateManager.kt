@@ -64,7 +64,7 @@ object AppUpdateManager {
         get() = BuildConfig.VERSION_CODE
 
     val currentVersionName: String
-        get() = BuildConfig.VERSION_NAME
+        get() = BuildConfig.VERSION_NAME.removePrefix("v").removePrefix("V")
 
     /**
      * Checks if a new version is available on the remote server.

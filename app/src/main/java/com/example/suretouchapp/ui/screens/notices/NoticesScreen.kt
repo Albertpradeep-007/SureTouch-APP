@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.api.ApiClient
+import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -98,8 +99,25 @@ fun NoticesScreen(
                 }
             loadError = null
         } else {
-            // Keep the last successful live result visible during transient failures.
-            loadError = "Could not refresh live announcements."
+            val fallbackAnnouncements = runCatching {
+                com.example.suretouchapp.data.repository.DashboardRepository(tokenManager).load().announcements
+            }.getOrNull().orEmpty()
+
+            if (fallbackAnnouncements.isNotEmpty() && remoteNotices.isEmpty()) {
+                remoteNotices = fallbackAnnouncements.map { item ->
+                    NoticeItem(
+                        id = item.id,
+                        title = item.title,
+                        description = item.message,
+                        dateStr = item.createdAt?.let { formatNoticeDate(it) } ?: "Recent",
+                        category = if (item.isPinned) "PINNED" else "GENERAL",
+                        isImportant = item.isPinned
+                    )
+                }
+                loadError = null
+            } else if (remoteNotices.isEmpty()) {
+                loadError = "Could not refresh live announcements."
+            }
         }
         hasLoadedOnce = true
         isLoading = false
@@ -111,12 +129,24 @@ fun NoticesScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text(
-                        text = if (selectedNotice != null) "Notice Detail" else "Notices & Broadcasts",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                            contentDescription = "SURE Trust Official Logo",
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .padding(2.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = if (selectedNotice != null) "Notice Detail" else "Notices & Broadcasts",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(

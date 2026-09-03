@@ -79,7 +79,7 @@ fun ProfileScreen(tokenManager: TokenManager, onBack: () -> Unit) {
 private fun LegacyStudentProfileScreenUnused(tokenManager: TokenManager, onBack: () -> Unit) {
     var profile by remember { mutableStateOf<StudentProfileDto?>(null) }
     var isLoading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }

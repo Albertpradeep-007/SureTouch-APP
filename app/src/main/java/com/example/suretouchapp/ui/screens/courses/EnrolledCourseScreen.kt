@@ -45,7 +45,7 @@ fun EnrolledCourseScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var loading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }

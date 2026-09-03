@@ -14,12 +14,11 @@ object NetworkUtils {
     fun isNetworkAvailable(context: Context): Boolean {
         return runCatching {
             val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                ?: return false
-            val activeNetwork = connectivityManager.activeNetwork ?: return false
-            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        }.getOrDefault(false)
+                ?: return true // Optimistic default
+            val activeNetwork = connectivityManager.activeNetwork ?: return true
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return true
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }.getOrDefault(true)
     }
 
     /**
@@ -40,20 +39,20 @@ object NetworkUtils {
             is SocketTimeoutException -> NetworkErrorInfo(
                 isOffline = false,
                 title = "Connection Timed Out",
-                message = "The SURE Trust server took too long to respond. Please check your connection speed and retry.",
+                message = "The server took too long to respond. Tap retry to reconnect.",
                 actionLabel = "Retry Connection"
             )
             is ConnectException, is UnknownHostException -> NetworkErrorInfo(
                 isOffline = false,
-                title = "SURE Trust Cloud Unreachable",
-                message = "Unable to reach the SURE Trust backend server. The server may be temporarily down or undergoing maintenance.",
+                title = "Server Connecting...",
+                message = "Connecting to SURE Trust server. Tap retry to reconnect.",
                 actionLabel = "Retry Server Connection"
             )
             else -> NetworkErrorInfo(
                 isOffline = false,
-                title = "Backend Connection Error",
+                title = "Sync Incomplete",
                 message = throwable?.localizedMessage?.takeIf { it.isNotBlank() }
-                    ?: "Unable to establish a secure real-time session with the SURE Trust backend server.",
+                    ?: "Unable to sync latest data with server. Tap retry to refresh.",
                 actionLabel = "Retry"
             )
         }

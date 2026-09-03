@@ -207,7 +207,7 @@ fun MentorDashboardScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var summary by remember { mutableStateOf(MentorSummary(name = tokenManager.getUserName(), email = tokenManager.getUserEmail())) }
     var isLoading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }
@@ -1419,6 +1419,12 @@ private fun MentorDashboardHeader(dateStr: String, cohorts: List<CohortDto>, sel
     var cohortMenuExpanded by remember { mutableStateOf(false) }
     val cohortLabel = selectedCohort?.let { "${it.startDate?.take(4)?.let { year -> "Cohort $year - " } ?: ""}${it.code ?: it.name}" } ?: "No cohort assigned"
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(
+            painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+            contentDescription = "SURE Trust Official Logo",
+            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(8.dp))
+        )
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text("Mentor Dashboard", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = MC_TextTitle, maxLines = 1)
             Spacer(Modifier.height(2.dp))
@@ -1511,12 +1517,21 @@ private fun MentorOverviewCard(classesToday: Int, pendingSubmissions: Int, pendi
                     }
             )
         Column(
-            modifier = Modifier.align(Alignment.TopStart).padding(start = 15.dp, top = 16.dp).width(38.dp),
+            modifier = Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 14.dp).width(42.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(Icons.Default.School, null, tint = Color.White, modifier = Modifier.size(21.dp))
+            Box(
+                modifier = Modifier.size(34.dp).background(Color.White, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                    contentDescription = "SURE Trust Logo",
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             Spacer(Modifier.height(5.dp))
-            Box(Modifier.width(16.dp).height(58.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.width(16.dp).height(50.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.72f)))
                 Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White))
             }
@@ -1524,8 +1539,8 @@ private fun MentorOverviewCard(classesToday: Int, pendingSubmissions: Int, pendi
             Text("IST", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF84CC16))
         }
         Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 50.dp)) {
-                Text("Your Overview", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 54.dp)) {
+                Text("Mentor Overview", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
             }
             Spacer(Modifier.height(7.dp))
             OverviewStatRow(Icons.Default.Laptop, classesToday, "Classes today", Modifier.padding(start = 50.dp))

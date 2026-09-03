@@ -49,7 +49,7 @@ fun CertificatesScreen(tokenManager: TokenManager, onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var certificates by remember { mutableStateOf<List<CertificateDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(true) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
     var errorTitle by remember { mutableStateOf<String?>(null) }
