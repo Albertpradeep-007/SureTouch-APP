@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.suretouchapp"
         minSdk = 24
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.1.4-beta"
+        versionCode = 12
+        versionName = "1.1.5-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
