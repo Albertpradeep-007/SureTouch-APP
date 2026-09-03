@@ -2466,11 +2466,29 @@ private fun CreateMentorAssignmentDialog(
     onDismiss: () -> Unit,
     onCreate: (String, String, String, String, String) -> Unit
 ) {
+    val context = LocalContext.current
     var selectedCohort by remember { mutableStateOf(cohorts.firstOrNull()?.id.orEmpty()) }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var deadline by remember { mutableStateOf("") }
     var maxMarks by remember { mutableStateOf("100") }
+
+    fun showDueDatePicker() {
+        val initial = Calendar.getInstance()
+        deadline.split("-").mapNotNull(String::toIntOrNull).takeIf { it.size == 3 }?.let { parts ->
+            initial.set(parts[0], parts[1] - 1, parts[2])
+        }
+        DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                deadline = String.format(java.util.Locale.US, "%04d-%02d-%02d", year, month + 1, day)
+            },
+            initial.get(Calendar.YEAR),
+            initial.get(Calendar.MONTH),
+            initial.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create cohort assignment") },
@@ -2480,7 +2498,13 @@ private fun CreateMentorAssignmentDialog(
                 MentorCohortPicker(cohorts, selectedCohort) { selectedCohort = it }
                 OutlinedTextField(title, { title = it }, label = { Text("Assignment title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(description, { description = it }, label = { Text("Description") }, minLines = 2, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(deadline, { deadline = it }, label = { Text("Deadline (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                MentorDateTimePickerField(
+                    value = deadline,
+                    label = "Assignment deadline",
+                    placeholder = "Select due date (YYYY-MM-DD)",
+                    icon = Icons.Default.CalendarMonth,
+                    onClick = ::showDueDatePicker
+                )
                 OutlinedTextField(maxMarks, { value -> if (value.all(Char::isDigit)) maxMarks = value }, label = { Text("Maximum marks") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             }
         },
@@ -2970,6 +2994,7 @@ private fun CreateJobReferenceDialog(
     onDismiss: () -> Unit,
     onPublish: (String, String, String, String, String, String, String) -> Unit
 ) {
+    val context = LocalContext.current
     var selectedCohort by remember { mutableStateOf(cohorts.firstOrNull()?.id.orEmpty()) }
     var title by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
@@ -2977,6 +3002,23 @@ private fun CreateJobReferenceDialog(
     var description by remember { mutableStateOf("") }
     var applyUrl by remember { mutableStateOf("") }
     var deadline by remember { mutableStateOf("") }
+
+    fun showJobDatePicker() {
+        val initial = Calendar.getInstance()
+        deadline.split("-").mapNotNull(String::toIntOrNull).takeIf { it.size == 3 }?.let { parts ->
+            initial.set(parts[0], parts[1] - 1, parts[2])
+        }
+        DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                deadline = String.format(java.util.Locale.US, "%04d-%02d-%02d", year, month + 1, day)
+            },
+            initial.get(Calendar.YEAR),
+            initial.get(Calendar.MONTH),
+            initial.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Publish job reference") },
@@ -2989,7 +3031,13 @@ private fun CreateJobReferenceDialog(
                 OutlinedTextField(employmentType, { employmentType = it.uppercase() }, label = { Text("Type (FULL_TIME / INTERNSHIP)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(description, { description = it }, label = { Text("Job description") }, minLines = 3, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(applyUrl, { applyUrl = it }, label = { Text("Application URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(deadline, { deadline = it }, label = { Text("Deadline (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                MentorDateTimePickerField(
+                    value = deadline,
+                    label = "Application deadline",
+                    placeholder = "Select deadline (YYYY-MM-DD)",
+                    icon = Icons.Default.CalendarMonth,
+                    onClick = ::showJobDatePicker
+                )
             }
         },
         confirmButton = {
