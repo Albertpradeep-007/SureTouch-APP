@@ -406,24 +406,43 @@ fun TimetableScreen(
                             },
                             shadowElevation = 2.dp
                         ) {
-                            Row(
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .clip(RoundedCornerShape(14.dp))
                             ) {
-                                Box(
+                                Image(
+                                    painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                    contentDescription = "SURE Trust Watermark",
+                                    contentScale = ContentScale.Fit,
                                     modifier = Modifier
-                                        .size(38.dp)
-                                        .background(Color.White, CircleShape),
-                                    contentAlignment = Alignment.Center
+                                        .size(130.dp)
+                                        .align(Alignment.CenterEnd)
+                                        .offset(x = 18.dp)
+                                        .graphicsLayer {
+                                            alpha = 0.20f
+                                            scaleX = 1.35f
+                                            scaleY = 1.35f
+                                        }
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Image(
-                                        painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                                        contentDescription = "SURE Trust Logo",
-                                        modifier = Modifier.size(26.dp)
-                                    )
-                                }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(Color.White, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                            contentDescription = "SURE Trust Logo",
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
                                 Spacer(Modifier.width(10.dp))
 
                                 if (nextSessionStatus == TimetableClassStatus.ONGOING) {
@@ -488,6 +507,7 @@ fun TimetableScreen(
                                 }
                             }
                         }
+                    }
                     }
 
                     // Week Day Filter Chips (All Week + Monday through Sunday)
@@ -574,7 +594,7 @@ fun TimetableScreen(
                     )
 
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 160.dp),
+                        columns = GridCells.Adaptive(minSize = 300.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -654,9 +674,9 @@ fun TimetableScreen(
                                             .background(
                                                 when (slot.state) {
                                                     TimetableClassStatus.ONGOING -> Color(0xFF15803D)
-                                                    TimetableClassStatus.CANCELLED -> Color(0xFFDC2626)
-                                                    TimetableClassStatus.RESCHEDULED -> Color(0xFFD97706)
-                                                    TimetableClassStatus.ENDED -> Color(0xFF64748B)
+                                                    TimetableClassStatus.CANCELLED -> Color(0xFF881337)
+                                                    TimetableClassStatus.RESCHEDULED -> Color(0xFFB45309)
+                                                    TimetableClassStatus.ENDED -> Color(0xFF475569)
                                                     else -> ColorCardTopBanner
                                                 }
                                             )
@@ -668,9 +688,24 @@ fun TimetableScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(slot.timeSlot, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Text(
+                                                text = slot.timeSlot,
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
                                             Surface(
-                                                color = Color.White.copy(alpha = 0.25f),
+                                                color = when (slot.state) {
+                                                    TimetableClassStatus.ONGOING -> Color(0xFF16A34A)
+                                                    TimetableClassStatus.CANCELLED -> Color(0xFFEF4444)
+                                                    TimetableClassStatus.RESCHEDULED -> Color(0xFFF59E0B)
+                                                    TimetableClassStatus.ENDED -> Color.White.copy(alpha = 0.20f)
+                                                    else -> Color.White.copy(alpha = 0.25f)
+                                                },
                                                 shape = RoundedCornerShape(6.dp)
                                             ) {
                                                 Text(
@@ -683,10 +718,12 @@ fun TimetableScreen(
                                                         TimetableClassStatus.RESCHEDULED -> "RESCHEDULED"
                                                         else -> "SCHEDULED"
                                                     },
-                                                    fontSize = 8.5.sp,
+                                                    fontSize = 8.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = Color.White,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                                 )
                                             }
                                         }
@@ -714,21 +751,34 @@ fun TimetableScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
 
-                                        if (slot.state == TimetableClassStatus.CANCELLED && !slot.notes.isNullOrBlank()) {
-                                            Spacer(Modifier.height(6.dp))
+                                        if (slot.state == TimetableClassStatus.CANCELLED) {
+                                            Spacer(Modifier.height(8.dp))
                                             Surface(
-                                                color = MaterialTheme.colorScheme.errorContainer,
-                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.25f)),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Text(
-                                                    "Reason: ${slot.notes}",
-                                                    fontSize = 10.sp,
-                                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                                    modifier = Modifier.padding(6.dp),
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Cancel,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.error,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(
+                                                        text = if (!slot.notes.isNullOrBlank()) "Cancelled: ${slot.notes}" else "This class was cancelled by mentor.",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                                        maxLines = 3,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
                                             }
                                         }
 

@@ -2,6 +2,7 @@ package com.example.suretouchapp.ui.screens.trustee
 
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
@@ -630,6 +631,20 @@ private fun VolunteerScheduleCard(
                         )
                     )
             ) {
+                Image(
+                    painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                    contentDescription = "SURE Trust watermark",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(160.dp)
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 24.dp)
+                        .graphicsLayer {
+                            alpha = 0.24f
+                            scaleX = 1.35f
+                            scaleY = 1.35f
+                        }
+                )
                 Column(
                     modifier = Modifier
                         .fillMaxSize()

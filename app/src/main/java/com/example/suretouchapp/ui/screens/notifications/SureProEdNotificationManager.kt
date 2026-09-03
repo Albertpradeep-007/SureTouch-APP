@@ -47,6 +47,8 @@ object SureProEdNotificationManager {
     private const val KEY_DELIVERED_GRADE_IDS = "delivered_grade_ids"
     private const val KEY_SCHEDULED_CLASS_IDS = "scheduled_class_ids"
     private const val KEY_15M_REMINDER_IDS = "reminder_15m_class_ids"
+    private const val KEY_DELIVERED_CANCELLED_IDS = "delivered_cancelled_ids"
+    private const val KEY_DELIVERED_RESCHEDULED_IDS = "delivered_rescheduled_ids"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -419,15 +421,39 @@ object SureProEdNotificationManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val deliveredSchedules = prefs.getStringSet(KEY_SCHEDULED_CLASS_IDS, emptySet()).orEmpty().toMutableSet()
         val delivered15mReminders = prefs.getStringSet(KEY_15M_REMINDER_IDS, emptySet()).orEmpty().toMutableSet()
+        val deliveredCancelled = prefs.getStringSet(KEY_DELIVERED_CANCELLED_IDS, emptySet()).orEmpty().toMutableSet()
+        val deliveredRescheduled = prefs.getStringSet(KEY_DELIVERED_RESCHEDULED_IDS, emptySet()).orEmpty().toMutableSet()
         val now = System.currentTimeMillis()
         var hasNewAlert = false
 
         for (session in sessions) {
-            if (session.isCancelledSession()) continue
+            val status = (session.effectiveStatus ?: session.classStatus)?.trim()?.uppercase(Locale.US)
+            val isCancelled = session.isCancelledSession() || status == "CANCELLED"
+            val isRescheduled = status == "RESCHEDULED"
+
+            if (isCancelled) {
+                val cancelKey = "${session.id}_cancelled_${session.notes.orEmpty()}"
+                if (cancelKey !in deliveredCancelled) {
+                    showClassCancelledNotification(context, session)
+                    deliveredCancelled += cancelKey
+                    hasNewAlert = true
+                }
+                continue
+            }
+
+            if (isRescheduled) {
+                val reschedKey = "${session.id}_rescheduled_${session.date}_${session.startTime.orEmpty()}"
+                if (reschedKey !in deliveredRescheduled) {
+                    showClassRescheduledNotification(context, session)
+                    deliveredRescheduled += reschedKey
+                    hasNewAlert = true
+                }
+            }
+
             val sessionKey = "${session.id}_${session.date}_${session.startTime.orEmpty()}"
             val startMillis = parseClassStartTimeMillis(session.date, session.startTime)
 
-            if (sessionKey !in deliveredSchedules) {
+            if (sessionKey !in deliveredSchedules && !isRescheduled) {
                 if (startMillis == null || startMillis >= now - (2 * 3600 * 1000L)) {
                     showClassScheduledNotification(context, session)
                     deliveredSchedules += sessionKey
@@ -464,6 +490,8 @@ object SureProEdNotificationManager {
         prefs.edit()
             .putStringSet(KEY_SCHEDULED_CLASS_IDS, deliveredSchedules.toList().takeLast(200).toSet())
             .putStringSet(KEY_15M_REMINDER_IDS, delivered15mReminders.toList().takeLast(200).toSet())
+            .putStringSet(KEY_DELIVERED_CANCELLED_IDS, deliveredCancelled.toList().takeLast(200).toSet())
+            .putStringSet(KEY_DELIVERED_RESCHEDULED_IDS, deliveredRescheduled.toList().takeLast(200).toSet())
             .apply()
     }
 
@@ -531,6 +559,86 @@ object SureProEdNotificationManager {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
         notifyIfAllowed(context, ("scheduled_" + session.id).hashCode(), builder.build())
+    }
+
+    fun showClassCancelledNotification(context: Context, session: AttendanceDto) {
+        createChannels(context)
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val title = session.sessionTitle?.ifBlank { session.courseName } ?: session.courseName ?: "Live Class"
+        val titleText = "⚠️ Class Cancelled: $title"
+        val reasonText = if (!session.notes.isNullOrBlank()) "\nReason: ${session.notes}" else ""
+        val messageText = "The class scheduled on ${session.date} at ${session.startTime ?: "scheduled time"} has been cancelled.$reasonText"
+
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("open_timetable", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            ("cancelled_" + session.id).hashCode(),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val largeLogo = BitmapFactory.decodeResource(context.resources, R.drawable.sure_trust_official_logo)
+        val builder = NotificationCompat.Builder(context, CHANNEL_CLASS_REMINDERS)
+            .setSmallIcon(R.drawable.ic_sureproed_notification)
+            .setLargeIcon(largeLogo)
+            .setColor(0xFFDC2626.toInt())
+            .setContentTitle(titleText)
+            .setContentText("Class on ${session.date} at ${session.startTime ?: "scheduled time"} cancelled.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
+            .setSubText("SURE ProEd • Class Cancelled")
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setSound(defaultSoundUri)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setVibrate(longArrayOf(0, 300, 200, 300))
+            .setGroup(GROUP_STUDENT_UPDATES)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        notifyIfAllowed(context, ("cancelled_" + session.id).hashCode(), builder.build())
+    }
+
+    fun showClassRescheduledNotification(context: Context, session: AttendanceDto) {
+        createChannels(context)
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val title = session.sessionTitle?.ifBlank { session.courseName } ?: session.courseName ?: "Live Class"
+        val titleText = "🗓️ Class Rescheduled: $title"
+        val meetInfo = if (!session.meetingLink.isNullOrBlank()) " Google Meet link attached." else ""
+        val messageText = "This class has been rescheduled to ${session.date} at ${session.startTime ?: "scheduled time"}.$meetInfo"
+
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("open_timetable", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            ("rescheduled_" + session.id).hashCode(),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val largeLogo = BitmapFactory.decodeResource(context.resources, R.drawable.sure_trust_official_logo)
+        val builder = NotificationCompat.Builder(context, CHANNEL_CLASS_REMINDERS)
+            .setSmallIcon(R.drawable.ic_sureproed_notification)
+            .setLargeIcon(largeLogo)
+            .setColor(0xFFD97706.toInt())
+            .setContentTitle(titleText)
+            .setContentText("Rescheduled to ${session.date} at ${session.startTime ?: "scheduled time"}.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
+            .setSubText("SURE ProEd • Timetable Update")
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setSound(defaultSoundUri)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setVibrate(longArrayOf(0, 300, 200, 300))
+            .setGroup(GROUP_STUDENT_UPDATES)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        notifyIfAllowed(context, ("rescheduled_" + session.id).hashCode(), builder.build())
     }
 
     fun showUpcomingClassReminder(

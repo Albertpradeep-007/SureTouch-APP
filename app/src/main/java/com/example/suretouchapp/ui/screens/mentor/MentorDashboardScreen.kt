@@ -1488,7 +1488,7 @@ private fun MentorOverviewCard(classesToday: Int, pendingSubmissions: Int, pendi
                     .align(Alignment.CenterEnd)
                     .offset(x = 24.dp)
                     .graphicsLayer {
-                        alpha = 0.18f
+                        alpha = 0.24f
                         scaleX = 1.35f
                         scaleY = 1.35f
                     }

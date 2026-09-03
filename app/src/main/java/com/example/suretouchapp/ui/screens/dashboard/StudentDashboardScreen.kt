@@ -85,7 +85,7 @@ import java.time.LocalTime
 // SESSION STATE & MULTI-CLASS SWIPEABLE SESSION MODEL
 // =======================================================
 enum class SessionState {
-    UPCOMING, LIVE_NOW, COMPLETED
+    UPCOMING, LIVE_NOW, COMPLETED, CANCELLED
 }
 
 data class TimetableClassSession(
@@ -111,7 +111,10 @@ private fun getSessionState(
     now: LocalDateTime
 ): SessionState {
     val backend = backendStatus?.trim()?.uppercase(Locale.US)
-    if (backend in setOf("COMPLETED", "CANCELLED", "RESCHEDULED")) {
+    if (backend == "CANCELLED") {
+        return SessionState.CANCELLED
+    }
+    if (backend == "COMPLETED") {
         return SessionState.COMPLETED
     }
     val date = com.example.suretouchapp.data.repository.parseSessionLocalDate(dateValue) ?: return SessionState.UPCOMING
@@ -120,9 +123,10 @@ private fun getSessionState(
     val startAt = LocalDateTime.of(date, start)
     val endAt = LocalDateTime.of(date, end)
     return when {
-        !now.isBefore(endAt) -> SessionState.COMPLETED
         now.isBefore(startAt) -> SessionState.UPCOMING
-        else -> SessionState.LIVE_NOW
+        !now.isAfter(endAt.plusMinutes(15)) -> SessionState.LIVE_NOW
+        backend == "SCHEDULED" || backend == "UPCOMING" -> SessionState.UPCOMING
+        else -> SessionState.COMPLETED
     }
 }
 
@@ -1570,9 +1574,9 @@ fun CleanTimetableDashboardView(
                                     .align(Alignment.CenterEnd)
                                     .offset(x = 24.dp, y = (-10).dp)
                                     .graphicsLayer {
-                                        alpha = 0.09f
-                                        scaleX = 1.3f
-                                        scaleY = 1.3f
+                                        alpha = 0.20f
+                                        scaleX = 1.35f
+                                        scaleY = 1.35f
                                     }
                             )
 
@@ -1745,9 +1749,10 @@ fun CleanTimetableDashboardView(
                                             SessionState.LIVE_NOW -> Icons.Default.Videocam
                                             SessionState.UPCOMING -> Icons.Default.CalendarMonth
                                             SessionState.COMPLETED -> Icons.Default.Schedule
+                                            SessionState.CANCELLED -> Icons.Default.Cancel
                                         },
                                         contentDescription = null,
-                                        tint = ColorPrimaryPurple,
+                                        tint = if (session.sessionState == SessionState.CANCELLED) Color(0xFFDC2626) else ColorPrimaryPurple,
                                         modifier = Modifier.size(23.dp)
                                     )
                                 }
@@ -1755,6 +1760,7 @@ fun CleanTimetableDashboardView(
                                 Text(
                                     text = when {
                                         !session.isPlaceholder && session.sessionState == SessionState.LIVE_NOW -> "Join Session"
+                                        !session.isPlaceholder && session.sessionState == SessionState.CANCELLED -> "Cancelled • View Timetable"
                                         !session.isPlaceholder && session.sessionState == SessionState.COMPLETED -> "Ended • ${session.startTime} – ${session.endTime}"
                                         !session.isPlaceholder -> "View Schedule"
                                         hasCohortAssigned -> "Await Upcoming Classes"
@@ -1765,12 +1771,12 @@ fun CleanTimetableDashboardView(
                                     textAlign = TextAlign.Center,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 17.sp,
-                                    color = ColorPrimaryPurple
+                                    color = if (session.sessionState == SessionState.CANCELLED) Color(0xFFDC2626) else ColorPrimaryPurple
                                 )
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                     contentDescription = null,
-                                    tint = ColorPrimaryPurple,
+                                    tint = if (session.sessionState == SessionState.CANCELLED) Color(0xFFDC2626) else ColorPrimaryPurple,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -1780,11 +1786,13 @@ fun CleanTimetableDashboardView(
                                 SessionState.UPCOMING  -> Color(0xFFFBBF24)
                                 SessionState.LIVE_NOW  -> Color(0xFF4ADE80)
                                 SessionState.COMPLETED -> Color(0xFF94A3B8)
+                                SessionState.CANCELLED -> Color(0xFFEF4444)
                             }
                             val statusLabel = if (session.isPlaceholder) "Pending" else when (session.sessionState) {
                                 SessionState.UPCOMING  -> "Upcoming"
                                 SessionState.LIVE_NOW  -> "Live Now"
                                 SessionState.COMPLETED -> "Completed"
+                                SessionState.CANCELLED -> "Cancelled"
                             }
 
                             val infiniteTransition = rememberInfiniteTransition(label = "StatusDotBlink_$pageIndex")

@@ -54,6 +54,7 @@ enum class AssignmentStatus {
 
 data class AssignmentItem(
     val id: String,
+    val submissionId: String? = null,
     val courseCode: String,
     val title: String,
     val description: String,
@@ -94,29 +95,60 @@ fun AssignmentsScreen(
         connectionError = null
         errorTitle = null
         try {
-            val response = ApiClient.getService(tokenManager).getAssignments()
+            val api = ApiClient.getService(tokenManager)
+            val response = api.getAssignments()
+            val submissionsResponse = runCatching { api.getSubmissions() }.getOrNull()
             if (response.isSuccessful) {
                 val rawAssignments = response.body()?.results.orEmpty()
+                val rawSubmissions = submissionsResponse?.takeIf { it.isSuccessful }?.body()?.results.orEmpty()
                 SureProEdNotificationManager.syncAssignments(context, rawAssignments)
-                SureProEdNotificationManager.syncSubmissionsAndGrades(context, emptyList(), rawAssignments)
+                SureProEdNotificationManager.syncSubmissionsAndGrades(context, rawSubmissions, rawAssignments)
+                
+                val submissionMap = rawSubmissions.filter { !it.assignment.isNullOrBlank() }
+                    .associateBy { it.assignment!! }
+
                 assignmentList.clear()
-                assignmentList.addAll(response.body()?.results.orEmpty().map { assignment ->
-                    val status = when (assignment.status?.uppercase()) {
-                        "GRADED", "EVALUATED" -> AssignmentStatus.GRADED
-                        "SUBMITTED" -> AssignmentStatus.SUBMITTED
+                assignmentList.addAll(rawAssignments.map { assignment ->
+                    val userSubmission = submissionMap[assignment.id]
+                    val isGraded = userSubmission?.evaluated == true || 
+                        assignment.status?.uppercase() in setOf("GRADED", "EVALUATED")
+                    val isSubmitted = userSubmission != null || 
+                        !assignment.submittedLink.isNullOrBlank() || 
+                        assignment.status?.uppercase() == "SUBMITTED"
+
+                    val status = when {
+                        isGraded -> AssignmentStatus.GRADED
+                        isSubmitted -> AssignmentStatus.SUBMITTED
                         else -> AssignmentStatus.PENDING
                     }
+                    val submittedLink = userSubmission?.submissionUrl 
+                        ?: userSubmission?.githubRepoUrl 
+                        ?: userSubmission?.submissionText 
+                        ?: assignment.submittedLink
+                    val score = userSubmission?.marksObtained?.toDoubleOrNull()?.toInt() ?: assignment.score
+                    val feedback = userSubmission?.feedback
+                    val grade = when {
+                        score != null && score >= 90 -> "A+"
+                        score != null && score >= 80 -> "A"
+                        score != null && score >= 70 -> "B"
+                        score != null && score >= 60 -> "C"
+                        score != null -> "Passed"
+                        else -> assignment.grade
+                    }
+
                     AssignmentItem(
                         id = assignment.id,
+                        submissionId = userSubmission?.id,
                         courseCode = assignment.cohort ?: "Assigned cohort",
                         title = assignment.title,
                         description = assignment.description,
                         dueDate = assignment.dueDate,
                         maxMarks = assignment.maxMarks.toDoubleOrNull()?.toInt() ?: 100,
                         status = status,
-                        submittedLink = assignment.submittedLink,
-                        score = assignment.score,
-                        grade = assignment.grade
+                        submittedLink = submittedLink,
+                        score = score,
+                        grade = grade,
+                        feedback = feedback
                     )
                 })
                 isConnected = true
@@ -554,21 +586,43 @@ fun AssignmentsScreen(
                             if (submissionInputLink.isBlank()) return@Button
                             isSubmitting = true
                             scope.launch {
-                                val response = runCatching {
-                                    ApiClient.getService(tokenManager).submitAssignment(
-                                        AssignmentSubmissionRequest(
-                                            submissionLink = submissionInputLink,
-                                            assignment = target.id
-                                        )
-                                    )
-                                }.getOrNull()
+                                val api = ApiClient.getService(tokenManager)
+                                val cleanLink = submissionInputLink.trim()
+                                val req = AssignmentSubmissionRequest(
+                                    submissionLink = cleanLink,
+                                    assignment = target.id,
+                                    submissionText = cleanLink
+                                )
+                                val response = if (!target.submissionId.isNullOrBlank()) {
+                                    val patchRes = runCatching {
+                                        api.patchSubmission(target.submissionId, mapOf(
+                                            "submission_url" to cleanLink,
+                                            "submission_text" to cleanLink
+                                        ))
+                                    }.getOrNull()
+                                    if (patchRes?.isSuccessful == true) patchRes
+                                    else runCatching { api.submitAssignment(req) }.getOrNull()
+                                } else {
+                                    runCatching { api.submitAssignment(req) }.getOrNull()
+                                }
+
                                 if (response?.isSuccessful == true) {
-                                    target.submittedLink = submissionInputLink
+                                    val newSub = response.body()
+                                    target.submittedLink = cleanLink
                                     target.status = AssignmentStatus.SUBMITTED
+                                    val idx = assignmentList.indexOfFirst { it.id == target.id }
+                                    if (idx >= 0) {
+                                        assignmentList[idx] = assignmentList[idx].copy(
+                                            status = AssignmentStatus.SUBMITTED,
+                                            submittedLink = cleanLink,
+                                            submissionId = newSub?.id ?: target.submissionId
+                                        )
+                                    }
                                     selectedAssignmentForSubmission = null
                                     android.widget.Toast.makeText(context, "Assignment submitted successfully.", android.widget.Toast.LENGTH_SHORT).show()
+                                    loadAssignments()
                                 } else {
-                                    android.widget.Toast.makeText(context, "Unable to submit the assignment. Please try again.", android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(context, "Unable to submit the assignment. Please check connection and try again.", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                                 isSubmitting = false
                             }
@@ -577,7 +631,7 @@ fun AssignmentsScreen(
                         shape = RoundedCornerShape(8.dp),
                         enabled = !isSubmitting && isConnected
                     ) {
-                        Text(if (!isConnected) "Submit (Offline)" else "Submit Link", fontWeight = FontWeight.Bold)
+                        Text(if (!isConnected) "Submit (Offline)" else if (isSubmitting) "Submitting..." else "Submit Link", fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {

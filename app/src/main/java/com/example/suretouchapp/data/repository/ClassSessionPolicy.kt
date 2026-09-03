@@ -46,10 +46,16 @@ private val SESSION_DATE_FORMATTERS = listOf(
 
 fun parseSessionLocalDate(dateStr: String?): LocalDate? {
     if (dateStr.isNullOrBlank()) return null
-    val clean = dateStr.trim().take(11).trim()
+    val clean = dateStr.trim().substringBefore("T").take(10).trim()
     for (formatter in SESSION_DATE_FORMATTERS) {
         try {
             return LocalDate.parse(clean, formatter)
+        } catch (_: Exception) {}
+    }
+    val full = dateStr.trim()
+    for (formatter in SESSION_DATE_FORMATTERS) {
+        try {
+            return LocalDate.parse(full, formatter)
         } catch (_: Exception) {}
     }
     return null
@@ -61,10 +67,14 @@ fun AttendanceDto.isCancelledSession(): Boolean =
 
 fun AttendanceDto.isCompletedSession(): Boolean {
     if (isCancelledSession()) return false
-    if (classStatus.equals("COMPLETED", ignoreCase = true) ||
-        effectiveStatus.equals("COMPLETED", ignoreCase = true) ||
-        (conducted && classStatus.isNullOrBlank() && effectiveStatus.isNullOrBlank())
-    ) {
+    val status = (effectiveStatus ?: classStatus)?.trim()?.uppercase(Locale.US)
+    if (status == "COMPLETED") {
+        return true
+    }
+    if (status == "SCHEDULED" || status == "UPCOMING" || status == "LIVE" || status == "ONGOING") {
+        return false
+    }
+    if (conducted && status == null) {
         return true
     }
     val parsedDate = parseSessionLocalDate(date)
@@ -73,14 +83,9 @@ fun AttendanceDto.isCompletedSession(): Boolean {
         if (parsedDate.isBefore(today)) {
             return true
         } else if (parsedDate.isEqual(today)) {
-            val end = endTime?.trim()?.take(5)
-            if (!end.isNullOrBlank()) {
-                try {
-                    val parsedEnd = LocalTime.parse(end)
-                    if (LocalTime.now().isAfter(parsedEnd)) {
-                        return true
-                    }
-                } catch (_: Exception) {}
+            val parsedEnd = ClassSchedulePolicy.parseLocalTime(endTime)
+            if (parsedEnd != null && LocalTime.now().isAfter(parsedEnd.plusMinutes(15))) {
+                return true
             }
         }
     }
@@ -249,13 +254,11 @@ object TimetableSessionPolicy {
         val startAt = LocalDateTime.of(date, startTime)
         val endAt = LocalDateTime.of(date, endTime)
 
-        if (backendStatus == "COMPLETED" || (session.conducted && !session.isCancelledSession())) {
+        if (backendStatus == "COMPLETED" || (session.conducted && backendStatus != "SCHEDULED" && backendStatus != "UPCOMING" && !session.isCancelledSession())) {
             return TimetableClassStatus.ENDED
         }
 
         return when {
-            !now.isBefore(endAt) -> TimetableClassStatus.ENDED
-            !now.isBefore(startAt) && now.isBefore(endAt) -> TimetableClassStatus.ONGOING
             now.isBefore(startAt) -> {
                 val isToday = now.toLocalDate().isEqual(date)
                 val minutesUntil = Duration.between(now, startAt).toMinutes()
@@ -265,7 +268,9 @@ object TimetableSessionPolicy {
                     TimetableClassStatus.AWAITING_UPCOMING
                 }
             }
-            else -> TimetableClassStatus.UPCOMING
+            !now.isAfter(endAt.plusMinutes(15)) -> TimetableClassStatus.ONGOING
+            backendStatus == "SCHEDULED" || backendStatus == "UPCOMING" -> TimetableClassStatus.UPCOMING
+            else -> TimetableClassStatus.ENDED
         }
     }
 
