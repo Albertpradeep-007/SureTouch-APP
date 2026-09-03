@@ -40,7 +40,9 @@ data class DashboardClassSession(
     val classStatus: String? = null,
     val rawDate: String? = null,
     val rawStartTime: String? = null,
-    val rawEndTime: String? = null
+    val rawEndTime: String? = null,
+    val mentorPhoto: String? = null,
+    val isVolunteer: Boolean = false
 )
 
 data class DashboardAnnouncement(
@@ -207,6 +209,12 @@ class DashboardRepository(private val tokenManager: TokenManager) {
             it.startsWith("DOMAIN SESSION") || it.startsWith("CLASS SESSION")
         }
         val courseName = item.courseName?.trim()?.takeIf(String::isNotBlank)
+        val conductedBy = item.conductedByName?.trim().orEmpty()
+        val isVolunteer = conductedBy.contains("Volunteer", ignoreCase = true) ||
+            conductedBy.contains("Trustee", ignoreCase = true) ||
+            item.conductedByRole.equals("VOLUNTEER", ignoreCase = true) ||
+            item.conductedByRole.equals("TRUSTEE", ignoreCase = true)
+        val photo = item.conductedByPhoto ?: item.conductedByAvatar
         return DashboardClassSession(
             id = item.id,
             title = courseName ?: sessionTitle.ifBlank { "Scheduled class" },
@@ -224,7 +232,9 @@ class DashboardRepository(private val tokenManager: TokenManager) {
             classStatus = item.effectiveStatus ?: item.classStatus,
             rawDate = item.date,
             rawStartTime = item.startTime,
-            rawEndTime = item.endTime
+            rawEndTime = item.endTime,
+            mentorPhoto = photo,
+            isVolunteer = isVolunteer
         )
     }
 

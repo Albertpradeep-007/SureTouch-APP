@@ -100,7 +100,9 @@ data class TimetableClassSession(
     val sessionState: SessionState,
     val cohortCode: String = "Pending",
     val isPlaceholder: Boolean = false,
-    val meetingLink: String? = null
+    val meetingLink: String? = null,
+    val mentorPhoto: String? = null,
+    val isVolunteerConducted: Boolean = false
 )
 
 private fun getSessionState(
@@ -122,8 +124,9 @@ private fun getSessionState(
     val end = com.example.suretouchapp.data.repository.ClassSchedulePolicy.parseLocalTime(endValue) ?: start.plusHours(1)
     val startAt = LocalDateTime.of(date, start)
     val endAt = LocalDateTime.of(date, end)
+    val earlyJoinStart = startAt.minusMinutes(15)
     return when {
-        now.isBefore(startAt) -> SessionState.UPCOMING
+        now.isBefore(earlyJoinStart) -> SessionState.UPCOMING
         !now.isAfter(endAt.plusMinutes(15)) -> SessionState.LIVE_NOW
         backend == "SCHEDULED" || backend == "UPCOMING" -> SessionState.UPCOMING
         else -> SessionState.COMPLETED
@@ -1408,7 +1411,9 @@ fun CleanTimetableDashboardView(
                             dashboardClock
                         ),
                         cohortCode = cohortCode,
-                        meetingLink = session.meetingLink
+                        meetingLink = session.meetingLink,
+                        mentorPhoto = session.mentorPhoto,
+                        isVolunteerConducted = session.isVolunteer
                     )
                 }
                 // Once a class ends it leaves the dashboard hero. If no live/upcoming
@@ -1590,22 +1595,25 @@ fun CleanTimetableDashboardView(
                                 // Left: Time block
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.width(58.dp)
+                                    modifier = Modifier.width(62.dp)
                                 ) {
                                     Text(
                                         text = railStartTime,
-                                        fontSize = 20.sp,
+                                        fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = Color.White,
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 18.sp
                                     )
                                     Box(
-                                        contentAlignment = Alignment.TopCenter
+                                        contentAlignment = Alignment.TopCenter,
+                                        modifier = Modifier.padding(vertical = 3.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .padding(top = 3.dp)
+                                                .padding(top = 2.dp)
                                                 .width(2.dp)
-                                                .height(36.dp)
+                                                .height(24.dp)
                                                 .background(
                                                     brush = Brush.verticalGradient(
                                                         listOf(
@@ -1617,41 +1625,36 @@ fun CleanTimetableDashboardView(
                                         )
                                         Box(
                                             modifier = Modifier
-                                                .size(7.dp)
+                                                .size(6.dp)
                                                 .clip(CircleShape)
                                                 .background(Color.White)
                                         )
                                     }
                                     Text(
                                         text = railEndTime,
-                                        fontSize = 18.sp,
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(alpha = 0.90f)
-                                    )
-                                    Text(
-                                        text = railPeriod,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.5.sp,
-                                        color = Color(0xFF74C600)
+                                        color = Color.White.copy(alpha = 0.90f),
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 17.sp
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
 
                                 Box(
                                     modifier = Modifier
                                         .width(1.dp)
-                                        .height(118.dp)
+                                        .height(110.dp)
                                         .background(Color.White.copy(alpha = 0.32f))
                                 )
 
-                                Spacer(modifier = Modifier.width(16.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
 
                                 Column(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .padding(top = 8.dp, end = 2.dp)
+                                        .padding(top = 4.dp, end = 2.dp)
                                 ) {
                                     Text(
                                         text = session.courseCode,
@@ -1668,11 +1671,11 @@ fun CleanTimetableDashboardView(
                                         overflow = TextOverflow.Ellipsis
                                     )
 
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
                                     Text(
                                         text = session.moduleTitle,
                                         fontWeight = FontWeight.Normal,
-                                        fontSize = 13.sp,
+                                        fontSize = 12.5.sp,
                                         color = Color.White.copy(alpha = 0.85f),
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
@@ -1680,6 +1683,12 @@ fun CleanTimetableDashboardView(
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     val mentorDetails = session.mentorName.split(" • ", limit = 2)
+                                    val mentorDisplayName = mentorDetails.first()
+                                    val isVolunteer = session.isVolunteerConducted ||
+                                        mentorDisplayName.contains("Volunteer", ignoreCase = true) ||
+                                        mentorDisplayName.contains("Trustee", ignoreCase = true) ||
+                                        mentorDisplayName.contains("Admin", ignoreCase = true)
+
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Surface(
                                             modifier = Modifier.size(36.dp),
@@ -1687,16 +1696,25 @@ fun CleanTimetableDashboardView(
                                             color = Color.White,
                                             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.8f))
                                         ) {
-                                            Image(
-                                                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                                                contentDescription = "SURE Trust Official Logo",
-                                                modifier = Modifier.padding(3.dp)
-                                            )
+                                            if (isVolunteer || session.isPlaceholder) {
+                                                Image(
+                                                    painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                                                    contentDescription = "SURE Trust Official Logo",
+                                                    modifier = Modifier.padding(3.dp)
+                                                )
+                                            } else {
+                                                com.example.suretouchapp.ui.components.StudentProfileImage(
+                                                    photo = session.mentorPhoto,
+                                                    displayName = mentorDisplayName,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    cornerRadius = 18
+                                                )
+                                            }
                                         }
                                         Spacer(modifier = Modifier.width(9.dp))
                                         Column {
                                             Text(
-                                                text = mentorDetails.first(),
+                                                text = mentorDisplayName,
                                                 fontSize = 12.5.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = Color.White,

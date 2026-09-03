@@ -29,8 +29,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,11 +72,21 @@ private data class TimetableSlot(
     val timeSlot: String,
     val classType: String,
     val courseDetails: String,
+    val courseName: String? = null,
+    val moduleTitle: String? = null,
+    val mentorName: String? = null,
     val state: TimetableClassStatus,
     val notes: String? = null,
     val hasMeetingLink: Boolean = false,
     val meetingLink: String? = null
 )
+
+private fun extractMeetCode(link: String?): String? {
+    if (link.isNullOrBlank()) return null
+    val clean = link.trim().substringBefore("?").substringBefore("#")
+    val code = clean.substringAfterLast("/")
+    return if (code.isNotBlank()) code else clean
+}
 
 private fun parseApiTime(value: String?): LocalTime? = ClassSchedulePolicy.parseLocalTime(value)
 
@@ -105,6 +117,7 @@ fun TimetableScreen(
     onNavigateToLiveClass: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val semanticColors = sureSemanticColors()
     var now by remember { mutableStateOf(LocalDateTime.now()) }
 
@@ -248,17 +261,18 @@ fun TimetableScreen(
             val genericTitle = sessionTitle.uppercase(Locale.US).let {
                 it.startsWith("DOMAIN SESSION") || it.startsWith("CLASS SESSION")
             }
-            val courseName = session.courseName?.trim()?.takeIf(String::isNotBlank)
+            val courseName = session.courseName?.trim()?.takeIf(String::isNotBlank) ?: sessionTitle.ifBlank { "Live Course Session" }
+            val moduleTitle = sessionTitle.takeIf { it.isNotBlank() && !genericTitle && !it.equals(courseName, ignoreCase = true) }
+            val mentorName = session.conductedByName?.trim()?.takeIf(String::isNotBlank) ?: "Lead Mentor"
             TimetableSlot(
                 id = session.id,
                 rawDate = date,
                 timeSlot = formatTimeRange(session.startTime, session.endTime),
-                classType = listOfNotNull(statusLabel, session.conductedByName?.takeIf(String::isNotBlank)).joinToString(" • "),
-                courseDetails = listOfNotNull(
-                    courseName,
-                    sessionTitle.takeIf { it.isNotBlank() && !genericTitle && !it.equals(courseName, ignoreCase = true) },
-                    session.notes?.takeIf(String::isNotBlank)
-                ).joinToString("\n").ifBlank { "Class details pending" },
+                classType = mentorName,
+                courseDetails = listOfNotNull(courseName, moduleTitle).joinToString(" • "),
+                courseName = courseName,
+                moduleTitle = moduleTitle,
+                mentorName = mentorName,
                 state = status,
                 notes = session.notes,
                 hasMeetingLink = !session.meetingLink.isNullOrBlank(),
@@ -402,9 +416,9 @@ fun TimetableScreen(
                                 TimetableClassStatus.ONGOING -> Color(0xFF15803D)
                                 TimetableClassStatus.UPCOMING -> Color(0xFF4338CA)
                                 TimetableClassStatus.AWAITING_UPCOMING -> Color(0xFF6C2BD9)
-                                else -> MaterialTheme.colorScheme.surfaceVariant
+                                else -> Color(0xFF3B1D78)
                             },
-                            shadowElevation = 2.dp
+                            shadowElevation = 3.dp
                         ) {
                             Box(
                                 modifier = Modifier
@@ -416,13 +430,13 @@ fun TimetableScreen(
                                     contentDescription = "SURE Trust Watermark",
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier
-                                        .size(130.dp)
+                                        .size(115.dp)
                                         .align(Alignment.CenterEnd)
-                                        .offset(x = 18.dp)
+                                        .offset(x = 10.dp)
                                         .graphicsLayer {
-                                            alpha = 0.20f
-                                            scaleX = 1.35f
-                                            scaleY = 1.35f
+                                            alpha = 0.22f
+                                            scaleX = 1.25f
+                                            scaleY = 1.25f
                                         }
                                 )
                                 Row(
@@ -443,71 +457,77 @@ fun TimetableScreen(
                                             modifier = Modifier.size(26.dp)
                                         )
                                     }
-                                Spacer(Modifier.width(10.dp))
+                                    Spacer(Modifier.width(10.dp))
 
-                                if (nextSessionStatus == TimetableClassStatus.ONGOING) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .graphicsLayer { alpha = liveAlpha }
-                                            .clip(CircleShape)
-                                            .background(Color.Red)
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                }
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = when (nextSessionStatus) {
-                                            TimetableClassStatus.ONGOING -> "ONGOING • LIVE NOW"
-                                            TimetableClassStatus.UPCOMING -> "STARTING SOON"
-                                            TimetableClassStatus.AWAITING_UPCOMING -> "AWAITING UPCOMING CLASS"
-                                            else -> "NO CLASS SCHEDULED"
-                                        },
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (nextSessionStatus == TimetableClassStatus.NO_CLASS_SCHEDULED) MaterialTheme.colorScheme.onSurfaceVariant else Color.White,
-                                        letterSpacing = 0.5.sp
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    if (nextSession != null) {
-                                        Text(
-                                            text = nextSession.sessionTitle ?: nextSession.courseName ?: "Next class",
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                    if (nextSessionStatus == TimetableClassStatus.ONGOING) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .graphicsLayer { alpha = liveAlpha }
+                                                .clip(CircleShape)
+                                                .background(Color.Red)
                                         )
-                                        Text(
-                                            text = "${nextSession.date} • ${formatTimeRange(nextSession.startTime, nextSession.endTime)}",
-                                            fontSize = 11.5.sp,
-                                            color = Color.White.copy(alpha = 0.9f)
-                                        )
-                                    } else {
-                                        Text(
-                                            text = "All scheduled sessions for the current week have ended.",
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        Spacer(Modifier.width(8.dp))
                                     }
-                                }
 
-                                if (nextSessionStatus == TimetableClassStatus.ONGOING && !nextSession?.meetingLink.isNullOrBlank()) {
-                                    Button(
-                                        onClick = { openLink(nextSession?.meetingLink) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(Icons.Default.Videocam, null, tint = Color(0xFF15803D), modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Join Meet", fontSize = 11.5.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = when (nextSessionStatus) {
+                                                TimetableClassStatus.ONGOING -> "ONGOING • LIVE NOW"
+                                                TimetableClassStatus.UPCOMING -> "STARTING SOON (JOIN EARLY)"
+                                                TimetableClassStatus.AWAITING_UPCOMING -> "NEXT SCHEDULED CLASS"
+                                                else -> "CLASS TIMETABLE OVERVIEW"
+                                            },
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        if (nextSession != null) {
+                                            Text(
+                                                text = nextSession.sessionTitle ?: nextSession.courseName ?: "Next class",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "${nextSession.date} • ${formatTimeRange(nextSession.startTime, nextSession.endTime)}",
+                                                fontSize = 11.5.sp,
+                                                color = Color.White.copy(alpha = 0.9f)
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "${activeSlots.size} session${if (activeSlots.size == 1) "" else "s"} scheduled",
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                            Text(
+                                                text = "Showing: ${selectedDate.format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy", Locale.US))}",
+                                                fontSize = 11.5.sp,
+                                                color = Color.White.copy(alpha = 0.85f)
+                                            )
+                                        }
+                                    }
+
+                                    if (nextSessionStatus == TimetableClassStatus.ONGOING && !nextSession?.meetingLink.isNullOrBlank()) {
+                                        Button(
+                                            onClick = { openLink(nextSession?.meetingLink) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Videocam, null, tint = Color(0xFF15803D), modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Join Meet", fontSize = 11.5.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
                     }
 
                     // Week Day Filter Chips (All Week + Monday through Sunday)
@@ -642,10 +662,10 @@ fun TimetableScreen(
 
                         items(activeSlots, key = { it.id }) { slot ->
                             val isClickable = (slot.state == TimetableClassStatus.ONGOING || slot.state == TimetableClassStatus.UPCOMING) && slot.hasMeetingLink
+                            val meetCode = remember(slot.meetingLink) { extractMeetCode(slot.meetingLink) }
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 160.dp)
                                     .clickable(enabled = isClickable) {
                                         if (slot.state == TimetableClassStatus.ONGOING) {
                                             openLink(slot.meetingLink)
@@ -659,8 +679,8 @@ fun TimetableScreen(
                                     1.dp,
                                     when (slot.state) {
                                         TimetableClassStatus.ONGOING -> Color(0xFF15803D)
-                                        TimetableClassStatus.CANCELLED -> MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
-                                        TimetableClassStatus.RESCHEDULED -> Color(0xFFD97706).copy(alpha = 0.5f)
+                                        TimetableClassStatus.CANCELLED -> MaterialTheme.colorScheme.error.copy(alpha = 0.45f)
+                                        TimetableClassStatus.RESCHEDULED -> Color(0xFFD97706).copy(alpha = 0.45f)
                                         else -> MaterialTheme.colorScheme.outlineVariant
                                     }
                                 ),
@@ -680,7 +700,7 @@ fun TimetableScreen(
                                                     else -> ColorCardTopBanner
                                                 }
                                             )
-                                            .padding(vertical = 8.dp, horizontal = 10.dp),
+                                            .padding(vertical = 9.dp, horizontal = 12.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Row(
@@ -688,16 +708,33 @@ fun TimetableScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = slot.timeSlot,
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
                                                 modifier = Modifier.weight(1f, fill = false)
-                                            )
-                                            Spacer(Modifier.width(4.dp))
+                                            ) {
+                                                Icon(
+                                                    imageVector = when (slot.state) {
+                                                        TimetableClassStatus.ONGOING -> Icons.Default.Videocam
+                                                        TimetableClassStatus.CANCELLED -> Icons.Default.Cancel
+                                                        TimetableClassStatus.RESCHEDULED -> Icons.Default.EventRepeat
+                                                        TimetableClassStatus.ENDED -> Icons.Default.Schedule
+                                                        else -> Icons.Default.AccessTime
+                                                    },
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = slot.timeSlot,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Spacer(Modifier.width(6.dp))
                                             Surface(
                                                 color = when (slot.state) {
                                                     TimetableClassStatus.ONGOING -> Color(0xFF16A34A)
@@ -710,69 +747,95 @@ fun TimetableScreen(
                                             ) {
                                                 Text(
                                                     text = when (slot.state) {
-                                                        TimetableClassStatus.ONGOING -> "LIVE"
-                                                        TimetableClassStatus.UPCOMING -> "SOON"
+                                                        TimetableClassStatus.ONGOING -> "LIVE NOW"
+                                                        TimetableClassStatus.UPCOMING -> "STARTING SOON"
                                                         TimetableClassStatus.AWAITING_UPCOMING -> "SCHEDULED"
                                                         TimetableClassStatus.ENDED -> "ENDED"
                                                         TimetableClassStatus.CANCELLED -> "CANCELLED"
                                                         TimetableClassStatus.RESCHEDULED -> "RESCHEDULED"
                                                         else -> "SCHEDULED"
                                                     },
-                                                    fontSize = 8.sp,
+                                                    fontSize = 8.5.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = Color.White,
                                                     maxLines = 1,
                                                     softWrap = false,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
                                                 )
                                             }
                                         }
                                     }
 
                                     Column(
-                                        Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 10.dp),
+                                        Modifier.fillMaxWidth().padding(14.dp),
                                         horizontalAlignment = Alignment.Start
                                     ) {
                                         Text(
                                             slot.rawDate.format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy")),
-                                            fontSize = 10.5.sp,
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = ColorDarkHeader
                                         )
-                                        Spacer(Modifier.height(3.dp))
-                                        Text(slot.classType, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = ColorTextDark)
                                         Spacer(Modifier.height(4.dp))
                                         Text(
-                                            slot.courseDetails,
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = ColorTextSub,
-                                            maxLines = 3,
+                                            text = slot.courseName ?: "Course Session",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorTextDark,
+                                            maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                        if (!slot.moduleTitle.isNullOrBlank() && slot.moduleTitle != slot.courseName) {
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(
+                                                text = slot.moduleTitle,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = ColorDarkHeader,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Spacer(Modifier.height(6.dp))
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Person,
+                                                contentDescription = null,
+                                                tint = ColorTextSub,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(Modifier.width(5.dp))
+                                            Text(
+                                                text = slot.mentorName ?: "Lead Mentor",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = ColorTextSub
+                                            )
+                                        }
 
                                         if (slot.state == TimetableClassStatus.CANCELLED) {
-                                            Spacer(Modifier.height(8.dp))
+                                            Spacer(Modifier.height(10.dp))
                                             Surface(
                                                 color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f),
                                                 shape = RoundedCornerShape(8.dp),
-                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.25f)),
+                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.30f)),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Row(
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Cancel,
                                                         contentDescription = null,
                                                         tint = MaterialTheme.colorScheme.error,
-                                                        modifier = Modifier.size(14.dp)
+                                                        modifier = Modifier.size(15.dp)
                                                     )
-                                                    Spacer(Modifier.width(6.dp))
+                                                    Spacer(Modifier.width(8.dp))
                                                     Text(
-                                                        text = if (!slot.notes.isNullOrBlank()) "Cancelled: ${slot.notes}" else "This class was cancelled by mentor.",
-                                                        fontSize = 10.5.sp,
+                                                        text = if (!slot.notes.isNullOrBlank()) "Cancelled: ${slot.notes}" else "This class was cancelled by the mentor.",
+                                                        fontSize = 11.5.sp,
                                                         fontWeight = FontWeight.Medium,
                                                         color = MaterialTheme.colorScheme.onErrorContainer,
                                                         maxLines = 3,
@@ -782,18 +845,39 @@ fun TimetableScreen(
                                             }
                                         }
 
-                                        if (slot.state == TimetableClassStatus.ONGOING && slot.hasMeetingLink) {
-                                            Spacer(Modifier.height(8.dp))
-                                            Button(
-                                                onClick = { openLink(slot.meetingLink) },
-                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
-                                                shape = RoundedCornerShape(8.dp),
-                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                                modifier = Modifier.fillMaxWidth().height(30.dp)
+                                        if ((slot.state == TimetableClassStatus.ONGOING || slot.state == TimetableClassStatus.UPCOMING) && slot.hasMeetingLink) {
+                                            Spacer(Modifier.height(12.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Icon(Icons.Default.Videocam, null, Modifier.size(13.dp), tint = Color.White)
-                                                Spacer(Modifier.width(4.dp))
-                                                Text("Join Now", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                Button(
+                                                    onClick = { openLink(slot.meetingLink) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    modifier = Modifier.weight(1f).height(34.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Videocam, null, Modifier.size(15.dp), tint = Color.White)
+                                                    Spacer(Modifier.width(5.dp))
+                                                    Text("Join Meet", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                                }
+
+                                                if (!meetCode.isNullOrBlank()) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            clipboardManager.setText(AnnotatedString(meetCode))
+                                                            Toast.makeText(context, "Meet Code Copied: $meetCode", Toast.LENGTH_SHORT).show()
+                                                        },
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                        modifier = Modifier.height(34.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.ContentCopy, null, Modifier.size(13.dp), tint = ColorDarkHeader)
+                                                        Spacer(Modifier.width(4.dp))
+                                                        Text("Copy Code", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ColorDarkHeader)
+                                                    }
+                                                }
                                             }
                                         }
                                     }

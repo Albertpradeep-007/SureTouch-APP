@@ -580,7 +580,8 @@ fun AppNavigation(
         composable(Screen.LiveClass.route) {
             com.example.suretouchapp.ui.screens.liveclass.LiveClassScreen(
                 tokenManager = tokenManager,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToTimetable = { navController.navigate(Screen.Timetable.route) }
             )
         }
 

@@ -35,6 +35,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.suretouchapp.data.api.ApiClient
@@ -372,9 +373,14 @@ fun LiveClassScreen(
                     }
                 }
 
-                // MEET LINK CARD (when active)
-                if (googleMeetUrl.isNotBlank()) {
+                // MEET LINK & LAPTOP CODE CARD (when active or scheduled)
+                val effectiveMeetUrl = googleMeetUrl.ifBlank { activeSession?.meetingLink.orEmpty() }
+                if (effectiveMeetUrl.isNotBlank()) {
                     item {
+                        val meetCode = remember(effectiveMeetUrl) {
+                            val clean = effectiveMeetUrl.substringBefore("?").substringBefore("#")
+                            clean.substringAfterLast("/")
+                        }
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
@@ -383,20 +389,39 @@ fun LiveClassScreen(
                             elevation = CardDefaults.cardElevation(2.dp)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Verified,
-                                        contentDescription = null,
-                                        tint = Color(0xFF16A34A),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Google Meet Link",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorTextDark
-                                    )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Verified,
+                                            contentDescription = null,
+                                            tint = Color(0xFF16A34A),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Google Meet Link & Code",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorTextDark
+                                        )
+                                    }
+
+                                    Surface(
+                                        color = ColorPrimaryPurple.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Code: $meetCode",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ColorPrimaryPurple,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(10.dp))
@@ -412,27 +437,60 @@ fun LiveClassScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = googleMeetUrl,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        text = effectiveMeetUrl,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = ColorPrimaryPurple,
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
 
-                                    IconButton(
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(googleMeetUrl))
-                                            Toast.makeText(context, "Link Copied!", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "Copy Link",
-                                            tint = ColorPrimaryPurple,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(meetCode))
+                                                Toast.makeText(context, "Meet Code Copied: $meetCode", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Tag,
+                                                contentDescription = "Copy Code",
+                                                tint = ColorPrimaryPurple,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(effectiveMeetUrl))
+                                                Toast.makeText(context, "Full Link Copied!", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Copy Link",
+                                                tint = ColorPrimaryPurple,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "💻 Join on Laptop: Open meet.google.com and enter code: $meetCode",
+                                        fontSize = 11.sp,
+                                        color = ColorTextSub,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                    )
                                 }
                             }
                         }

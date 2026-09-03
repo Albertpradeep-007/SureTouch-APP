@@ -651,8 +651,10 @@ object SureProEdNotificationManager {
         createChannels(context)
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val titleText = "Class Starting in 15 Minutes!"
-        val meetText = if (!meetingLink.isNullOrBlank()) " Tap to join Google Meet." else " Tap to open class dashboard."
-        val messageText = "$title starts at $startTime.$meetText"
+        val meetCode = if (!meetingLink.isNullOrBlank()) meetingLink.substringAfterLast("/").substringBefore("?").takeIf(String::isNotBlank) else null
+        val meetText = if (!meetingLink.isNullOrBlank()) " Join via Google Meet." else " Open class dashboard."
+        val meetCodeMsg = if (meetCode != null) "\nLaptop Code: $meetCode (meet.google.com)" else ""
+        val messageText = "$title starts at $startTime.$meetText$meetCodeMsg"
 
         val launchIntent = if (!meetingLink.isNullOrBlank()) {
             try {

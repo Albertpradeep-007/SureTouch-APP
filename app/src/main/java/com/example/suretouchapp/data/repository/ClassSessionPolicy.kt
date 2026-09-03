@@ -258,8 +258,9 @@ object TimetableSessionPolicy {
             return TimetableClassStatus.ENDED
         }
 
+        val earlyJoinStart = startAt.minusMinutes(15)
         return when {
-            now.isBefore(startAt) -> {
+            now.isBefore(earlyJoinStart) -> {
                 val isToday = now.toLocalDate().isEqual(date)
                 val minutesUntil = Duration.between(now, startAt).toMinutes()
                 if (isToday && minutesUntil in 0..60) {
