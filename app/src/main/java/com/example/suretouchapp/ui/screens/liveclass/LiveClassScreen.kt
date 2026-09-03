@@ -316,7 +316,13 @@ fun LiveClassScreen(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = if (activeSession != null) {
-                                            listOfNotNull(activeSession.startTime, activeSession.endTime).joinToString(" - ")
+                                            val startFormatted = formatClassTime(activeSession.startTime)
+                                            val endFormatted = formatClassTime(activeSession.endTime)
+                                            if (startFormatted != "--:--" && endFormatted != "--:--") {
+                                                "$startFormatted - $endFormatted"
+                                            } else {
+                                                listOfNotNull(activeSession.startTime, activeSession.endTime).joinToString(" - ")
+                                            }
                                         } else "Time pending",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
@@ -373,8 +379,8 @@ fun LiveClassScreen(
                     }
                 }
 
-                // MEET LINK & LAPTOP CODE CARD (when active or scheduled)
-                val effectiveMeetUrl = googleMeetUrl.ifBlank { activeSession?.meetingLink.orEmpty() }
+                // MEET LINK & LAPTOP CODE CARD (only for active / starting soon classes, NOT cancelled)
+                val effectiveMeetUrl = googleMeetUrl.trim()
                 if (effectiveMeetUrl.isNotBlank()) {
                     item {
                         val meetCode = remember(effectiveMeetUrl) {
@@ -612,4 +618,15 @@ fun LiveClassScreen(
             )
         }
     }
+}
+
+private fun formatClassTime(value: String?): String {
+    if (value.isNullOrBlank()) return "--:--"
+    val clean = value.trim()
+    val raw = if (clean.length >= 5) clean.substring(0, 5) else clean
+    return runCatching {
+        val sdf24 = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+        val sdf12 = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.US)
+        sdf12.format(requireNotNull(sdf24.parse(raw)))
+    }.getOrDefault(raw)
 }
