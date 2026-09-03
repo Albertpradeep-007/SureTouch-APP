@@ -266,16 +266,13 @@ fun VolunteerTrusteeDashboardScreen(
             modifier = Modifier.fillMaxSize().padding(inner),
             indicator = {}
         ) {
-            BackendSyncedDashboard(isLoading = isLoading) {
+            BackendSyncedDashboard(
+                isLoading = isLoading,
+                gridColumnCount = 2,
+                detailedGridCards = false,
+                heroHeight = 184.dp
+            ) {
                     Box(Modifier.fillMaxSize()) {
-                    androidx.compose.foundation.Image(
-                        painter = painterResource(R.drawable.sure_trust_official_logo),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(240.dp)
-                            .align(Alignment.Center)
-                            .graphicsLayer { alpha = 0.05f }
-                    )
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 12.dp)
@@ -503,16 +500,6 @@ private fun OperationsCard(summary: VolunteerDashboardSummary, isLoading: Boolea
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Box(Modifier.background(Brush.linearGradient(listOf(Color(0xFF7027E5), DeepPurple)))) {
-            // Translucent SURE Trust logo watermark in background
-            androidx.compose.foundation.Image(
-                painter = painterResource(R.drawable.sure_trust_official_logo),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(220.dp)
-                    .align(Alignment.CenterEnd)
-                    .offset(x = 30.dp)
-                    .graphicsLayer { alpha = 0.12f }
-            )
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // SURE Trust logo in white circle
@@ -630,22 +617,6 @@ private fun VolunteerScheduleCard(
                         )
                     )
             ) {
-                // Official SURE Trust Logo Watermark
-                androidx.compose.foundation.Image(
-                    painter = painterResource(id = R.drawable.sure_trust_official_logo),
-                    contentDescription = "SURE Trust Official Logo Watermark",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .size(160.dp)
-                        .align(Alignment.CenterEnd)
-                        .offset(x = 22.dp)
-                        .graphicsLayer {
-                            alpha = 0.18f
-                            scaleX = 1.35f
-                            scaleY = 1.35f
-                        }
-                )
-
                 Column(
                     modifier = Modifier
                         .fillMaxSize()

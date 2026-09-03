@@ -1879,7 +1879,7 @@ private fun MentorProfileMainView(
                                     },
                                 shape = RoundedCornerShape(12.dp),
                                 color = PanelBg,
-                                border = BorderStroke(1.dp, Color(0xFFE8DEFF))
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                             ) {
                                 Column(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
@@ -1930,7 +1930,7 @@ private fun MentorProfileMainView(
                                 modifier = Modifier.weight(0.9f),
                                 shape = RoundedCornerShape(12.dp),
                                 color = CardLavender,
-                                border = BorderStroke(1.dp, Color(0xFFE2D5FF))
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.38f))
                             ) {
                                 Column(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
@@ -1998,6 +1998,7 @@ private fun MentorProfileMainView(
 
             // ── 7. Assigned Cohorts & Batches Card (Smart 20+ Cohorts Nexus) ──
             item {
+                val semanticColors = sureSemanticColors()
                 val allCohorts = profile?.assignedCohorts ?: emptyList()
 
                 // Intelligent Status Classification: All current assigned batches are Active unless explicitly marked completed/graduated
@@ -2122,8 +2123,8 @@ private fun MentorProfileMainView(
                                             .clip(RoundedCornerShape(8.dp))
                                             .clickable { cohortFilter = key },
                                         shape = RoundedCornerShape(8.dp),
-                                        color = if (isSelected) Color.White else Color.Transparent,
-                                        border = if (isSelected) BorderStroke(1.dp, CardBorder) else null,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
                                         shadowElevation = if (isSelected) 1.dp else 0.dp
                                     ) {
                                         Box(
@@ -2134,7 +2135,7 @@ private fun MentorProfileMainView(
                                                 text = label,
                                                 fontSize = 11.sp,
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (isSelected) PrimarySurePurple else CardMuted,
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else CardMuted,
                                                 maxLines = 1
                                             )
                                         }
@@ -2151,7 +2152,7 @@ private fun MentorProfileMainView(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
                                 color = PanelBg,
-                                border = BorderStroke(1.dp, Color(0xFFECE6F8))
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                             ) {
                                 Column(
                                     modifier = Modifier.padding(16.dp),
@@ -2209,7 +2210,10 @@ private fun MentorProfileMainView(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(14.dp),
                                     color = if (isActive) PanelBg else PanelBg,
-                                    border = BorderStroke(1.dp, if (isActive) Color(0xFFE5DEFF) else CardDivider)
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.38f) else CardDivider
+                                    )
                                 ) {
                                     Column(modifier = Modifier.padding(14.dp)) {
                                         // Status & Code Pill Row
@@ -2222,8 +2226,8 @@ private fun MentorProfileMainView(
                                             if (isActive) {
                                                 Surface(
                                                     shape = RoundedCornerShape(6.dp),
-                                                    color = VerifiedGreen.copy(alpha = 0.12f),
-                                                    border = BorderStroke(1.dp, VerifiedGreen.copy(alpha = 0.3f))
+                                                    color = semanticColors.successContainer,
+                                                    border = BorderStroke(1.dp, semanticColors.success.copy(alpha = 0.55f))
                                                 ) {
                                                     Row(
                                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -2233,14 +2237,14 @@ private fun MentorProfileMainView(
                                                             modifier = Modifier
                                                                 .size(6.dp)
                                                                 .clip(CircleShape)
-                                                                .background(VerifiedGreen)
+                                                                .background(semanticColors.success)
                                                         )
                                                         Spacer(Modifier.width(4.dp))
                                                         Text(
                                                             text = "Active Live Batch",
                                                             fontSize = 10.5.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = VerifiedGreen
+                                                            color = semanticColors.onSuccessContainer
                                                         )
                                                     }
                                                 }
@@ -2275,7 +2279,7 @@ private fun MentorProfileMainView(
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
                                                 color = if (isActive) CardLavender else MaterialTheme.colorScheme.surface,
-                                                border = BorderStroke(1.dp, if (isActive) Color(0xFFE2D5FF) else CardBorder)
+                                                border = BorderStroke(1.dp, if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.38f) else CardBorder)
                                             ) {
                                                 Text(
                                                     text = cohortCode,

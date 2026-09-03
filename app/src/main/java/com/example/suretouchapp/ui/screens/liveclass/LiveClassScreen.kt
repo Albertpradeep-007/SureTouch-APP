@@ -37,59 +37,81 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.api.ApiClient
+import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.AttendanceDto
 import com.example.suretouchapp.data.repository.LiveClassSelector
+import com.example.suretouchapp.data.repository.LiveClassUiState
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import java.time.LocalDateTime
 
-// =======================================================
-// ELEGANT COLOR TOKENS (MATCHING SURE TRUST THEME)
-// =======================================================
 private val ColorDarkHeader = Color(0xFF262626)
 private val ColorCanvasBg @Composable get() = MaterialTheme.colorScheme.background
 private val ColorPrimaryPurple @Composable get() = MaterialTheme.colorScheme.primary
-private val ColorPurpleLight @Composable get() = MaterialTheme.colorScheme.primaryContainer
 private val ColorTextDark @Composable get() = MaterialTheme.colorScheme.onSurface
 private val ColorTextSub @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 private val ColorBorderHairline @Composable get() = MaterialTheme.colorScheme.outlineVariant
 private val ColorLiveRed = Color(0xFFDC2626)
+private val ColorAmberLive = Color(0xFFD97706)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveClassScreen(
     tokenManager: TokenManager,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToTimetable: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    var liveSession by remember { mutableStateOf<AttendanceDto?>(null) }
+    var liveState by remember { mutableStateOf<LiveClassUiState>(LiveClassUiState.NoClassScheduled) }
     var isLoading by remember { mutableStateOf(true) }
-    val googleMeetUrl = liveSession?.meetingLink.orEmpty()
+
+    val activeSession: AttendanceDto? = when (val s = liveState) {
+        is LiveClassUiState.Ongoing -> s.session
+        is LiveClassUiState.StartingSoon -> s.session
+        is LiveClassUiState.AwaitingUpcoming -> s.nextSession
+        is LiveClassUiState.Cancelled -> s.session
+        else -> null
+    }
+
+    val googleMeetUrl = when (val s = liveState) {
+        is LiveClassUiState.Ongoing -> s.session.meetingLink.orEmpty()
+        is LiveClassUiState.StartingSoon -> s.session.meetingLink.orEmpty()
+        else -> ""
+    }
+
+    suspend fun refreshLiveState() {
+        val response = runCatching { ApiClient.getService(tokenManager).getAttendance() }.getOrNull()
+        if (response?.isSuccessful == true) {
+            val list = response.body()?.results.orEmpty()
+            SureProEdNotificationManager.syncTimetableAndClasses(context, list)
+            val cohort = tokenManager.getCohortCode().takeIf(String::isNotBlank)
+            liveState = LiveClassSelector.resolveLiveClassState(
+                sessions = list,
+                allowedCohorts = cohort?.let(::setOf).orEmpty(),
+                now = LocalDateTime.now()
+            )
+        } else {
+            liveState = LiveClassUiState.NoClassScheduled
+        }
+        isLoading = false
+    }
 
     LaunchedEffect(Unit) {
-        liveSession = try {
-            val response = ApiClient.getService(tokenManager).getAttendance()
-            if (response.isSuccessful) {
-                val list = response.body()?.results.orEmpty()
-                SureProEdNotificationManager.syncTimetableAndClasses(context, list)
-                val cohort = tokenManager.getCohortCode().takeIf(String::isNotBlank)
-                LiveClassSelector.activeSession(
-                    sessions = list,
-                    allowedCohorts = cohort?.let(::setOf).orEmpty()
-                )
-            } else null
-        } catch (_: Exception) { null }
-        isLoading = false
+        refreshLiveState()
+        while (true) {
+            delay(20_000L)
+            refreshLiveState()
+        }
     }
 
     var isAgreed by remember { mutableStateOf(false) }
     var showGuidelinesDialog by remember { mutableStateOf(false) }
     var dialogCheckboxChecked by remember { mutableStateOf(false) }
 
-    // Pulsing animation for LIVE NOW indicator
+    // Pulsing animation for LIVE NOW / STARTING SOON indicator
     val infiniteTransition = rememberInfiniteTransition(label = "LivePulseTransition")
     val alphaPulse by infiniteTransition.animateFloat(
         initialValue = 1.0f,
@@ -103,7 +125,7 @@ fun LiveClassScreen(
 
     val launchGoogleMeet = {
         if (googleMeetUrl.isBlank()) {
-            Toast.makeText(context, "No live-class link is available from the backend.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "No live-class link is available.", Toast.LENGTH_LONG).show()
         } else try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(googleMeetUrl))
             context.startActivity(intent)
@@ -132,9 +154,7 @@ fun LiveClassScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = ColorDarkHeader
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = ColorDarkHeader)
             )
         },
         containerColor = ColorCanvasBg
@@ -149,9 +169,7 @@ fun LiveClassScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // =======================================================
-                // 1. HERO LIVE CLASS INFORMATION CARD
-                // =======================================================
+                // HERO CARD
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -161,7 +179,7 @@ fun LiveClassScreen(
                         elevation = CardDefaults.cardElevation(3.dp)
                     ) {
                         Column(modifier = Modifier.padding(18.dp)) {
-                            // Top Row: LIVE NOW Pulsing Badge & Cohort Code
+                            // Top Row: Status Badge & Cohort Code
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -169,13 +187,19 @@ fun LiveClassScreen(
                             ) {
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = if (googleMeetUrl.isBlank()) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer
+                                    color = when (liveState) {
+                                        is LiveClassUiState.Ongoing -> MaterialTheme.colorScheme.errorContainer
+                                        is LiveClassUiState.StartingSoon -> Color(0xFFFEF3C7)
+                                        is LiveClassUiState.AwaitingUpcoming -> MaterialTheme.colorScheme.primaryContainer
+                                        is LiveClassUiState.Cancelled -> MaterialTheme.colorScheme.errorContainer
+                                        is LiveClassUiState.NoClassScheduled -> MaterialTheme.colorScheme.surfaceVariant
+                                    }
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        if (googleMeetUrl.isNotBlank()) {
+                                        if (liveState is LiveClassUiState.Ongoing) {
                                             Box(
                                                 modifier = Modifier
                                                     .size(9.dp)
@@ -184,12 +208,34 @@ fun LiveClassScreen(
                                                     .background(ColorLiveRed)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
+                                        } else if (liveState is LiveClassUiState.StartingSoon) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(9.dp)
+                                                    .graphicsLayer { alpha = alphaPulse }
+                                                    .clip(CircleShape)
+                                                    .background(ColorAmberLive)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
                                         }
+
                                         Text(
-                                            text = if (googleMeetUrl.isBlank()) "NO LIVE CLASS" else "LIVE NOW",
+                                            text = when (val s = liveState) {
+                                                is LiveClassUiState.Ongoing -> "LIVE NOW"
+                                                is LiveClassUiState.StartingSoon -> "STARTING SOON (${s.minutesUntil} MINS)"
+                                                is LiveClassUiState.AwaitingUpcoming -> "AWAITING UPCOMING CLASS"
+                                                is LiveClassUiState.Cancelled -> "CLASS CANCELLED"
+                                                is LiveClassUiState.NoClassScheduled -> "NO CLASS SCHEDULED"
+                                            },
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (googleMeetUrl.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else ColorLiveRed
+                                            color = when (liveState) {
+                                                is LiveClassUiState.Ongoing -> ColorLiveRed
+                                                is LiveClassUiState.StartingSoon -> ColorAmberLive
+                                                is LiveClassUiState.AwaitingUpcoming -> MaterialTheme.colorScheme.primary
+                                                is LiveClassUiState.Cancelled -> MaterialTheme.colorScheme.error
+                                                is LiveClassUiState.NoClassScheduled -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
                                         )
                                     }
                                 }
@@ -199,7 +245,7 @@ fun LiveClassScreen(
                                     color = MaterialTheme.colorScheme.primaryContainer
                                 ) {
                                     Text(
-                                        text = "Cohort: ${tokenManager.getCohortCode().ifBlank { "Pending" }}",
+                                        text = "Cohort: ${tokenManager.getCohortCode().ifBlank { activeSession?.cohortCode ?: "Assigned" }}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -212,7 +258,7 @@ fun LiveClassScreen(
 
                             // Course Title & Code
                             Text(
-                                text = liveSession?.sessionTitle ?: "No Live Class Scheduled",
+                                text = activeSession?.sessionTitle ?: activeSession?.courseName ?: "No Live Class Scheduled",
                                 fontSize = 17.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ColorTextDark
@@ -222,19 +268,22 @@ fun LiveClassScreen(
 
                             // Module Title / Notes
                             Text(
-                                text = liveSession?.notes ?: "Live session details will update here once your mentor starts or schedules a class.",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Normal,
+                                text = when (val s = liveState) {
+                                    is LiveClassUiState.Ongoing -> s.session.notes ?: "Live session is currently in progress."
+                                    is LiveClassUiState.StartingSoon -> "Class starts at ${s.session.startTime}. Early access is active so you can join and test audio/video."
+                                    is LiveClassUiState.AwaitingUpcoming -> "Next live session is scheduled on ${s.nextSession.date}. Google Meet link activates 15 minutes before start."
+                                    is LiveClassUiState.Cancelled -> "Notice: ${s.reason ?: "This class session was cancelled by the mentor."}"
+                                    is LiveClassUiState.NoClassScheduled -> "There are no live classes currently scheduled for your cohort."
+                                },
+                                fontSize = 13.sp,
                                 color = ColorTextSub
                             )
 
                             Spacer(modifier = Modifier.height(12.dp))
-
                             HorizontalDivider(color = ColorBorderHairline, thickness = 1.dp)
-
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Class Info Meta Grid (Mentor, Timings, Mode)
+                            // Class Info Meta Grid
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -249,7 +298,7 @@ fun LiveClassScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = liveSession?.conductedByName ?: "Trainer pending",
+                                        text = activeSession?.conductedByName ?: "Trainer assigned",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = ColorTextSub
@@ -265,7 +314,9 @@ fun LiveClassScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = listOfNotNull(liveSession?.startTime, liveSession?.endTime).joinToString(" - ").ifBlank { "Time pending" },
+                                        text = if (activeSession != null) {
+                                            listOfNotNull(activeSession.startTime, activeSession.endTime).joinToString(" - ")
+                                        } else "Time pending",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = ColorTextDark
@@ -273,63 +324,57 @@ fun LiveClassScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text(
-                                text = if (googleMeetUrl.isBlank()) "Waiting for a live session link from trainer" else "Online class • Google Meet synchronized",
-                                fontSize = 12.sp,
-                                color = ColorTextSub
-                            )
-
                             Spacer(modifier = Modifier.height(18.dp))
 
-                            // JOIN CLASS BUTTON (TRIGGERS GUIDELINES POP-UP IF NOT YET AGREED)
-                            Button(
-                                onClick = {
-                                    if (isAgreed) {
-                                        launchGoogleMeet()
-                                    } else {
-                                        dialogCheckboxChecked = false
-                                        showGuidelinesDialog = true
-                                    }
-                                },
-                                enabled = googleMeetUrl.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = ColorPrimaryPurple,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.VideoCall,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = if (googleMeetUrl.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = if (googleMeetUrl.isBlank()) "No Active Class to Join" else if (isAgreed) "Join Google Meet Class →" else "Join Live Class →",
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (googleMeetUrl.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
+                            // Action button
+                            if (googleMeetUrl.isNotBlank()) {
+                                Button(
+                                    onClick = {
+                                        if (isAgreed) {
+                                            launchGoogleMeet()
+                                        } else {
+                                            dialogCheckboxChecked = false
+                                            showGuidelinesDialog = true
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (liveState is LiveClassUiState.Ongoing) Color(0xFF15803D) else ColorPrimaryPurple
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.VideoCall,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (liveState is LiveClassUiState.StartingSoon) "Join Class Early →" else "Join Live Class →",
+                                        fontSize = 14.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = onNavigateToTimetable,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(46.dp)
+                                ) {
+                                    Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("View Complete Timetable", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
                     }
                 }
 
-                // =======================================================
-                // 2. OFFICIAL GOOGLE MEET LINK & COPY CARD (UNLOCKED UPON AGREEMENT)
-                // =======================================================
-                item {
-                    AnimatedVisibility(
-                        visible = isAgreed,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
+                // MEET LINK CARD (when active)
+                if (googleMeetUrl.isNotBlank()) {
+                    item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
@@ -347,7 +392,7 @@ fun LiveClassScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Meet Link",
+                                        text = "Google Meet Link",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = ColorTextDark
@@ -367,7 +412,7 @@ fun LiveClassScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = googleMeetUrl.ifBlank { "No meeting link available" },
+                                        text = googleMeetUrl,
                                         fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = ColorPrimaryPurple,
@@ -379,8 +424,7 @@ fun LiveClassScreen(
                                             clipboardManager.setText(AnnotatedString(googleMeetUrl))
                                             Toast.makeText(context, "Link Copied!", Toast.LENGTH_SHORT).show()
                                         },
-                                        modifier = Modifier.size(28.dp),
-                                        enabled = googleMeetUrl.isNotBlank()
+                                        modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.ContentCopy,
@@ -395,6 +439,7 @@ fun LiveClassScreen(
                     }
                 }
             }
+
             if (isLoading) {
                 Box(
                     Modifier.fillMaxSize().background(ColorCanvasBg),
@@ -405,9 +450,7 @@ fun LiveClassScreen(
             }
         }
 
-        // =======================================================
-        // POP-UP DIALOG MODAL FOR GUIDELINES & DISCIPLINARY RULES
-        // =======================================================
+        // Guidelines Dialog
         if (showGuidelinesDialog) {
             AlertDialog(
                 onDismissRequest = { showGuidelinesDialog = false },
@@ -459,7 +502,6 @@ fun LiveClassScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Checkbox Row
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

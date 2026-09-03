@@ -5,17 +5,19 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.example.suretouchapp.BuildConfig
 import com.example.suretouchapp.data.api.ApiClient
-import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.AppVersionInfoDto
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -39,10 +41,23 @@ object AppUpdateManager {
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
     private var userDismissedVersionCode: Int = -1
+    private val updateCheckMutex = Mutex()
+    private var lastUpdateCheckAtMillis: Long = 0L
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+    private val versionCheckClient = OkHttpClient.Builder()
+        .connectionPool(okhttp3.ConnectionPool(4, 3, TimeUnit.MINUTES))
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
+        .callTimeout(5, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
+    private val downloadClient = OkHttpClient.Builder()
+        .connectionPool(okhttp3.ConnectionPool(4, 5, TimeUnit.MINUTES))
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(10, TimeUnit.MINUTES)
+        .retryOnConnectionFailure(true)
         .build()
 
     val currentVersionCode: Int
@@ -53,68 +68,57 @@ object AppUpdateManager {
 
     /**
      * Checks if a new version is available on the remote server.
+     * The public version endpoint deliberately bypasses the authenticated API client so an
+     * expired login token cannot add a token-refresh timeout to this startup-only request.
      */
     suspend fun checkForUpdates(
-        context: Context,
-        tokenManager: TokenManager,
-        fallbackVersionUrl: String? = null
+        fallbackVersionUrl: String? = null,
+        force: Boolean = false
     ): UpdateState = withContext(Dispatchers.IO) {
-        _updateState.value = UpdateState.Checking
-        try {
-            var info: AppVersionInfoDto? = null
-
-            // 1. Try backend API endpoint first
-            try {
-                val response = ApiClient.getService(tokenManager).checkAppVersion()
-                if (response.isSuccessful && response.body() != null) {
-                    info = response.body()
-                }
-            } catch (_: Exception) {
-                // If backend endpoint is not yet configured, check fallback static version URL if provided
+        updateCheckMutex.withLock {
+            val now = SystemClock.elapsedRealtime()
+            if (!force && lastUpdateCheckAtMillis > 0L && now - lastUpdateCheckAtMillis < 5 * 60_000L) {
+                return@withLock _updateState.value
             }
 
-            // 2. Fallback check from static version endpoint / CDN if primary API didn't succeed
-            if (info == null && !fallbackVersionUrl.isNullOrBlank()) {
-                try {
-                    val request = Request.Builder().url(fallbackVersionUrl).build()
-                    httpClient.newCall(request).execute().use { res ->
-                        if (res.isSuccessful) {
-                            val bodyString = res.body?.string()
-                            if (!bodyString.isNullOrBlank()) {
-                                info = Gson().fromJson(bodyString, AppVersionInfoDto::class.java)
-                            }
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
+            _updateState.value = UpdateState.Checking
+            val primaryUrl = ApiClient.resolveServerUrl("app/version-check/")
+            val info = fetchVersionInfo(primaryUrl)
+                ?: fallbackVersionUrl?.takeIf(String::isNotBlank)?.let(::fetchVersionInfo)
 
-            val targetInfo = info
-            if (targetInfo != null) {
-                if (targetInfo.versionCode > currentVersionCode) {
-                    if (!targetInfo.isMandatory && targetInfo.versionCode == userDismissedVersionCode) {
-                        val state = UpdateState.UpToDate
-                        _updateState.value = state
-                        return@withContext state
+            val state = try {
+                if (info != null && info.versionCode > currentVersionCode) {
+                    if (!info.isMandatory && info.versionCode == userDismissedVersionCode) {
+                        UpdateState.UpToDate
+                    } else {
+                        UpdateState.UpdateAvailable(info)
                     }
-                    val state = UpdateState.UpdateAvailable(targetInfo)
-                    _updateState.value = state
-                    return@withContext state
                 } else {
-                    val state = UpdateState.UpToDate
-                    _updateState.value = state
-                    return@withContext state
+                    UpdateState.UpToDate
                 }
+            } catch (e: Exception) {
+                UpdateState.Error(e.localizedMessage ?: "Failed to check for updates")
             }
 
-            val state = UpdateState.UpToDate
-            _updateState.value = state
-            state
-        } catch (e: Exception) {
-            val state = UpdateState.Error(e.localizedMessage ?: "Failed to check for updates")
+            lastUpdateCheckAtMillis = SystemClock.elapsedRealtime()
             _updateState.value = state
             state
         }
     }
+
+    private fun fetchVersionInfo(url: String): AppVersionInfoDto? = runCatching {
+        val request = Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .header("Cache-Control", "no-cache")
+            .build()
+        versionCheckClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@use null
+            response.body?.string()
+                ?.takeIf(String::isNotBlank)
+                ?.let { Gson().fromJson(it, AppVersionInfoDto::class.java) }
+        }
+    }.getOrNull()
 
     /**
      * Downloads the APK file to the app's cache/downloads directory and tracks progress.
@@ -137,7 +141,7 @@ object AppUpdateManager {
             val destinationDir = File(context.cacheDir, "updates").apply { mkdirs() }
             val destinationFile = File(destinationDir, "suretrust_v${info.versionCode}.apk")
 
-            httpClient.newCall(request).execute().use { response ->
+            downloadClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     _updateState.value = UpdateState.Error("Download failed with HTTP ${response.code}")
                     return@withContext
@@ -153,7 +157,7 @@ object AppUpdateManager {
 
                 body.byteStream().use { input ->
                     FileOutputStream(destinationFile).use { output ->
-                        val buffer = ByteArray(8 * 1024)
+                        val buffer = ByteArray(64 * 1024)
                         var read: Int
                         var lastReportedPercent = -1
 

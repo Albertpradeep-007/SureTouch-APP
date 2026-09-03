@@ -202,7 +202,6 @@ class DashboardRepository(private val tokenManager: TokenManager) {
     }
 
     private fun toDashboardSession(item: AttendanceDto): DashboardClassSession {
-        val startHour = item.startTime?.take(2)?.toIntOrNull() ?: 9
         val sessionTitle = item.sessionTitle?.trim().orEmpty()
         val genericTitle = sessionTitle.uppercase(Locale.US).let {
             it.startsWith("DOMAIN SESSION") || it.startsWith("CLASS SESSION")
@@ -219,7 +218,7 @@ class DashboardRepository(private val tokenManager: TokenManager) {
             mentorName = item.conductedByName?.trim()?.takeIf(String::isNotBlank) ?: "Assigned trainer",
             startTime = formatClockTime(item.startTime),
             endTime = formatClockTime(item.endTime),
-            period = if (startHour >= 12) "PM IST" else "AM IST",
+            period = "IST",
             date = formatDate(item.date),
             meetingLink = item.meetingLink,
             classStatus = item.effectiveStatus ?: item.classStatus,
@@ -232,7 +231,7 @@ class DashboardRepository(private val tokenManager: TokenManager) {
     private fun formatClockTime(value: String?): String {
         val raw = value?.take(5) ?: return "--:--"
         val source = SimpleDateFormat("HH:mm", Locale.US)
-        val target = SimpleDateFormat("hh:mm", Locale.US)
+        val target = SimpleDateFormat("hh:mm a", Locale.US)
         return runCatching { target.format(requireNotNull(source.parse(raw))) }.getOrDefault(raw)
     }
 

@@ -244,6 +244,10 @@ fun MentorDashboardScreen(
     var oauthProvider by remember { mutableStateOf<OAuthProvider?>(null) }
     var oauthUrl by remember { mutableStateOf<String?>(null) }
 
+    var showCreateSessionDialog by remember { mutableStateOf(false) }
+    var reschedulingSession by remember { mutableStateOf<AttendanceDto?>(null) }
+    var cancellingSession by remember { mutableStateOf<AttendanceDto?>(null) }
+
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
         initialValue = 1f, targetValue = 0.25f,
@@ -416,6 +420,144 @@ fun MentorDashboardScreen(
     )
     val drawerSummary = cohortSummary.copy(myCohorts = summary.myCohorts)
 
+    fun handleOpenMeeting(link: String) {
+        val clean = link.trim()
+        if (clean.isBlank()) {
+            Toast.makeText(context, "No meeting link provided", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uri = if (clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true)) {
+            Uri.parse(clean)
+        } else {
+            Uri.parse("https://$clean")
+        }
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+        } catch (e: Exception) {
+            Toast.makeText(context, "Unable to open meeting link: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun handleCreateSession(cohortId: String, title: String, date: String, startTime: String, endTime: String, meetingLink: String) {
+        scope.launch {
+            val api = ApiClient.getService(tokenManager)
+            val latestResponse = runCatching { api.getAttendance() }.getOrNull()
+            if (latestResponse?.isSuccessful != true) {
+                snackbarHostState.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
+                return@launch
+            }
+            val latestSessions = latestResponse.body()?.results.orEmpty()
+            val conflict = ClassSchedulePolicy.findConflict(
+                latestSessions, cohortId, date, startTime, endTime
+            )
+            if (conflict != null) {
+                snackbarHostState.showSnackbar("This cohort already has a class during that time. Choose another slot.")
+                loadData()
+                return@launch
+            }
+            val response = runCatching {
+                api.createAttendance(
+                    mapOf(
+                        "cohort" to cohortId,
+                        "title" to title,
+                        "class_date" to date,
+                        "start_time" to startTime,
+                        "end_time" to endTime,
+                        "meeting_link" to meetingLink.takeIf { it.isNotBlank() }
+                    )
+                )
+            }.getOrNull()
+            if (response?.isSuccessful == true) {
+                snackbarHostState.showSnackbar("Class scheduled for the selected cohort")
+                loadData()
+            } else snackbarHostState.showSnackbar("Unable to schedule class")
+        }
+    }
+
+    fun handleRescheduleSession(sessionId: String, newDate: String, newStart: String, newEnd: String, newLink: String) {
+        scope.launch {
+            val session = summary.myAttendance.firstOrNull { it.id == sessionId }
+                ?: cohortAttendance.firstOrNull { it.id == sessionId }
+            val api = ApiClient.getService(tokenManager)
+            val latestResponse = runCatching { api.getAttendance() }.getOrNull()
+            if (latestResponse?.isSuccessful != true) {
+                snackbarHostState.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
+                return@launch
+            }
+            val latestSessions = latestResponse.body()?.results.orEmpty()
+            val conflict = session?.let {
+                ClassSchedulePolicy.findConflict(
+                    latestSessions,
+                    it.cohort ?: it.cohortCode.orEmpty(),
+                    newDate,
+                    newStart,
+                    newEnd,
+                    sessionId
+                )
+            }
+            if (conflict != null) {
+                snackbarHostState.showSnackbar("That reschedule overlaps another class for this cohort.")
+                loadData()
+                return@launch
+            }
+            val body = mapOf<String, Any?>(
+                "class_date" to newDate,
+                "start_time" to newStart,
+                "end_time" to newEnd,
+                "meeting_link" to newLink.takeIf(String::isNotBlank),
+                "class_status" to "RESCHEDULED"
+            )
+            // Optimistic update
+            summary = summary.copy(
+                myAttendance = summary.myAttendance.map {
+                    if (it.id == sessionId) it.copy(
+                        date = newDate,
+                        startTime = newStart,
+                        endTime = newEnd,
+                        meetingLink = newLink.takeIf(String::isNotBlank) ?: it.meetingLink,
+                        classStatus = "RESCHEDULED",
+                        effectiveStatus = "RESCHEDULED"
+                    ) else it
+                }
+            )
+            val res = runCatching { api.patchAttendance(sessionId, body) }.getOrNull()
+            if (res?.isSuccessful == true) {
+                snackbarHostState.showSnackbar("Class rescheduled successfully")
+                loadData()
+            } else {
+                snackbarHostState.showSnackbar("Unable to reschedule class")
+                loadData()
+            }
+        }
+    }
+
+    fun handleCancelSession(sessionId: String, reason: String) {
+        scope.launch {
+            val body = mapOf<String, Any?>(
+                "class_status" to "CANCELLED",
+                "notes" to reason.takeIf(String::isNotBlank)
+            )
+            // Optimistic update
+            summary = summary.copy(
+                myAttendance = summary.myAttendance.map {
+                    if (it.id == sessionId) it.copy(
+                        classStatus = "CANCELLED",
+                        effectiveStatus = "CANCELLED",
+                        notes = reason.takeIf(String::isNotBlank) ?: it.notes
+                    ) else it
+                }
+            )
+            val res = runCatching { ApiClient.getService(tokenManager).patchAttendance(sessionId, body) }.getOrNull()
+            if (res?.isSuccessful == true) {
+                snackbarHostState.showSnackbar("Class cancelled successfully")
+                loadData()
+            } else {
+                snackbarHostState.showSnackbar("Unable to cancel class")
+                loadData()
+            }
+        }
+    }
+
     BackendConnectionGate(
         isLoading = isLoading && !hasLoadedOnce,
         isConnected = isConnected,
@@ -522,7 +664,11 @@ fun MentorDashboardScreen(
                             onLiveClass = onNavigateToLiveClass,
                             onInterviews = { selectedTab = 10 },
                             onScheduleInterview = { selectedTab = 10 },
-                            onSupport = onNavigateToSupport
+                            onSupport = onNavigateToSupport,
+                            onCreateSession = { showCreateSessionDialog = true },
+                            onRescheduleSession = { session -> reschedulingSession = session },
+                            onCancelSession = { session -> cancellingSession = session },
+                            onJoinMeet = ::handleOpenMeeting
                         )
                         1 -> MentorCohortsTab(
                             cohorts = listOfNotNull(selectedCohort),
@@ -591,96 +737,10 @@ fun MentorDashboardScreen(
                             cohorts = listOfNotNull(selectedCohort).ifEmpty { summary.myCohorts },
                             sessions = if (selectedCohort != null) cohortAttendance else summary.myAttendance,
                             readOnly = isSelectedCohortReadOnly,
-                            onCreateSession = { cohortId, title, date, startTime, endTime, meetingLink ->
-                                scope.launch {
-                                    val api = ApiClient.getService(tokenManager)
-                                    val latestResponse = runCatching { api.getAttendance() }.getOrNull()
-                                    if (latestResponse?.isSuccessful != true) {
-                                        snackbarHostState.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
-                                        return@launch
-                                    }
-                                    val latestSessions = latestResponse.body()?.results.orEmpty()
-                                    val conflict = ClassSchedulePolicy.findConflict(
-                                        latestSessions, cohortId, date, startTime, endTime
-                                    )
-                                    if (conflict != null) {
-                                        snackbarHostState.showSnackbar("This cohort already has a class during that time. Choose another slot.")
-                                        loadData()
-                                        return@launch
-                                    }
-                                    val response = runCatching {
-                                        api.createAttendance(
-                                            mapOf(
-                                                "cohort" to cohortId,
-                                                "title" to title,
-                                                "class_date" to date,
-                                                "start_time" to startTime,
-                                                "end_time" to endTime,
-                                                "meeting_link" to meetingLink.takeIf { it.isNotBlank() },
-                                                "conducted" to false
-                                            )
-                                        )
-                                    }.getOrNull()
-                                    if (response?.isSuccessful == true) {
-                                        snackbarHostState.showSnackbar("Class scheduled for the selected cohort")
-                                        loadData()
-                                    } else snackbarHostState.showSnackbar("Unable to schedule class")
-                                }
-                            },
-                            onRescheduleSession = { sessionId, newDate, newStart, newEnd, newLink ->
-                                scope.launch {
-                                    val session = summary.myAttendance.firstOrNull { it.id == sessionId }
-                                        ?: cohortAttendance.firstOrNull { it.id == sessionId }
-                                    val api = ApiClient.getService(tokenManager)
-                                    val latestResponse = runCatching { api.getAttendance() }.getOrNull()
-                                    if (latestResponse?.isSuccessful != true) {
-                                        snackbarHostState.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
-                                        return@launch
-                                    }
-                                    val latestSessions = latestResponse.body()?.results.orEmpty()
-                                    val conflict = session?.let {
-                                        ClassSchedulePolicy.findConflict(
-                                            latestSessions,
-                                            it.cohort ?: it.cohortCode.orEmpty(),
-                                            newDate,
-                                            newStart,
-                                            newEnd,
-                                            sessionId
-                                        )
-                                    }
-                                    if (conflict != null) {
-                                        snackbarHostState.showSnackbar("That reschedule overlaps another class for this cohort.")
-                                        loadData()
-                                        return@launch
-                                    }
-                                    val body = mapOf<String, Any?>(
-                                        "class_date" to newDate,
-                                        "start_time" to newStart,
-                                        "end_time" to newEnd,
-                                        "meeting_link" to newLink.takeIf(String::isNotBlank),
-                                        "class_status" to "RESCHEDULED"
-                                    )
-                                    val res = runCatching { api.patchAttendance(sessionId, body) }.getOrNull()
-                                    if (res?.isSuccessful == true) {
-                                        snackbarHostState.showSnackbar("Class rescheduled successfully")
-                                        loadData()
-                                    } else snackbarHostState.showSnackbar("Unable to reschedule class")
-                                }
-                            },
-                            onCancelSession = { sessionId, reason ->
-                                scope.launch {
-                                    val body = mapOf<String, Any?>(
-                                        "class_status" to "CANCELLED",
-                                        "conducted" to false,
-                                        "notes" to reason.takeIf(String::isNotBlank)
-                                    )
-                                    val res = runCatching { ApiClient.getService(tokenManager).patchAttendance(sessionId, body) }.getOrNull()
-                                    if (res?.isSuccessful == true) {
-                                        snackbarHostState.showSnackbar("Class cancelled")
-                                        loadData()
-                                    } else snackbarHostState.showSnackbar("Unable to cancel class")
-                                }
-                            }
+                            onCreateSessionRequest = { showCreateSessionDialog = true },
+                            onRescheduleSessionRequest = { session -> reschedulingSession = session },
+                            onCancelSessionRequest = { session -> cancellingSession = session },
+                            onJoinMeet = ::handleOpenMeeting
                         )
                         8 -> MentorJobReferencesTab(
                             cohorts = listOfNotNull(selectedCohort),
@@ -797,6 +857,64 @@ fun MentorDashboardScreen(
                 }
             }
             }
+        }
+
+                if (showCreateSessionDialog) {
+            CreateMentorClassDialog(
+                cohorts = listOfNotNull(selectedCohort).ifEmpty { summary.myCohorts },
+                sessions = summary.myAttendance,
+                onDismiss = { showCreateSessionDialog = false },
+                onCreate = { cohortId, title, date, start, end, link ->
+                    showCreateSessionDialog = false
+                    handleCreateSession(cohortId, title, date, start, end, link)
+                }
+            )
+        }
+
+        reschedulingSession?.let { session ->
+            MentorRescheduleClassDialog(
+                session = session,
+                sessions = summary.myAttendance,
+                onDismiss = { reschedulingSession = null },
+                onReschedule = { newDate, newStart, newEnd, newLink ->
+                    val id = session.id
+                    reschedulingSession = null
+                    handleRescheduleSession(id, newDate, newStart, newEnd, newLink)
+                }
+            )
+        }
+
+        cancellingSession?.let { session ->
+            var cancelReason by remember { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { cancellingSession = null },
+                icon = { Icon(Icons.Default.Cancel, null, tint = Color(0xFFDC2626)) },
+                title = { Text("Cancel Class") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Are you sure you want to cancel '${session.sessionTitle ?: "this class"}' scheduled on ${session.date}?")
+                        OutlinedTextField(
+                            value = cancelReason,
+                            onValueChange = { cancelReason = it },
+                            label = { Text("Cancellation Reason (optional)") },
+                            placeholder = { Text("e.g. Schedule conflict / Holiday") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val id = session.id
+                            val reason = cancelReason.trim()
+                            cancellingSession = null
+                            handleCancelSession(id, reason)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) { Text("Confirm Cancel") }
+                },
+                dismissButton = { TextButton(onClick = { cancellingSession = null }) { Text("Close") } }
+            )
         }
 
         // LinkedIn Pop-up Dialog (Only shown when live connected to backend & LinkedIn not verified)
@@ -1033,7 +1151,11 @@ private fun MentorHomeContent(
     onLiveClass: () -> Unit,
     onInterviews: () -> Unit = {},
     onScheduleInterview: () -> Unit = {},
-    onSupport: () -> Unit
+    onSupport: () -> Unit,
+    onCreateSession: () -> Unit = {},
+    onRescheduleSession: (AttendanceDto) -> Unit = {},
+    onCancelSession: (AttendanceDto) -> Unit = {},
+    onJoinMeet: (String) -> Unit = {}
 ) {
     if (isLoading) {
         Box(
@@ -1056,6 +1178,8 @@ private fun MentorHomeContent(
     val cohortSubmissions = summary.pendingSubmissions.filter { it.assignment in assignmentIds }
     val cohortAttendance = summary.myAttendance.filter { selectedCohort == null || it.cohort == selectedCohort.id }
     val todayAttendance = cohortAttendance.filter { it.date.take(10) == apiDate }.sortedBy { it.startTime }
+    val upcomingAttendance = cohortAttendance.filter { it.date.take(10) > apiDate && !it.isCancelledSession() && !it.isCompletedSession() }
+        .sortedWith(compareBy<AttendanceDto> { it.date }.thenBy { it.startTime })
     val semanticColors = sureSemanticColors()
     val attendancePending = todayAttendance.count { !it.isCompletedSession() && !it.isCancelledSession() }
     val isLocalBackendConnected = com.example.suretouchapp.ui.components.LocalBackendConnected.current
@@ -1145,6 +1269,19 @@ private fun MentorHomeContent(
             )
         }
         item {
+            MentorDashboardClassesSection(
+                cohort = selectedCohort,
+                todayClasses = todayAttendance,
+                upcomingClasses = upcomingAttendance,
+                isReadOnly = isReadOnly,
+                onSchedule = onSchedule,
+                onCreateSession = onCreateSession,
+                onRescheduleSession = onRescheduleSession,
+                onCancelSession = onCancelSession,
+                onJoinMeet = onJoinMeet
+            )
+        }
+        item {
             MentorQuickAccessSection(
                 onCourses = onCourses,
                 onStudents = onStudents,
@@ -1157,6 +1294,16 @@ private fun MentorHomeContent(
                 onMessages = onMessages,
                 onInterviews = onInterviews,
                 onSupport = onSupport
+            )
+        }
+        item {
+            MentorPendingActionsSection(
+                submissions = cohortSubmissions.size,
+                pendingInterviews = pendingInterviewsCount,
+                attendancePending = attendancePending,
+                onSubmissions = onSubmissions,
+                onInterviews = onInterviews,
+                onAttendance = onAttendance
             )
         }
     }
@@ -1517,110 +1664,487 @@ private fun QuickAccessTile(tile: QuickTile, modifier: Modifier = Modifier) {
 }
 
 // ============================================================
-// BOTTOM TWO-COLUMN SECTION
+// MENTOR SESSION CARD & DASHBOARD CLASSES SECTION
 // ============================================================
-private data class TodayClass(val time: String, val period: String, val course: String, val section: String, val status: String, val statusColor: Color, val isOnline: Boolean)
-private data class PendingAction(val icon: ImageVector, val iconBg: Color, val iconTint: Color, val label: String, val count: Int, val onClick: () -> Unit)
-
 @Composable
-private fun MentorBottomTwoColumns(
-    attendance: List<AttendanceDto>,
+private fun MentorSessionCard(
+    session: AttendanceDto,
     cohort: CohortDto?,
-    submissions: Int,
-    attendancePending: Int,
-    unreadMessages: Int,
-    upcomingClasses: Int,
-    onSchedule: () -> Unit,
-    onLiveClass: () -> Unit,
-    onSubmissions: () -> Unit,
-    onAttendance: () -> Unit,
-    onMessages: () -> Unit
+    isReadOnly: Boolean,
+    onReschedule: (AttendanceDto) -> Unit,
+    onCancel: (AttendanceDto) -> Unit,
+    onJoinMeet: (String) -> Unit
 ) {
-    val classes = attendance.take(3).map { session ->
-        val (time, period) = displayTime(session.startTime)
-        val online = !session.meetingLink.isNullOrBlank()
-        TodayClass(
-            time = time,
-            period = period,
-            course = session.sessionTitle?.takeIf { it.isNotBlank() } ?: cohort?.courseName ?: "Class session",
-            section = listOfNotNull(cohort?.code, if (online) "Online" else null).joinToString(" · ").ifBlank { "Scheduled session" },
-            status = when {
-                session.isCompletedSession() -> "Completed"
-                online -> "Online"
-                else -> "Scheduled"
-            },
-            statusColor = when {
-                session.isCompletedSession() -> MC_Teal
-                online -> MC_Primary
-                else -> MC_Blue
-            },
-            isOnline = online
-        )
-    }
-    val pendingActions = listOf(
-        PendingAction(Icons.AutoMirrored.Filled.Assignment, Color(0xFFEEF2FF), Color(0xFF4F46E5), "Submissions to review", submissions, onSubmissions),
-        PendingAction(Icons.Default.Person,                  Color(0xFFFEF3C7), Color(0xFFD97706), "Attendance updates",    attendancePending, onAttendance),
-        PendingAction(Icons.AutoMirrored.Filled.Message,     Color(0xFFFCE7F3), Color(0xFFDB2777), "Unread messages",       unreadMessages, onMessages),
-        PendingAction(Icons.Default.CalendarMonth,           Color(0xFFD1FAE5), Color(0xFF059669), "Upcoming classes",      upcomingClasses, onSchedule)
-    )
-    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Today's Classes", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MC_TextTitle, modifier = Modifier.weight(1f))
-                Text("View all", fontSize = 11.sp, color = MC_Primary, fontWeight = FontWeight.Medium, modifier = Modifier.clickable(onClick = onSchedule))
-            }
-            Spacer(Modifier.height(8.dp))
-            if (classes.isEmpty()) {
-                Text("No classes scheduled today", fontSize = 10.sp, color = MC_TextSub, modifier = Modifier.padding(vertical = 12.dp))
-            } else classes.forEach { cls -> TodayClassCard(cls, if (cls.isOnline) onLiveClass else onSchedule); Spacer(Modifier.height(8.dp)) }
-        }
-        Column(Modifier.weight(1f)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Pending Actions", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MC_TextTitle, modifier = Modifier.weight(1f))
-                Text("View all", fontSize = 11.sp, color = MC_Primary, fontWeight = FontWeight.Medium, modifier = Modifier.clickable(onClick = onSubmissions))
-            }
-            Spacer(Modifier.height(8.dp))
-            pendingActions.forEach { action -> PendingActionRow(action); Spacer(Modifier.height(8.dp)) }
-        }
-    }
-}
+    val (time, period) = displayTime(session.startTime)
+    val completed = session.isCompletedSession()
+    val isCancelled = session.isCancelledSession()
+    val isRescheduled = session.classStatus.equals("RESCHEDULED", true)
+    val semanticColors = sureSemanticColors()
+    val hasLink = !session.meetingLink.isNullOrBlank()
 
-@Composable
-private fun TodayClassCard(cls: TodayClass, onClick: () -> Unit) {
-    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MC_Surface, border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border), shadowElevation = 1.dp, onClick = onClick) {
-        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(34.dp)) {
-                Text(cls.time, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MC_Primary)
-                Text(cls.period, fontSize = 9.sp, color = MC_TextSub)
-            }
-            Spacer(Modifier.width(6.dp))
-            Column(Modifier.weight(1f)) {
-                Text(cls.course, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(cls.section, fontSize = 9.sp, color = MC_TextSub, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(3.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(cls.statusColor))
-                    Spacer(Modifier.width(3.dp))
-                    Text(cls.status, fontSize = 9.sp, color = cls.statusColor, fontWeight = FontWeight.SemiBold)
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MC_Surface),
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border),
+        elevation = CardDefaults.cardElevation(2.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            // Row 1: Time badge, Class title, Cohort, Status
+            Row(verticalAlignment = Alignment.Top) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isCancelled) MaterialTheme.colorScheme.surfaceVariant else MC_ActivePill,
+                    modifier = Modifier.width(62.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                    ) {
+                        Text(
+                            time,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant else MC_Primary
+                        )
+                        Text(
+                            period,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant else MC_Primary
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        session.sessionTitle?.takeIf { it.isNotBlank() } ?: "Class Session",
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MC_TextTitle,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        "${session.date} · ${cohort?.code ?: session.cohortCode ?: "Assigned Cohort"}",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MC_Primary
+                    )
+                    if (!session.endTime.isNullOrBlank()) {
+                        val (endTimeFormatted, endPeriod) = displayTime(session.endTime)
+                        Text(
+                            "Timing: $time $period - $endTimeFormatted $endPeriod",
+                            fontSize = 10.5.sp,
+                            color = MC_TextSub
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = when {
+                        isCancelled -> MaterialTheme.colorScheme.errorContainer
+                        completed -> semanticColors.successContainer
+                        isRescheduled -> semanticColors.warningContainer
+                        else -> MC_ActivePill
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                isCancelled -> Icons.Default.Cancel
+                                completed -> Icons.Default.CheckCircle
+                                isRescheduled -> Icons.Default.Update
+                                else -> Icons.Default.Schedule
+                            },
+                            contentDescription = null,
+                            modifier = Modifier.size(11.dp),
+                            tint = when {
+                                isCancelled -> MaterialTheme.colorScheme.onErrorContainer
+                                completed -> semanticColors.onSuccessContainer
+                                isRescheduled -> semanticColors.onWarningContainer
+                                else -> MC_Primary
+                            }
+                        )
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            when {
+                                isCancelled -> "CANCELLED"
+                                completed -> "COMPLETED"
+                                isRescheduled -> "RESCHEDULED"
+                                else -> "SCHEDULED"
+                            },
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = when {
+                                isCancelled -> MaterialTheme.colorScheme.onErrorContainer
+                                completed -> semanticColors.onSuccessContainer
+                                isRescheduled -> semanticColors.onWarningContainer
+                                else -> MC_Primary
+                            }
+                        )
+                    }
                 }
             }
-            Icon(Icons.Default.ChevronRight, null, tint = MC_TextSub, modifier = Modifier.size(16.dp))
+
+            // Reason / Rescheduled notice
+            if (isCancelled && !session.notes.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Reason: ${session.notes}",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+
+            if (isRescheduled) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = semanticColors.warningContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Update, null, modifier = Modifier.size(13.dp), tint = Color(0xFFD97706))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Rescheduled session for ${session.date} at $time $period",
+                            fontSize = 11.sp,
+                            color = semanticColors.onWarningContainer,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            // Action Buttons
+            if (!completed && !isCancelled && !isReadOnly) {
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = MC_Border.copy(alpha = 0.5f))
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (hasLink) {
+                        Button(
+                            onClick = { onJoinMeet(session.meetingLink.orEmpty()) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Icon(Icons.Default.Videocam, null, Modifier.size(15.dp), tint = Color.White)
+                            Spacer(Modifier.width(5.dp))
+                            Text("Join Meet", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    } else {
+                        Spacer(Modifier.width(1.dp))
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(
+                            onClick = { onReschedule(session) },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD97706)),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Icon(Icons.Default.Update, null, Modifier.size(14.dp), tint = Color(0xFFD97706))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Reschedule", fontSize = 11.sp, color = Color(0xFFD97706), fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = { onCancel(session) },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDC2626)),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Icon(Icons.Default.Cancel, null, Modifier.size(14.dp), tint = Color(0xFFDC2626))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Cancel Class", fontSize = 11.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else if (hasLink && !isCancelled) {
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { onJoinMeet(session.meetingLink.orEmpty()) }) {
+                        Icon(Icons.Default.Videocam, null, Modifier.size(14.dp), tint = MC_Primary)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open Meeting Link", fontSize = 11.sp, color = MC_Primary)
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun PendingActionRow(action: PendingAction) {
-    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MC_Surface, border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border), shadowElevation = 1.dp, onClick = action.onClick) {
-        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                Icon(action.icon, null, tint = action.iconTint, modifier = Modifier.size(15.dp))
+private fun MentorDashboardClassesSection(
+    cohort: CohortDto?,
+    todayClasses: List<AttendanceDto>,
+    upcomingClasses: List<AttendanceDto>,
+    isReadOnly: Boolean,
+    onSchedule: () -> Unit,
+    onCreateSession: () -> Unit,
+    onRescheduleSession: (AttendanceDto) -> Unit,
+    onCancelSession: (AttendanceDto) -> Unit,
+    onJoinMeet: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (todayClasses.isNotEmpty()) "Today's Classes (${todayClasses.size})" else "Class Schedule",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MC_TextTitle
+                )
+                Text(
+                    text = if (todayClasses.isNotEmpty()) "Live sessions, meet link, reschedule or cancel"
+                    else if (upcomingClasses.isNotEmpty()) "Next upcoming sessions for this cohort"
+                    else "No active sessions scheduled for today",
+                    fontSize = 11.sp,
+                    color = MC_TextSub
+                )
             }
-            Spacer(Modifier.width(6.dp))
-            Text(action.label, fontSize = 10.sp, color = MC_TextTitle, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${action.count}", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = MC_TextTitle)
-            Spacer(Modifier.width(2.dp))
-            Icon(Icons.Default.ChevronRight, null, tint = MC_TextSub, modifier = Modifier.size(14.dp))
+            if (!isReadOnly && cohort != null) {
+                IconButton(
+                    onClick = onCreateSession,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(MC_ActivePill)
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Schedule Class",
+                        tint = MC_Primary,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(4.dp))
+            TextButton(onClick = onSchedule) {
+                Text("View All", fontSize = 12.sp, color = MC_Primary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(2.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(14.dp), tint = MC_Primary)
+            }
+        }
+
+        val displaySessions = when {
+            todayClasses.isNotEmpty() -> todayClasses
+            upcomingClasses.isNotEmpty() -> upcomingClasses.take(3)
+            else -> emptyList()
+        }
+
+        if (displaySessions.isEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MC_Surface),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MC_ActivePill),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = MC_Primary, modifier = Modifier.size(26.dp))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "No Classes Scheduled Today",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MC_TextTitle
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (cohort == null) "Select an assigned cohort to schedule regular domain classes."
+                        else "Use Schedule to add a class to ${cohort.code ?: "the cohort"} timetable.",
+                        fontSize = 11.5.sp,
+                        color = MC_TextSub,
+                        textAlign = TextAlign.Center
+                    )
+                    if (!isReadOnly && cohort != null) {
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = onCreateSession,
+                            colors = ButtonDefaults.buttonColors(containerColor = MC_Primary),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Schedule a Class", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        } else {
+            displaySessions.forEach { session ->
+                MentorSessionCard(
+                    session = session,
+                    cohort = cohort,
+                    isReadOnly = isReadOnly,
+                    onReschedule = onRescheduleSession,
+                    onCancel = onCancelSession,
+                    onJoinMeet = onJoinMeet
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MentorPendingActionsSection(
+    submissions: Int,
+    pendingInterviews: Int,
+    attendancePending: Int,
+    onSubmissions: () -> Unit,
+    onInterviews: () -> Unit,
+    onAttendance: () -> Unit
+) {
+    if (submissions == 0 && pendingInterviews == 0 && attendancePending == 0) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Pending Action Items",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = MC_TextTitle
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (submissions > 0) {
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onSubmissions),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MC_Surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border),
+                    shadowElevation = 1.dp
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFEEF2FF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Assignment, null, tint = Color(0xFF4F46E5), modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("$submissions", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MC_TextTitle)
+                        Text("Submissions to review", fontSize = 11.sp, color = MC_TextSub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            if (pendingInterviews > 0) {
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onInterviews),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MC_Surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border),
+                    shadowElevation = 1.dp
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFF3E8FF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.VideoCameraFront, null, tint = Color(0xFF7C3AED), modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("$pendingInterviews", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MC_TextTitle)
+                        Text("Interviews pending", fontSize = 11.sp, color = MC_TextSub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            if (attendancePending > 0) {
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onAttendance),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MC_Surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border),
+                    shadowElevation = 1.dp
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFFEF3C7)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.CheckCircle, null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("$attendancePending", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MC_TextTitle)
+                        Text("Attendance updates", fontSize = 11.sp, color = MC_TextSub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
         }
     }
 }
@@ -1984,15 +2508,11 @@ private fun MentorScheduleTab(
     cohorts: List<CohortDto>,
     sessions: List<AttendanceDto>,
     readOnly: Boolean,
-    onCreateSession: (String, String, String, String, String, String) -> Unit,
-    onRescheduleSession: (String, String, String, String, String) -> Unit,
-    onCancelSession: (String, String) -> Unit
+    onCreateSessionRequest: () -> Unit,
+    onRescheduleSessionRequest: (AttendanceDto) -> Unit,
+    onCancelSessionRequest: (AttendanceDto) -> Unit,
+    onJoinMeet: (String) -> Unit
 ) {
-    val semanticColors = sureSemanticColors()
-    var showCreate by remember { mutableStateOf(false) }
-    var rescheduling by remember { mutableStateOf<AttendanceDto?>(null) }
-    var cancelling by remember { mutableStateOf<AttendanceDto?>(null) }
-
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2000,7 +2520,7 @@ private fun MentorScheduleTab(
                     Text("Class Timetable", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
                     Text(if (readOnly) "Completed cohort · Timetable history" else "Schedule for the selected assigned cohort", fontSize = 11.sp, color = MC_TextSub)
                 }
-                Button(onClick = { showCreate = true }, enabled = cohorts.isNotEmpty() && !readOnly, colors = ButtonDefaults.buttonColors(containerColor = MC_Primary)) {
+                Button(onClick = onCreateSessionRequest, enabled = cohorts.isNotEmpty() && !readOnly, colors = ButtonDefaults.buttonColors(containerColor = MC_Primary)) {
                     Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("Schedule")
@@ -2015,138 +2535,32 @@ private fun MentorScheduleTab(
                         Spacer(Modifier.height(10.dp))
                         Text(if (cohorts.isEmpty()) "No cohort assigned" else "No classes scheduled", fontWeight = FontWeight.Bold, color = MC_TextTitle)
                         Text(if (cohorts.isEmpty()) "Admin must assign a cohort before you can schedule classes." else "Use Schedule to add a class to the cohort timetable.", fontSize = 12.sp, color = MC_TextSub, textAlign = TextAlign.Center)
+                        if (cohorts.isNotEmpty() && !readOnly) {
+                            Spacer(Modifier.height(14.dp))
+                            Button(onClick = onCreateSessionRequest, colors = ButtonDefaults.buttonColors(containerColor = MC_Primary)) {
+                                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Schedule a Class")
+                            }
+                        }
                     }
                 }
             }
         } else {
             items(sessions.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime }), key = { it.id }) { session ->
                 val cohort = cohorts.firstOrNull { it.id == session.cohort }
-                val (time, period) = displayTime(session.startTime)
-                val completed = session.isCompletedSession()
-                val isCancelled = session.isCancelledSession()
-                val isRescheduled = session.classStatus.equals("RESCHEDULED", true)
-
-                Card(colors = CardDefaults.cardColors(containerColor = MC_Surface), shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.width(58.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(time, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MC_Primary)
-                                Text(period, fontSize = 10.sp, color = MC_TextSub)
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Text(session.sessionTitle?.takeIf { it.isNotBlank() } ?: "Class session", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
-                                Text("${session.date.take(10)} · ${cohort?.code ?: session.cohortCode ?: "Assigned cohort"}", fontSize = 11.sp, color = MC_Primary)
-                                Text(if (session.meetingLink.isNullOrBlank()) "Classroom session" else "Online: ${session.meetingLink}", fontSize = 10.5.sp, color = MC_TextSub, maxLines = 1)
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = when {
-                                    isCancelled -> MaterialTheme.colorScheme.errorContainer
-                                    completed -> semanticColors.successContainer
-                                    isRescheduled -> semanticColors.warningContainer
-                                    else -> MC_ActivePill
-                                }
-                            ) {
-                                Text(
-                                    when {
-                                        isCancelled -> "CANCELLED"
-                                        completed -> "COMPLETED"
-                                        isRescheduled -> "RESCHEDULED"
-                                        else -> "SCHEDULED"
-                                    },
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = when {
-                                        isCancelled -> MaterialTheme.colorScheme.onErrorContainer
-                                        completed -> semanticColors.onSuccessContainer
-                                        isRescheduled -> semanticColors.onWarningContainer
-                                        else -> MC_Primary
-                                    },
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        if (!completed && !isCancelled && !readOnly) {
-                            Spacer(Modifier.height(8.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { rescheduling = session }) {
-                                    Icon(Icons.Default.Update, null, Modifier.size(14.dp), tint = Color(0xFFD97706))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Reschedule", fontSize = 11.sp, color = Color(0xFFD97706), fontWeight = FontWeight.Bold)
-                                }
-                                Spacer(Modifier.width(4.dp))
-                                TextButton(onClick = { cancelling = session }) {
-                                    Icon(Icons.Default.Cancel, null, Modifier.size(14.dp), tint = Color(0xFFDC2626))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Cancel Class", fontSize = 11.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
+                MentorSessionCard(
+                    session = session,
+                    cohort = cohort,
+                    isReadOnly = readOnly,
+                    onReschedule = onRescheduleSessionRequest,
+                    onCancel = onCancelSessionRequest,
+                    onJoinMeet = onJoinMeet
+                )
             }
         }
     }
-
-    if (showCreate) {
-        CreateMentorClassDialog(
-            cohorts = cohorts,
-            sessions = sessions,
-            onDismiss = { showCreate = false },
-            onCreate = { cohortId, title, date, start, end, link ->
-                showCreate = false
-                onCreateSession(cohortId, title, date, start, end, link)
-            }
-        )
-    }
-
-    rescheduling?.let { session ->
-        MentorRescheduleClassDialog(
-            session = session,
-            sessions = sessions,
-            onDismiss = { rescheduling = null },
-            onReschedule = { newDate, newStart, newEnd, newLink ->
-                val id = session.id
-                rescheduling = null
-                onRescheduleSession(id, newDate, newStart, newEnd, newLink)
-            }
-        )
-    }
-
-    cancelling?.let { session ->
-        var cancelReason by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { cancelling = null },
-            icon = { Icon(Icons.Default.Cancel, null, tint = Color(0xFFDC2626)) },
-            title = { Text("Cancel Class") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Are you sure you want to cancel '${session.sessionTitle ?: "this class"}' scheduled on ${session.date}?")
-                    OutlinedTextField(
-                        value = cancelReason,
-                        onValueChange = { cancelReason = it },
-                        label = { Text("Reason (optional)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val id = session.id
-                        val reason = cancelReason.trim()
-                        cancelling = null
-                        onCancelSession(id, reason)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
-                ) { Text("Confirm Cancel") }
-            },
-            dismissButton = { TextButton(onClick = { cancelling = null }) { Text("Close") } }
-        )
-    }
 }
-
 @Composable
 private fun CreateMentorClassDialog(
     cohorts: List<CohortDto>,

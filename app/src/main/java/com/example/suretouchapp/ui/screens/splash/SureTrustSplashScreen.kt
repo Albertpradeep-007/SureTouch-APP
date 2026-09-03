@@ -4,7 +4,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -27,9 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,20 +65,7 @@ fun SureTrustSplashScreen(
         label = "glow_alpha"
     )
 
-    var startAnimation by remember { mutableStateOf(false) }
-    val scaleAnim by animateFloatAsState(
-        targetValue = if (startAnimation) 1f else 0.7f,
-        animationSpec = tween(600, easing = FastOutSlowInEasing),
-        label = "scale"
-    )
-    val alphaAnim by animateFloatAsState(
-        targetValue = if (startAnimation) 1f else 0f,
-        animationSpec = tween(600),
-        label = "alpha"
-    )
-
     LaunchedEffect(Unit) {
-        startAnimation = true
         delay(1400L)
         onTimeout()
     }
@@ -90,24 +73,9 @@ fun SureTrustSplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF8F7FC)),
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
-        // Subtle Logo Watermark in background
-        Image(
-            painter = painterResource(id = R.drawable.sure_trust_official_logo),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .size(360.dp)
-                .align(Alignment.Center)
-                .graphicsLayer {
-                    alpha = 0.045f
-                    scaleX = 1.3f
-                    scaleY = 1.3f
-                }
-        )
-
         // Glowing background accent
         Box(
             modifier = Modifier
@@ -133,9 +101,8 @@ fun SureTrustSplashScreen(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
                 .graphicsLayer {
-                    scaleX = scaleAnim * pulseScale
-                    scaleY = scaleAnim * pulseScale
-                    alpha = alphaAnim
+                    scaleX = pulseScale
+                    scaleY = pulseScale
                 }
                 .padding(24.dp)
         ) {

@@ -1,6 +1,7 @@
 package com.example.suretouchapp.ui.theme
 
 import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -75,7 +76,7 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun SureTouchAPPTheme(
-    darkTheme: Boolean = false, // Default to Light theme
+    darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false, // Set to false so SURE TRUST brand colors are always displayed
     content: @Composable () -> Unit
 ) {

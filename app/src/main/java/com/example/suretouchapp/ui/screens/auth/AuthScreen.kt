@@ -159,10 +159,6 @@ fun AuthScreen(
 
     val updateState by AppUpdateManager.updateState.collectAsState()
 
-    LaunchedEffect(Unit) {
-        AppUpdateManager.checkForUpdates(context, tokenManager)
-    }
-
     val calendar = Calendar.getInstance()
     val datePickerDialog = DatePickerDialog(
         context,
@@ -358,7 +354,9 @@ fun AuthScreen(
                                             // for non-admin users (UserViewSet.get_queryset returns filter(id=user.id))
                                             try {
                                                 val profileApi = ApiClient.getService(tokenManager)
-                                                val usersList = profileApi.getUsers().body()?.results.orEmpty()
+                                                // Ask the backend for only this account. This avoids loading and
+                                                // deserializing a full user page during the login handoff.
+                                                val usersList = profileApi.getUsers(search = cleanEmail).body()?.results.orEmpty()
                                                 val me = usersList.find { it.email.equals(cleanEmail, ignoreCase = true) }
                                                     ?: if (usersList.size == 1) usersList.firstOrNull() else null
                                                 if (me != null) {
@@ -783,9 +781,11 @@ fun AuthScreen(
                                     placeholder = { Text("john.doe@example.com") },
                                     supportingText = {
                                         Text(
-                                            text = "— fill all fields & set password first, then click Verify Email",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            text = "Complete all fields and set your password, then select Verify Email.",
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f)
                                         )
                                     },
                                     keyboardOptions = KeyboardOptions(
@@ -1153,17 +1153,20 @@ fun AuthScreen(
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "⚠️",
-                                            fontSize = 14.sp,
-                                            modifier = Modifier.padding(end = 8.dp)
+                                        Icon(
+                                            imageVector = Icons.Default.WarningAmber,
+                                            contentDescription = null,
+                                            tint = semanticColors.warning,
+                                            modifier = Modifier
+                                                .padding(end = 8.dp)
+                                                .size(18.dp)
                                         )
                                         Text(
                                             text = "Please verify your email above before creating your account.",
-                                            fontSize = 12.sp,
+                                            fontSize = 12.5.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = semanticColors.onWarningContainer,
-                                            lineHeight = 16.sp
+                                            lineHeight = 17.sp
                                         )
                                     }
                                 }
@@ -1340,7 +1343,7 @@ fun AuthScreen(
                                 .padding(top = 16.dp)
                                 .clickable {
                                     scope.launch {
-                                        AppUpdateManager.checkForUpdates(context, tokenManager)
+                                        AppUpdateManager.checkForUpdates(force = true)
                                     }
                                 }
                         ) {

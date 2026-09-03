@@ -428,7 +428,6 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                         coroutineScope.launch {
                             val body = mapOf<String, Any?>(
                                 "class_status" to "CANCELLED",
-                                "conducted" to false,
                                 "notes" to cancelReason.trim().takeIf(String::isNotBlank)
                             )
                             val res = runCatching { api.patchAttendance(session.id, body) }.getOrNull()

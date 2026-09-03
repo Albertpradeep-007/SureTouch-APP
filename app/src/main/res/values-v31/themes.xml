@@ -2,8 +2,8 @@
 <resources>
     <style name="Theme.SureTouchAPP" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowSplashScreenBackground">#F8F7FC</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/suretrust_splash_logo</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">#F8F7FC</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#FFFFFF</item>
         <item name="android:statusBarColor">#F8F7FC</item>
         <item name="android:navigationBarColor">#F8F7FC</item>
         <item name="android:windowLightStatusBar">true</item>

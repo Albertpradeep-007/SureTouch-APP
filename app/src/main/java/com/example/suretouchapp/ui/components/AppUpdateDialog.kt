@@ -75,6 +75,7 @@ fun AppUpdateDialog(
         )
         else -> return
     }
+    val waitingForFirstByte = updateState is UpdateState.Downloading && updateState.bytesRead == 0L
 
     Dialog(
         onDismissRequest = {
@@ -231,18 +232,33 @@ fun AppUpdateDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            LinearProgressIndicator(
-                                progress = { progress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp)
-                                    .clip(RoundedCornerShape(4.dp)),
-                                color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
+                            if (waitingForFirstByte) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            } else {
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            }
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = "Downloading update... ${(progress * 100).toInt()}%",
+                                text = if (waitingForFirstByte) {
+                                    "Connecting to the secure download…"
+                                } else {
+                                    "Downloading update… ${(progress * 100).toInt().coerceIn(0, 100)}%"
+                                },
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary

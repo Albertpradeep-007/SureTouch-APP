@@ -24,6 +24,7 @@ import com.example.suretouchapp.data.model.AssignmentDto
 import com.example.suretouchapp.data.model.AttendanceDto
 import com.example.suretouchapp.data.model.NotificationDto
 import com.example.suretouchapp.data.model.SubmissionDto
+import com.example.suretouchapp.data.repository.isCancelledSession
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -422,6 +423,7 @@ object SureProEdNotificationManager {
         var hasNewAlert = false
 
         for (session in sessions) {
+            if (session.isCancelledSession()) continue
             val sessionKey = "${session.id}_${session.date}_${session.startTime.orEmpty()}"
             val startMillis = parseClassStartTimeMillis(session.date, session.startTime)
 

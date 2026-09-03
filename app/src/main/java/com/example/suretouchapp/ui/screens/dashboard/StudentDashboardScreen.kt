@@ -3,6 +3,7 @@ package com.example.suretouchapp.ui.screens.dashboard
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -80,8 +81,6 @@ import java.util.Locale
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-
 // =======================================================
 // SESSION STATE & MULTI-CLASS SWIPEABLE SESSION MODEL
 // =======================================================
@@ -111,17 +110,13 @@ private fun getSessionState(
     backendStatus: String?,
     now: LocalDateTime
 ): SessionState {
-    if (backendStatus in setOf("COMPLETED", "CANCELLED", "RESCHEDULED")) return SessionState.COMPLETED
-    val date = listOf("dd-MMM-yyyy", "yyyy-MM-dd").firstNotNullOfOrNull { pattern ->
-        runCatching { LocalDate.parse(dateValue, DateTimeFormatter.ofPattern(pattern, Locale.US)) }.getOrNull()
-    } ?: return SessionState.UPCOMING
-    fun parseTime(value: String) = runCatching {
-        LocalTime.parse(value, DateTimeFormatter.ISO_LOCAL_TIME)
-    }.recoverCatching {
-        LocalTime.parse(value.take(5), DateTimeFormatter.ofPattern("HH:mm", Locale.US))
-    }.getOrNull()
-    val start = parseTime(startValue) ?: return SessionState.UPCOMING
-    val end = parseTime(endValue) ?: start
+    val backend = backendStatus?.trim()?.uppercase(Locale.US)
+    if (backend in setOf("COMPLETED", "CANCELLED", "RESCHEDULED")) {
+        return SessionState.COMPLETED
+    }
+    val date = com.example.suretouchapp.data.repository.parseSessionLocalDate(dateValue) ?: return SessionState.UPCOMING
+    val start = com.example.suretouchapp.data.repository.ClassSchedulePolicy.parseLocalTime(startValue) ?: return SessionState.UPCOMING
+    val end = com.example.suretouchapp.data.repository.ClassSchedulePolicy.parseLocalTime(endValue) ?: start.plusHours(1)
     val startAt = LocalDateTime.of(date, start)
     val endAt = LocalDateTime.of(date, end)
     return when {
@@ -500,20 +495,23 @@ fun StudentDashboardScreen(
                     .background(ColorCanvasBg)
                     .padding(paddingValues)
             ) {
-                // Official SURE Trust Logo Watermark in Student Dashboard Background
-                Image(
-                    painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .size(340.dp)
-                        .align(Alignment.Center)
-                        .graphicsLayer {
-                            alpha = 0.055f
-                            scaleX = 1.3f
-                            scaleY = 1.3f
-                        }
-                )
+                // The source logo contains a white square, so its decorative watermark
+                // is only safe on the light canvas.
+                if (!isSystemInDarkTheme()) {
+                    Image(
+                        painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .size(340.dp)
+                            .align(Alignment.Center)
+                            .graphicsLayer {
+                                alpha = 0.055f
+                                scaleX = 1.3f
+                                scaleY = 1.3f
+                            }
+                    )
+                }
 
                 CleanTimetableDashboardView(
                     onNavigateToCourses = onNavigateToCourses,
@@ -1339,19 +1337,21 @@ fun CleanTimetableDashboardView(
     ) {
         BackendSyncedDashboard(isLoading = isDashboardLoading) {
             Box(modifier = Modifier.fillMaxSize()) {
-                Image(
-                    painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                    contentDescription = "SURE Trust Official Logo Watermark",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .size(300.dp)
-                        .align(Alignment.Center)
-                        .graphicsLayer {
-                            alpha = 0.04f
-                            scaleX = 1.35f
-                            scaleY = 1.35f
-                        }
-                )
+                if (!isSystemInDarkTheme()) {
+                    Image(
+                        painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                        contentDescription = "SURE Trust Official Logo Watermark",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .size(300.dp)
+                            .align(Alignment.Center)
+                            .graphicsLayer {
+                                alpha = 0.04f
+                                scaleX = 1.35f
+                                scaleY = 1.35f
+                            }
+                    )
+                }
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1407,7 +1407,12 @@ fun CleanTimetableDashboardView(
                         cohortCode = cohortCode,
                         meetingLink = session.meetingLink
                     )
-                }.ifEmpty {
+                }
+                // Once a class ends it leaves the dashboard hero. If no live/upcoming
+                // class remains, the placeholder below immediately tells the student
+                // that the next class is awaited.
+                .filterNot { it.sessionState == SessionState.COMPLETED }
+                .ifEmpty {
                     listOf(
                         TimetableClassSession(
                             id = "pending",
@@ -1541,21 +1546,6 @@ fun CleanTimetableDashboardView(
                                     )
                                 )
                         ) {
-                            Image(
-                                painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                                contentDescription = "SURE Trust official logo watermark",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .size(160.dp)
-                                    .align(Alignment.CenterEnd)
-                                    .offset(x = 24.dp)
-                                    .graphicsLayer {
-                                        alpha = 0.18f
-                                        scaleX = 1.35f
-                                        scaleY = 1.35f
-                                    }
-                            )
-
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2086,20 +2076,6 @@ private fun ProfessionalGradesScreen(
                             Brush.linearGradient(listOf(ColorPurpleGradientStart, ColorPurpleGradientEnd))
                         )
                     ) {
-                        Image(
-                            painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                            contentDescription = "SURE Trust official logo watermark",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .offset(x = 24.dp)
-                                .size(150.dp)
-                                .graphicsLayer {
-                                    alpha = 0.18f
-                                    scaleX = 1.35f
-                                    scaleY = 1.35f
-                                }
-                        )
                         Column(Modifier.padding(18.dp)) {
                             Text("STUDENT PERFORMANCE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD8B4FE), letterSpacing = 1.sp)
                             Spacer(Modifier.height(5.dp))

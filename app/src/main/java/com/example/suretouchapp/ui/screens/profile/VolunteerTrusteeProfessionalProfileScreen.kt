@@ -39,6 +39,7 @@ import com.example.suretouchapp.data.repository.VolunteerRepository
 import kotlinx.coroutines.launch
 import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.StudentProfileImage
+import com.example.suretouchapp.ui.theme.sureSemanticColors
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -69,6 +70,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
     tokenManager: TokenManager,
     onBack: () -> Unit
 ) {
+    val semanticColors = sureSemanticColors()
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
@@ -558,10 +560,10 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                     Surface(
                                         modifier = Modifier.size(36.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFFEDE9FE)
+                                        color = MaterialTheme.colorScheme.primaryContainer
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.Groups, null, tint = Color(0xFF6726D9), modifier = Modifier.size(20.dp))
+                                            Icon(Icons.Default.Groups, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
                                         }
                                     }
                                     Spacer(Modifier.width(10.dp))
@@ -576,13 +578,13 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                 }
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFEDE9FE)
+                                    color = MaterialTheme.colorScheme.primaryContainer
                                 ) {
                                     Text(
                                         "${allAssigned.size} Batches",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF6726D9),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
@@ -609,8 +611,10 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                         onClick = { cohortFilter = "ACTIVE" },
                                         label = { Text("🟢 Active (${activeAssigned.size})", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) },
                                         colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = Color(0xFFDCFCE7),
-                                            selectedLabelColor = Color(0xFF15803D)
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            selectedContainerColor = semanticColors.successContainer,
+                                            selectedLabelColor = semanticColors.onSuccessContainer
                                         ),
                                         modifier = Modifier.weight(1f)
                                     )
@@ -619,8 +623,10 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                         onClick = { cohortFilter = "COMPLETED" },
                                         label = { Text("🎓 Completed (${completedAssigned.size})", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) },
                                         colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = Color(0xFFF3F4F6),
-                                            selectedLabelColor = Color(0xFF4B5563)
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
                                         ),
                                         modifier = Modifier.weight(1f)
                                     )
@@ -649,11 +655,11 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                                     .clickable { selectedCohortForDetails = cohort },
                                                 shape = RoundedCornerShape(14.dp),
                                                 colors = CardDefaults.cardColors(
-                                                    containerColor = if (isActive) Color(0xFFF5F3FF) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                                                 ),
                                                 border = BorderStroke(
                                                     1.dp,
-                                                    if (isActive) Color(0xFFDDD6FE) else MaterialTheme.colorScheme.outlineVariant
+                                                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.38f) else MaterialTheme.colorScheme.outlineVariant
                                                 )
                                             ) {
                                                 Column(modifier = Modifier.padding(14.dp)) {
@@ -664,27 +670,30 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                                     ) {
                                                         Surface(
                                                             shape = RoundedCornerShape(6.dp),
-                                                            color = if (isActive) Color(0xFFDCFCE7) else Color(0xFFF3F4F6),
-                                                            border = BorderStroke(1.dp, if (isActive) Color(0xFF86EFAC) else Color(0xFFE5E7EB))
+                                                            color = if (isActive) semanticColors.successContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                                            border = BorderStroke(
+                                                                1.dp,
+                                                                if (isActive) semanticColors.success.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outlineVariant
+                                                            )
                                                         ) {
                                                             Text(
                                                                 text = if (isActive) "● Active Live Batch" else "🎓 Graduated Batch",
                                                                 fontSize = 10.5.sp,
                                                                 fontWeight = FontWeight.Bold,
-                                                                color = if (isActive) Color(0xFF15803D) else Color(0xFF6B7280),
+                                                                color = if (isActive) semanticColors.onSuccessContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                                                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                                                             )
                                                         }
                                                         if (cohort.code.isNotBlank()) {
                                                             Surface(
                                                                 shape = RoundedCornerShape(6.dp),
-                                                                color = Color(0xFFEDE9FE)
+                                                                color = MaterialTheme.colorScheme.primaryContainer
                                                             ) {
                                                                 Text(
                                                                     cohort.code,
                                                                     fontSize = 11.sp,
                                                                     fontWeight = FontWeight.Bold,
-                                                                    color = Color(0xFF6726D9),
+                                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                                                     modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                                                 )
                                                             }
@@ -707,8 +716,8 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                                             onClick = { uriHandler.openUri(link) },
                                                             modifier = Modifier.fillMaxWidth().height(36.dp),
                                                             shape = RoundedCornerShape(8.dp),
-                                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF6726D9)),
-                                                            border = BorderStroke(1.dp, Color(0xFFDDD6FE))
+                                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))
                                                         ) {
                                                             Icon(Icons.Default.VideoCall, null, modifier = Modifier.size(16.dp))
                                                             Spacer(Modifier.width(6.dp))

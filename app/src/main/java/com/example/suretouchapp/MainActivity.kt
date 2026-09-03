@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent {
-            SureTouchAPPTheme(darkTheme = false) {
+            SureTouchAPPTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -151,7 +151,7 @@ fun AppNavigation(
     var otaPreviewDismissed by remember(otaPreviewRequested) { mutableStateOf(false) }
 
     LaunchedEffect(otaPreviewRequested) {
-        if (!otaPreviewRequested) AppUpdateManager.checkForUpdates(context, tokenManager)
+        if (!otaPreviewRequested) AppUpdateManager.checkForUpdates()
     }
 
     val displayedUpdateState = if (otaPreviewRequested && BuildConfig.DEBUG && !otaPreviewDismissed) {
