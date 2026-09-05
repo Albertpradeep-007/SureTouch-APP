@@ -45,6 +45,7 @@ import com.example.suretouchapp.ui.screens.trustee.VolunteerInterviewsScreen
 import com.example.suretouchapp.ui.screens.trustee.VolunteerProgrammesScreen
 import com.example.suretouchapp.ui.screens.trustee.VolunteerScheduleScreen
 import com.example.suretouchapp.ui.screens.trustee.VolunteerTasksScreen
+import com.example.suretouchapp.ui.screens.notifications.NotificationSyncWorker
 import com.example.suretouchapp.ui.screens.notifications.NotificationsScreen
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 import com.example.suretouchapp.ui.screens.profile.ProfileScreen
@@ -82,6 +83,8 @@ class MainActivity : ComponentActivity() {
             assignmentsNavigationRequest++
         }
         SureProEdNotificationManager.createChannels(this)
+        NotificationSyncWorker.schedulePeriodicSync(this)
+        NotificationSyncWorker.triggerImmediateSync(this)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)

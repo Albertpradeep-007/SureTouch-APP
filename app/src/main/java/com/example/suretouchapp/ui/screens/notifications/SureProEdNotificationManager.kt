@@ -717,12 +717,31 @@ object SureProEdNotificationManager {
 
     fun parseClassStartTimeMillis(dateStr: String?, timeStr: String?): Long? {
         if (dateStr.isNullOrBlank()) return null
-        val cleanDate = dateStr.trim().take(10)
+        val trimmedDate = dateStr.trim()
+        
+        // Handle full ISO date-time strings if present in dateStr
+        if (trimmedDate.contains("T")) {
+            try {
+                return java.time.Instant.parse(trimmedDate).toEpochMilli()
+            } catch (_: Exception) {}
+            try {
+                return java.time.OffsetDateTime.parse(trimmedDate).toInstant().toEpochMilli()
+            } catch (_: Exception) {}
+            try {
+                return LocalDateTime.parse(trimmedDate.substringBefore("Z")).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            } catch (_: Exception) {}
+        }
+
+        val cleanDate = trimmedDate.take(10)
         val cleanTime = timeStr?.trim()?.ifBlank { "09:00:00" } ?: "09:00:00"
 
         val patterns = listOf(
             "yyyy-MM-dd HH:mm:ss",
             "yyyy-MM-dd HH:mm",
+            "yyyy-MM-dd hh:mm:ss a",
+            "yyyy-MM-dd h:mm:ss a",
+            "yyyy-MM-dd hh:mma",
+            "yyyy-MM-dd h:mma",
             "yyyy-MM-dd hh:mm a",
             "yyyy-MM-dd h:mm a",
             "yyyy-MM-dd'T'HH:mm:ss",

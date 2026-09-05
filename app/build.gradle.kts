@@ -61,6 +61,7 @@ dependencies {
     // Navigation & ViewModel
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation("androidx.browser:browser:1.8.0")
 
     testImplementation(libs.junit)
