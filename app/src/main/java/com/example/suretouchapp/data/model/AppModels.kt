@@ -343,6 +343,9 @@ data class PermissionRequestMessageDto(
 data class AssignmentDto(
     val id: String = "",
     val cohort: String? = null,
+    @SerializedName("cohort_code") val cohortCode: String? = null,
+    @SerializedName("cohort_name") val cohortName: String? = null,
+    @SerializedName("course_name") val courseName: String? = null,
     val module: String? = null,
     @SerializedName("module_name") val moduleName: String? = null,
     val title: String = "",

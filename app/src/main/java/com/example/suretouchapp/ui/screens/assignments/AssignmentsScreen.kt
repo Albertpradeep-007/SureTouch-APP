@@ -36,6 +36,48 @@ import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.theme.SureFormDefaults
 import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+
+private fun formatAssignmentDueDate(raw: String): String {
+    if (raw.isBlank()) return "No deadline set"
+    return try {
+        val clean = raw.trim()
+        val datePart = if (clean.contains("T")) clean.substringBefore("T") else clean.take(10)
+        val parts = datePart.split("-")
+        if (parts.size == 3) {
+            val year = parts[0].toIntOrNull() ?: return clean
+            val month = parts[1].toIntOrNull() ?: return clean
+            val day = parts[2].toIntOrNull() ?: return clean
+            val cal = Calendar.getInstance().apply { set(year, month - 1, day) }
+            val formattedDate = SimpleDateFormat("dd MMM yyyy", Locale.US).format(cal.time)
+
+            if (clean.contains("T")) {
+                val timePart = clean.substringAfter("T").take(5)
+                val timeParts = timePart.split(":")
+                if (timeParts.size == 2) {
+                    val hour = timeParts[0].toIntOrNull() ?: 0
+                    val minute = timeParts[1].toIntOrNull() ?: 0
+                    val timeCal = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, hour)
+                        set(Calendar.MINUTE, minute)
+                    }
+                    val formattedTime = SimpleDateFormat("hh:mm a", Locale.US).format(timeCal.time)
+                    "$formattedDate • $formattedTime"
+                } else {
+                    formattedDate
+                }
+            } else {
+                formattedDate
+            }
+        } else {
+            clean
+        }
+    } catch (_: Exception) {
+        raw.take(10)
+    }
+}
 
 // =======================================================
 // ELEGANT COLOR TOKENS (MATCHING SURE TRUST THEME)
@@ -98,6 +140,9 @@ fun AssignmentsScreen(
             val api = ApiClient.getService(tokenManager)
             val response = api.getAssignments()
             val submissionsResponse = runCatching { api.getSubmissions() }.getOrNull()
+            val cohortsResponse = runCatching { api.getCohorts() }.getOrNull()
+            val cohortMap = cohortsResponse?.takeIf { it.isSuccessful }?.body()?.results.orEmpty().associateBy { it.id }
+
             if (response.isSuccessful) {
                 val rawAssignments = response.body()?.results.orEmpty()
                 val rawSubmissions = submissionsResponse?.takeIf { it.isSuccessful }?.body()?.results.orEmpty()
@@ -136,13 +181,25 @@ fun AssignmentsScreen(
                         else -> assignment.grade
                     }
 
+                    val cohortObj = cohortMap[assignment.cohort]
+                    val resolvedCourseTag = when {
+                        !assignment.cohortCode.isNullOrBlank() -> assignment.cohortCode
+                        cohortObj?.code?.isNotBlank() == true -> cohortObj.code
+                        cohortObj?.courseName?.isNotBlank() == true -> cohortObj.courseName
+                        !assignment.courseName.isNullOrBlank() -> assignment.courseName
+                        !assignment.moduleName.isNullOrBlank() -> assignment.moduleName
+                        assignment.cohort?.matches(Regex("^[0-9a-fA-F-]{32,36}$")) == true -> "Course Assignment"
+                        !assignment.cohort.isNullOrBlank() -> assignment.cohort
+                        else -> "Course Assignment"
+                    }
+
                     AssignmentItem(
                         id = assignment.id,
                         submissionId = userSubmission?.id,
-                        courseCode = assignment.cohort ?: "Assigned cohort",
+                        courseCode = resolvedCourseTag,
                         title = assignment.title,
                         description = assignment.description,
-                        dueDate = assignment.dueDate,
+                        dueDate = formatAssignmentDueDate(assignment.dueDate),
                         maxMarks = assignment.maxMarks.toDoubleOrNull()?.toInt() ?: 100,
                         status = status,
                         submittedLink = submittedLink,
