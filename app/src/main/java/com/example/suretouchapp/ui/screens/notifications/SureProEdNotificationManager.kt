@@ -170,7 +170,9 @@ object SureProEdNotificationManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val delivered = prefs.getStringSet(KEY_DELIVERED_ANNOUNCEMENT_IDS, emptySet()).orEmpty().toMutableSet()
         
-        val activeList = announcements.filter { it.isActive }
+        val activeList = announcements
+            .filter { it.isActive }
+            .sortedWith(compareByDescending<AnnouncementDto> { it.isPinned }.thenByDescending { it.createdAt?.ifBlank { it.id } ?: it.id })
         var hasDeliveredNew = false
 
         for (item in activeList) {
@@ -400,14 +402,15 @@ object SureProEdNotificationManager {
         val delivered = prefs.getStringSet(KEY_DELIVERED_IDS, emptySet()).orEmpty().toMutableSet()
         var hasNew = false
 
-        notifications.asSequence()
+        val sortedList = notifications
             .filter { !it.isRead && it.id !in delivered }
-            .take(5)
-            .forEach { notification ->
-                show(context, notification)
-                delivered += notification.id
-                hasNew = true
-            }
+            .sortedByDescending { it.createdAt.ifBlank { it.id } }
+
+        sortedList.take(5).forEach { notification ->
+            show(context, notification)
+            delivered += notification.id
+            hasNew = true
+        }
 
         if (hasNew) {
             playNotificationSound(context)

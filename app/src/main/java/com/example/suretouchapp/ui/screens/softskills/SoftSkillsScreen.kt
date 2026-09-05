@@ -114,10 +114,13 @@ fun SoftSkillsScreen(
     val attendedSessions = softSkillSessions.count { it.isAttended }
     val attendancePct = if (totalSessions == 0) 0.0 else (attendedSessions.toDouble() / totalSessions) * 100.0
 
+    val cachedCohortCode = remember { tokenManager.getCohortCode() }
+    val effectiveCohortCode = training?.cohortCode?.takeIf(String::isNotBlank) ?: cachedCohortCode.takeIf(String::isNotBlank)
+
     BackendConnectionGate(
         isLoading = isLoading,
         isConnected = isConnected,
-        hasData = hasLoadedOnce,
+        hasData = hasLoadedOnce || !cachedCohortCode.isNullOrBlank(),
         isOffline = isOffline,
         errorTitle = errorTitle,
         errorMessage = connectionError,
@@ -125,7 +128,19 @@ fun SoftSkillsScreen(
         onRetry = { scope.launch { loadTraining() } },
         onLogout = null
     ) {
-        if (training?.cohortCode.isNullOrBlank()) {
+        if (isLoading && !hasLoadedOnce && training == null && effectiveCohortCode.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(ColorCanvasBg),
+                contentAlignment = Alignment.Center
+            ) {
+                SureTrustLoadingIndicator(
+                    message = "Connecting to Soft Skills Training...",
+                    spinnerColor = ColorPrimaryIndigo
+                )
+            }
+        } else if (effectiveCohortCode.isNullOrBlank()) {
             SoftSkillsLockedScaffold(onBack)
         } else {
             Scaffold(

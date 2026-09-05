@@ -117,10 +117,13 @@ fun LifeSkillsScreen(
     val conductedSessions = lstSessions.count { session -> session.isAttended || session.date.isNotBlank() }
     val attendancePct = if (conductedSessions == 0) 0.0 else (attendedSessions.toDouble() / conductedSessions) * 100.0
 
+    val cachedCohortCode = remember { tokenManager.getCohortCode() }
+    val effectiveCohortCode = training?.cohortCode?.takeIf(String::isNotBlank) ?: cachedCohortCode.takeIf(String::isNotBlank)
+
     BackendConnectionGate(
         isLoading = isLoading,
         isConnected = isConnected,
-        hasData = hasLoadedOnce,
+        hasData = hasLoadedOnce || !cachedCohortCode.isNullOrBlank(),
         isOffline = isOffline,
         errorTitle = errorTitle,
         errorMessage = connectionError,
@@ -128,7 +131,19 @@ fun LifeSkillsScreen(
         onRetry = { scope.launch { loadTraining() } },
         onLogout = null
     ) {
-        if (training?.cohortCode.isNullOrBlank()) {
+        if (isLoading && !hasLoadedOnce && training == null && effectiveCohortCode.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(ColorCanvasBg),
+                contentAlignment = Alignment.Center
+            ) {
+                SureTrustLoadingIndicator(
+                    message = "Connecting to Life Skills Training...",
+                    spinnerColor = ColorPrimaryTeal
+                )
+            }
+        } else if (effectiveCohortCode.isNullOrBlank()) {
             TrainingLockedScaffold("Life Skills Training (LST)", ColorPrimaryTeal, onBack)
         } else {
             Scaffold(

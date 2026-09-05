@@ -342,7 +342,7 @@ fun ApplicationTrackerScreen(
         ?.replace('_', ' ')
         ?.takeIf(String::isNotBlank)
         ?: fallbackJourneyStatus
-    val steps = stats.journey?.steps
+    val rawSteps = stats.journey?.steps
         ?.takeIf { it.isNotEmpty() }
         ?.map { backendStep ->
             JourneyStep(
@@ -361,6 +361,29 @@ fun ApplicationTrackerScreen(
             )
         }
         ?: fallbackSteps
+
+    val steps = run {
+        val hasIncompletePriorSteps = rawSteps.any { step ->
+            step.stepNumber in 1..16 &&
+            step.state != StepState.COMPLETED &&
+            !step.subtitle.contains("Not required", ignoreCase = true)
+        }
+        if (hasIncompletePriorSteps) {
+            rawSteps.map { step ->
+                if (step.stepNumber == 17 && step.state == StepState.CURRENT) {
+                    step.copy(
+                        state = StepState.UPCOMING,
+                        dateText = "Upcoming",
+                        subtitle = "Verification pending prior requirements completion"
+                    )
+                } else {
+                    step
+                }
+            }
+        } else {
+            rawSteps
+        }
+    }
 
     BackendConnectionGate(
         isLoading = isLoading,
