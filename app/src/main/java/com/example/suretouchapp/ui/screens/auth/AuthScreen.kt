@@ -340,7 +340,7 @@ fun AuthScreen(
                                 isLoading = true
                                 errorMessage = null
                                 scope.launch {
-                                    val cleanEmail = loginEmail.trim()
+                                    val cleanEmail = loginEmail.trim().lowercase()
                                     val cleanPass = loginPassword.trim()
                                     try {
                                         val api = ApiClient.getService(tokenManager)
@@ -387,7 +387,8 @@ fun AuthScreen(
                                             onAuthSuccess()
 
                                         } else {
-                                            errorMessage = "Invalid credentials. Please verify your email and password."
+                                            val rawError = response.errorBody()?.string().orEmpty()
+                                            errorMessage = formatApiErrorMessage(rawError, "Invalid credentials. Please verify your email and password.")
                                         }
                                     } catch (e: Exception) {
                                         errorMessage = "The SURE ProEd server is unavailable. Sign-in requires a connection."
@@ -2120,13 +2121,13 @@ private fun ForgotPasswordSheet(
                                             val response = ApiClient.getService(tokenManager)
                                                 .confirmPasswordReset(
                                                     ForgotPasswordConfirmRequest(
-                                                        email = email.trim(),
+                                                        email = email.trim().lowercase(),
                                                         otp = otp.trim(),
-                                                        newPassword = newPassword
+                                                        newPassword = newPassword.trim()
                                                     )
                                                 )
                                             if (response.isSuccessful) {
-                                                onSuccess(email.trim())
+                                                onSuccess(email.trim().lowercase())
                                             } else {
                                                 val rawError = response.errorBody()?.string().orEmpty()
                                                 errorMessage = formatApiErrorMessage(rawError, "The OTP code is invalid or has expired. Please request a new code.")
