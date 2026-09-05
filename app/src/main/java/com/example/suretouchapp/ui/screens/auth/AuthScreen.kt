@@ -1918,7 +1918,8 @@ private fun ForgotPasswordSheet(
                                     resendCountdown = 45
                                     infoMessage = "Verification OTP sent! Please check your inbox (and spam folder)."
                                 } else {
-                                    errorMessage = "Could not send password reset OTP. Please check the email and try again."
+                                    val rawError = response.errorBody()?.string().orEmpty()
+                                    errorMessage = formatApiErrorMessage(rawError, "Could not send password reset OTP. Please check the email and try again.")
                                 }
                             } catch (_: Exception) {
                                 errorMessage = "Unable to connect to SURE ProEd server. Please check your network."
@@ -1994,7 +1995,8 @@ private fun ForgotPasswordSheet(
                                                 resendCountdown = 45
                                                 infoMessage = "A fresh 6-digit OTP has been sent to your email."
                                             } else {
-                                                errorMessage = "Could not resend OTP. Please try again later."
+                                                val rawError = response.errorBody()?.string().orEmpty()
+                                                errorMessage = formatApiErrorMessage(rawError, "Could not resend OTP. Please try again later.")
                                             }
                                         } catch (_: Exception) {
                                             errorMessage = "Connection error. Please try again."
@@ -2126,7 +2128,8 @@ private fun ForgotPasswordSheet(
                                             if (response.isSuccessful) {
                                                 onSuccess(email.trim())
                                             } else {
-                                                errorMessage = "The OTP code is invalid or has expired. Please request a new code."
+                                                val rawError = response.errorBody()?.string().orEmpty()
+                                                errorMessage = formatApiErrorMessage(rawError, "The OTP code is invalid or has expired. Please request a new code.")
                                             }
                                         } catch (_: Exception) {
                                             errorMessage = "Unable to connect to server. Please try again."
