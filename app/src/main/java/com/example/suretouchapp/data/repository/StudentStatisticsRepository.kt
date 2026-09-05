@@ -2,6 +2,7 @@ package com.example.suretouchapp.data.repository
 
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
+import com.example.suretouchapp.data.api.fetchAllAttendancePages
 import com.example.suretouchapp.data.model.ActiveCohortStatisticsDto
 import com.example.suretouchapp.data.model.StudentStatisticsDto
 import kotlinx.coroutines.async
@@ -55,10 +56,7 @@ class StudentStatisticsRepository(private val tokenManager: TokenManager) {
     private suspend fun loadDetailedAttendancePercentage(): Double? = coroutineScope {
         val api = ApiClient.getService(tokenManager)
         val attendanceRead = async {
-            runCatching { api.getAttendance() }.getOrNull()
-                ?.takeIf { it.isSuccessful }
-                ?.body()
-                ?.results
+            runCatching { api.fetchAllAttendancePages() }.getOrNull()
         }
         val profileRead = async {
             runCatching { api.getStudentProfileById("me") }.getOrNull()
@@ -84,7 +82,7 @@ class StudentStatisticsRepository(private val tokenManager: TokenManager) {
         val examsRead = async { runCatching { api.getScreeningResults() }.getOrNull()?.takeIf { it.isSuccessful }?.body()?.results }
         val interviewsRead = async { runCatching { api.getPreScreeningInterviews() }.getOrNull()?.takeIf { it.isSuccessful }?.body()?.results }
         val cohortsRead = async { runCatching { api.getCohorts() }.getOrNull()?.takeIf { it.isSuccessful }?.body()?.results }
-        val attendanceRead = async { runCatching { api.getAttendance() }.getOrNull()?.takeIf { it.isSuccessful }?.body()?.results }
+        val attendanceRead = async { runCatching { api.fetchAllAttendancePages() }.getOrNull() }
 
         val applicationsResponse = applicationsRaw.await()
         if (applicationsResponse != null && applicationsResponse.code() in listOf(401, 403)) {

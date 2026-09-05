@@ -93,8 +93,13 @@ interface ApiService {
         @Query("status") status: String? = null,
         @Query("class_date") classDate: String? = null,
         @Query("date_from") dateFrom: String? = null,
-        @Query("date_to") dateTo: String? = null
+        @Query("date_to") dateTo: String? = null,
+        @Query("page_size") pageSize: Int? = 500,
+        @Query("page") page: Int? = null
     ): Response<PaginatedResponse<AttendanceDto>>
+
+    @GET
+    suspend fun getAttendanceByUrl(@Url url: String): Response<PaginatedResponse<AttendanceDto>>
     @POST("attendance/") suspend fun createAttendance(@Body body: ApiBody): Response<AttendanceDto>
     @GET("attendance/{id}/") suspend fun getAttendanceById(@Path("id") id: String): Response<AttendanceDto>
     @PUT("attendance/{id}/") suspend fun replaceAttendance(@Path("id") id: String, @Body body: ApiBody): Response<AttendanceDto>
@@ -280,4 +285,59 @@ interface ApiService {
 
     @GET("app/version-check/")
     suspend fun checkAppVersion(): Response<AppVersionInfoDto>
+}
+
+/**
+ * Helper to fetch all attendance records across all paginated pages from Django.
+ */
+suspend fun ApiService.fetchAllAttendancePages(
+    status: String? = null,
+    classDate: String? = null,
+    dateFrom: String? = null,
+    dateTo: String? = null,
+    pageSize: Int = 500
+): List<AttendanceDto> {
+    val allItems = mutableListOf<AttendanceDto>()
+    var nextUrl: String? = null
+    var page = 1
+
+    val firstResponse = runCatching {
+        getAttendance(
+            status = status,
+            classDate = classDate,
+            dateFrom = dateFrom,
+            dateTo = dateTo,
+            pageSize = pageSize,
+            page = 1
+        )
+    }.getOrNull()
+
+    if (firstResponse != null && firstResponse.isSuccessful) {
+        val body = firstResponse.body()
+        if (body != null) {
+            allItems.addAll(body.results)
+            nextUrl = body.next
+        }
+    }
+
+    while (!nextUrl.isNullOrBlank() && page < 20) {
+        page++
+        val pageResponse = runCatching {
+            getAttendanceByUrl(nextUrl)
+        }.getOrNull()
+
+        if (pageResponse != null && pageResponse.isSuccessful) {
+            val body = pageResponse.body()
+            if (body != null) {
+                allItems.addAll(body.results)
+                nextUrl = body.next
+            } else {
+                break
+            }
+        } else {
+            break
+        }
+    }
+
+    return allItems
 }

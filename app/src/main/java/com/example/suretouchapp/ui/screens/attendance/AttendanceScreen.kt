@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.NetworkUtils
 import com.example.suretouchapp.data.api.TokenManager
+import com.example.suretouchapp.data.api.fetchAllAttendancePages
 import com.example.suretouchapp.data.model.AbsenceWarningDto
 import com.example.suretouchapp.data.model.AttendanceDto
 import com.example.suretouchapp.data.model.CohortDto
@@ -125,36 +126,36 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
             val assignedCodes = assignedCohorts.mapNotNull { it.second }.filter(String::isNotBlank).toSet()
             assignedCohortCount = assignedCohorts.size
 
-            val (attendanceRes, studentsRes, cohortsRes, warningsRes) = coroutineScope {
-                val a = async { api.getAttendance() }
+            val attendanceRecords: List<AttendanceDto>
+            val studentsRes: retrofit2.Response<com.example.suretouchapp.data.model.PaginatedResponse<StudentProfileDto>>
+            val cohortsRes: retrofit2.Response<com.example.suretouchapp.data.model.PaginatedResponse<CohortDto>>
+            val warningsRes: retrofit2.Response<List<AbsenceWarningDto>>?
+
+            coroutineScope {
+                val a = async { api.fetchAllAttendancePages() }
                 val s = async { api.getStudents() }
                 val c = async { api.getCohorts() }
                 val w = async { if (isStudent) runCatching { api.getAbsenceWarnings() }.getOrNull() else null }
-                Quadruple(a.await(), s.await(), c.await(), w.await())
+                attendanceRecords = a.await()
+                studentsRes = s.await()
+                cohortsRes = c.await()
+                warningsRes = w.await()
             }
 
-            if (attendanceRes.isSuccessful) {
-                records = attendanceRes.body()?.results.orEmpty().filter { record ->
-                    isStudent || record.cohort in assignedIds || record.cohortCode in assignedCodes
-                }.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
-                allStudents = studentsRes.body()?.results.orEmpty()
-                allCohorts = cohortsRes.body()?.results.orEmpty()
-                warnings = warningsRes?.takeIf { it.isSuccessful }?.body().orEmpty().filter { !it.resolved }
-                authoritativePercentage = if (isStudent) {
-                    runCatching { StudentStatisticsRepository(tokenManager).load()?.attendancePercentage }.getOrNull()
-                } else null
-                isConnected = true
-                hasLoadedOnce = true
-                isOffline = false
-                connectionError = null
-                errorTitle = null
-            } else {
-                val errorInfo = NetworkUtils.getNetworkErrorInfo(context, null)
-                isConnected = false
-                isOffline = errorInfo.isOffline
-                errorTitle = errorInfo.title
-                connectionError = errorInfo.message
-            }
+            records = attendanceRecords.filter { record ->
+                isStudent || record.cohort in assignedIds || record.cohortCode in assignedCodes
+            }.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
+            allStudents = studentsRes.body()?.results.orEmpty()
+            allCohorts = cohortsRes.body()?.results.orEmpty()
+            warnings = warningsRes?.takeIf { it.isSuccessful }?.body().orEmpty().filter { !it.resolved }
+            authoritativePercentage = if (isStudent) {
+                runCatching { StudentStatisticsRepository(tokenManager).load()?.attendancePercentage }.getOrNull()
+            } else null
+            isConnected = true
+            hasLoadedOnce = true
+            isOffline = false
+            connectionError = null
+            errorTitle = null
         } catch (e: Exception) {
             val errorInfo = NetworkUtils.getNetworkErrorInfo(context, e)
             isConnected = false
