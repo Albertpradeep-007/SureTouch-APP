@@ -310,6 +310,7 @@ data class AttendanceDto(
 
 /** Student-scoped attendance result emitted by the backend AttendanceSerializer. */
 data class StudentAttendanceDataDto(
+    val source: String? = null,
     val status: String? = null,
     val course: String? = null,
     val cohort: String? = null,

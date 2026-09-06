@@ -435,6 +435,9 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                         fontSize = 11.sp,
                                         color = AttendanceMuted
                                     )
+                                    if (record.studentDashboardData?.source == "HISTORICAL_REGISTER") {
+                                        Text("Imported attendance record", fontSize = 11.sp, color = AttendancePurple)
+                                    }
                                     if (!isStudent) {
                                         Text(
                                             "Attendance: $attendeeCount / $totalCount present • Tap to view roster",

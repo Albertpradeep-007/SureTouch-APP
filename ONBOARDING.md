@@ -1,12 +1,12 @@
 # Production onboarding — SURE ProEd
 
-Use [APK v1.1.8](https://github.com/Albertpradeep-007/SureTouch-APP/releases/tag/v1.1.8), version code 15. The in-app OTA endpoint also serves this release.
+Use [APK v1.1.9](https://github.com/Albertpradeep-007/SureTouch-APP/releases/tag/v1.1.9), version code 16. The in-app OTA endpoint also serves this release.
 
 ## Existing seeded students
 
 1. Install the update and sign in again. An older saved session is cleared once.
 2. Use the student's registered primary email. Do not create another account for a student already seeded.
-3. Use **Forgot password** to set a personal password. If the email matches multiple roles, choose **Student**, then request the verification code.
+3. Use **Forgot password** to set a personal password. If the email matches multiple roles, choose **Student**. Selecting the account sends its verification code.
 4. Enter the newest OTP and a strong password. Sign in to the Student account with that password.
 5. Check the student code, enrolled course/cohort and published marks. The dashboard must show the student's existing enrollment; the student does not need to reapply for that course.
 
@@ -31,6 +31,6 @@ If a student sees the wrong role or cohort, confirm the installed version, sign 
 
 If a reset code does not arrive, check spam and use the latest requested code. Staff codes go to the configured notification inbox. Respect the three-per-day reset request limit; support should investigate delivery rather than repeatedly resending.
 
-Published marks and attendance are the records currently stored in the backend. The separate 50-session historical attendance workbook has not been imported. Do not promise its historical percentage is already present in the app.
+The G2-26 VLSI historical register has been imported: 50 sessions and 1,350 explicit P/A marks for its 27 mapped students. Historical rows are labelled in the app. Students outside that register do not inherit its history. Existing live attendance, grades and cohort assignments remain unchanged. Completed live classes count even after their live session has been closed.
 
 The release has automated backend and emulator coverage. A representative student should still complete a real mailbox reset and sign in on their own phone during the first onboarding session; those external inbox/device steps cannot be established by mocked-email tests.
