@@ -87,4 +87,4 @@ gradlew.bat assembleDebug
 ## 📄 License & Ownership
 Copyright © 2026 **SURE Trust (Skill Upgradation for Rural-youth Empowerment)**. All rights reserved.
 
-See [the production release review](RELEASE_READINESS.md) for the verified candidate, VM findings, expected student states, and remaining rollout requirements.
+See [the onboarding guide](ONBOARDING.md) for student and staff sign-in steps, and [the production release review](RELEASE_READINESS.md) for deployment evidence and remaining limits.

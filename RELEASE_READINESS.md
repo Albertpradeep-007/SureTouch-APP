@@ -1,6 +1,8 @@
 # SURE ProEd v1.1.8 release validation
 
-Release target: Android version code 15, direct APK update. Backend source: `3e8a6d63a624329db2a3409eca0f58802b64a210` on `Pradeep-Backend-v1`.
+Published release: Android v1.1.8, version code 15, direct APK update; OTA is active. APK source: `1dd07cedf5a015c30a18fe1dbecfb6111f08f865` on `main`. Backend source: `170249bb07491fb5238731ec5e5846cd9f2fe352` on `Pradeep-Backend-v1`.
+
+See [the onboarding guide](ONBOARDING.md) for the seeded-student, new-student and staff workflows.
 
 ## Root cause and final behavior
 
@@ -33,7 +35,9 @@ Volunteers default to assigned cohorts. Only administrators can grant wider acce
 - Final account and mapped-email suite: 61 tests passed locally.
 - Final VM account, mapped-email and Meet regression suite: 64 tests passed in an isolated in-memory database with network disabled.
 - Final Android build: 31 unit tests and 17 Android 14 emulator tests passed; release assembly and release lint passed.
-- APK contains the role chooser and authenticated identity implementation; final signer, public download and update installation results are recorded in `output/release-audit/final-apk-verification.json` and `published-release.json` after those checks complete.
+- The APK signer matches the published predecessor; installation over version code 13 passed. The public GitHub APK was downloaded and its SHA-256 matched `9dc672b47da588b9aae374052bbfa720a3b98cf55a7b4f82c0cd34256735b488` (15,584,539 bytes). The public OTA endpoint serves code 15. The VM business-data fingerprints were unchanged by deployment.
+- A follow-up onboarding audit found and fixed login reactivation of disabled accounts. Password reset also preserves administrator activation/verification flags and rejects codes for accounts disabled after issuance. The expanded local onboarding/access suite passed 116 tests.
+- All 34 production student accounts are active, verified and have profiles. Two enrolled profiles are missing college and degree; these require verified details from the students/admin, not placeholders. There are 30 TRAINING applications and 3 APPLIED applications; pending applications are expected to follow the admission journey.
 - Production rollback backup: `/home/dev1/release-backups/20260906T071414Z-identity`. Includes database dump, source archive, prior Git bundle and colleague's original dirty changes. The colleague's edits are also retained in a named VM Git stash.
 
 ## Rollout and remaining limits
