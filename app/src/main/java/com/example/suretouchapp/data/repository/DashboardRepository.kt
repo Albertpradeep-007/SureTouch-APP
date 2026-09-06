@@ -7,6 +7,7 @@ import com.example.suretouchapp.data.model.AnnouncementDto
 import com.example.suretouchapp.data.model.ExamDto
 import com.example.suretouchapp.data.model.ModuleTestResultDto
 import com.example.suretouchapp.data.model.StudentStatisticsDto
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
@@ -86,32 +87,44 @@ data class DashboardSnapshot(
     val isRemote: Boolean = false
 )
 
-class DashboardRepository(private val tokenManager: TokenManager) {
+class DashboardRepository(
+    private val tokenManager: TokenManager,
+    private val statisticsLoader: suspend () -> StudentStatisticsDto? = {
+        StudentStatisticsRepository(tokenManager).load()
+    },
+    private val announcementsLoader: suspend () -> List<AnnouncementDto> = {
+        ApiClient.getService(tokenManager).getAnnouncements()
+            .takeIf { it.isSuccessful }?.body()?.results.orEmpty()
+    }
+) {
     private val refreshMutex = Mutex()
     private var cachedSnapshot: DashboardSnapshot? = null
     private var cachedAt = 0L
+    private var cachedSessionId: String? = null
 
     suspend fun load(force: Boolean = false): DashboardSnapshot = refreshMutex.withLock {
+        val sessionId = tokenManager.getSessionId()
+        if (!tokenManager.isLoggedIn()) throw java.io.IOException("Please sign in to load student data.")
         val now = System.currentTimeMillis()
-        cachedSnapshot?.takeIf { !force && now - cachedAt < CACHE_TTL_MS }?.let { return it }
+        tokenManager.withCurrentSession(sessionId) {
+            cachedSnapshot?.takeIf {
+                cachedSessionId == sessionId && !force && now - cachedAt < CACHE_TTL_MS
+            }
+        }?.let { return it }
 
         val (statistics, announcements) = coroutineScope {
             val statisticsRequest = async {
-                runCatching { StudentStatisticsRepository(tokenManager).load() }.getOrNull()
+                runCatching { statisticsLoader() }.onFailure { if (it is CancellationException) throw it }.getOrNull()
             }
             val announcementsRequest = async {
                 runCatching {
-                    ApiClient.getService(tokenManager).getAnnouncements()
-                        .takeIf { it.isSuccessful }
-                        ?.body()
-                        ?.results
-                        .orEmpty()
+                    announcementsLoader()
                         .filter { it.isActive }
                         .sortedWith(
                             compareByDescending<AnnouncementDto> { it.isPinned }
                                 .thenByDescending { it.createdAt }
                         )
-                }.getOrDefault(emptyList())
+                }.onFailure { if (it is CancellationException) throw it }.getOrDefault(emptyList())
             }
             Pair(statisticsRequest.await(), announcementsRequest.await())
         }
@@ -133,16 +146,13 @@ class DashboardRepository(private val tokenManager: TokenManager) {
             announcements = dashboardAnnouncements.take(3)
         )
 
-        loaded.cohortCode?.let(tokenManager::saveCohortCode)
-        if (loaded.isRemote && loaded.cohortCode == null) {
-            tokenManager.clearCohortCode()
+        tokenManager.withCurrentSession(sessionId) {
+            loaded.cohortCode?.let(tokenManager::saveCohortCode) ?: tokenManager.clearCohortCode()
+            cachedSnapshot = loaded
+            cachedAt = now
+            cachedSessionId = sessionId
+            loaded
         }
-        val merged = if (!loaded.isRemote && loaded.cohortCode == null) {
-            loaded.copy(cohortCode = tokenManager.getCohortCode().ifBlank { null })
-        } else loaded
-        cachedSnapshot = merged
-        cachedAt = now
-        merged
     }
 
     private fun StudentStatisticsDto.toSnapshot(now: Long) = DashboardSnapshot(

@@ -24,6 +24,8 @@ interface ApiService {
     @POST("users/forgot_password_confirm/")
     suspend fun confirmPasswordReset(@Body request: ForgotPasswordConfirmRequest): Response<PasswordResetResponse>
 
+    @GET("users/me/") suspend fun getCurrentUser(): Response<UserResponse>
+
     @GET("users/")
     suspend fun getUsers(
         @Query("role") role: String? = null,

@@ -104,9 +104,7 @@ fun StudentProfessionalProfileScreen(
                 isOffline = errorInfo.isOffline
                 errorTitle = errorInfo.title
                 error = errorInfo.message
-                if (profile == null) {
-                    profile = repository.load()
-                }
+
             }
             val statsRes = runCatching { statsRepository.load() }.getOrNull()
             if (statsRes != null) {
@@ -712,20 +710,18 @@ private fun StudentProfileContent(
                     )
                     Spacer(Modifier.height(10.dp))
 
-                    val coursesCount = stats?.activeCohort?.let { 1 }
-                        ?: stats?.totalApplications
-                        ?: if (cohortCode.isNotBlank() || courseTitle.isNotBlank()) 1 else 0
+                    val coursesCount = if (stats?.activeCohort != null) 1 else 0
 
                     val attendancePct = if (stats != null && stats.attendancePercentage > 0.0) {
                         String.format(Locale.US, "%.0f%%", stats.attendancePercentage)
-                    } else if (stats != null) {
+                    } else if (stats?.activeCohort != null) {
                         "0%"
                     } else {
                         "—"
                     }
 
-                    val passedModules = stats?.moduleTestsPassed ?: stats?.examsTaken ?: 0
-                    val certsCount = stats?.certificateCount ?: if (stats?.screeningQualified == true) 1 else 0
+                    val passedModules = stats?.moduleTestsPassed ?: 0
+                    val certsCount = stats?.certificateCount ?: 0
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

@@ -254,31 +254,15 @@ fun AppNavigation(
                     // Sync user profile details and student profile from backend if logged in
                     if (tokenManager.isLoggedIn()) {
                         runCatching {
-                            val profileApi = ApiClient.getService(tokenManager)
-                            val usersList = profileApi.getUsers().body()?.results.orEmpty()
-                            val cleanEmail = tokenManager.getUserEmail()
-                            val me = usersList.find { it.email.equals(cleanEmail, ignoreCase = true) }
-                            if (me != null) {
-                                val role = me.role ?: "STUDENT"
-                                val fullName = listOfNotNull(me.firstName, me.lastName)
-                                    .joinToString(" ")
-                                    .ifBlank { cleanEmail.substringBefore("@") }
-                                tokenManager.saveUserRole(role)
-                                tokenManager.saveUserInfo(fullName, me.email)
+                            com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager)
+                                .verifyCurrentAccount()
+                            if (tokenManager.getUserRole() == "STUDENT") {
+                                com.example.suretouchapp.data.repository.StudentProfileRepository(tokenManager).load()
                             }
-                            com.example.suretouchapp.data.repository.StudentProfileRepository(tokenManager).load()
                         }
                     }
 
-                    val destination = if (tokenManager.isMentor()) {
-                        Screen.MentorDashboard.route
-                    } else if (tokenManager.isVolunteerTrustee()) {
-                        Screen.VolunteerTrusteeDashboard.route
-                    } else if (tokenManager.needsCourseSelection()) {
-                        Screen.Courses.route
-                    } else {
-                        Screen.Dashboard.route
-                    }
+                    val destination = accountDestination(tokenManager)
 
                     navController.navigate(destination) {
                         popUpTo(0) { inclusive = true }
@@ -288,20 +272,13 @@ fun AppNavigation(
         }
     }
 
-    val email = tokenManager.getUserEmail().trim().lowercase()
     val role = tokenManager.getUserRole().trim().uppercase()
-    val isExplicitAdmin = role == "ADMIN" || role == "SUPERADMIN" || email.startsWith("admin@") || email.contains("admin")
-
-    val startDestination = when {
-        !tokenManager.isLoggedIn() || isExplicitAdmin -> Screen.Auth.route
-        tokenManager.isMentor()   -> Screen.MentorDashboard.route
-        tokenManager.isVolunteerTrustee() -> Screen.VolunteerTrusteeDashboard.route
-        tokenManager.needsCourseSelection() -> Screen.Courses.route
-        else -> Screen.Dashboard.route
-    }
+    val isUnsupportedRole = com.example.suretouchapp.data.repository.accountWorkspace(role) ==
+        com.example.suretouchapp.data.repository.AccountWorkspace.UNSUPPORTED
+    val startDestination = accountDestination(tokenManager)
 
     LaunchedEffect(tokenManager) {
-        if (isExplicitAdmin && tokenManager.isLoggedIn()) {
+        if (isUnsupportedRole && tokenManager.isLoggedIn()) {
             tokenManager.clear()
             navController.navigate(Screen.Auth.route) {
                 popUpTo(0) { inclusive = true }
@@ -331,12 +308,7 @@ fun AppNavigation(
             AuthScreen(
                 tokenManager = tokenManager,
                 onAuthSuccess = {
-                    val destination = when {
-                        tokenManager.isMentor() -> Screen.MentorDashboard.route
-                        tokenManager.isVolunteerTrustee() -> Screen.VolunteerTrusteeDashboard.route
-                        tokenManager.needsCourseSelection() -> Screen.Courses.route
-                        else -> Screen.Dashboard.route
-                    }
+                    val destination = accountDestination(tokenManager)
                     navController.navigate(destination) {
                         popUpTo(Screen.Auth.route) { inclusive = true }
                     }
@@ -345,6 +317,14 @@ fun AppNavigation(
         }
 
         composable(Screen.Dashboard.route) {
+            if (tokenManager.getUserRole() != "STUDENT" || !tokenManager.isLoggedIn()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(accountDestination(tokenManager)) {
+                        popUpTo(Screen.Dashboard.route) { inclusive = true }
+                    }
+                }
+                return@composable
+            }
             StudentDashboardScreen(
                 tokenManager = tokenManager,
                 onNavigateToCourses = { navController.navigate(Screen.Courses.route) },
@@ -615,4 +595,16 @@ fun AppNavigation(
             }
         }
     )
+}
+
+private fun accountDestination(tokenManager: TokenManager): String {
+    if (!tokenManager.isLoggedIn()) return Screen.Auth.route
+    return when (com.example.suretouchapp.data.repository.accountWorkspace(tokenManager.getUserRole())) {
+        com.example.suretouchapp.data.repository.AccountWorkspace.STUDENT -> {
+            if (tokenManager.needsCourseSelection()) Screen.Courses.route else Screen.Dashboard.route
+        }
+        com.example.suretouchapp.data.repository.AccountWorkspace.MENTOR -> Screen.MentorDashboard.route
+        com.example.suretouchapp.data.repository.AccountWorkspace.VOLUNTEER -> Screen.VolunteerTrusteeDashboard.route
+        com.example.suretouchapp.data.repository.AccountWorkspace.UNSUPPORTED -> Screen.Auth.route
+    }
 }

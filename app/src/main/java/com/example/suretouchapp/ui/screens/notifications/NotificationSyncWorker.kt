@@ -26,6 +26,7 @@ class NotificationSyncWorker(
         if (!tokenManager.isLoggedIn()) {
             return@withContext Result.success()
         }
+        val accountSession = tokenManager.getSessionId()
 
         try {
             SureProEdNotificationManager.createChannels(context)
@@ -36,7 +37,7 @@ class NotificationSyncWorker(
                 val annResp = api.getAnnouncements()
                 if (annResp.isSuccessful) {
                     val list = annResp.body()?.results.orEmpty()
-                    SureProEdNotificationManager.syncAnnouncements(context, list)
+                    tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncAnnouncements(context, list) }
                 }
             }
 
@@ -45,7 +46,7 @@ class NotificationSyncWorker(
                 val notifResp = api.getNotifications()
                 if (notifResp.isSuccessful) {
                     val list = notifResp.body()?.results.orEmpty()
-                    SureProEdNotificationManager.syncUnread(context, list)
+                    tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncUnread(context, list) }
                 }
             }
 
@@ -54,7 +55,7 @@ class NotificationSyncWorker(
                 val attResp = api.getAttendance(pageSize = 500)
                 if (attResp.isSuccessful) {
                     val sessions = attResp.body()?.results.orEmpty()
-                    SureProEdNotificationManager.syncTimetableAndClasses(context, sessions)
+                    tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncTimetableAndClasses(context, sessions) }
                 }
             }
 
@@ -63,12 +64,12 @@ class NotificationSyncWorker(
                 val assignResp = api.getAssignments()
                 if (assignResp.isSuccessful) {
                     val assignments = assignResp.body()?.results.orEmpty()
-                    SureProEdNotificationManager.syncAssignments(context, assignments)
+                    tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncAssignments(context, assignments) }
 
                     val subResp = api.getSubmissions()
                     if (subResp.isSuccessful) {
                         val submissions = subResp.body()?.results.orEmpty()
-                        SureProEdNotificationManager.syncSubmissionsAndGrades(context, submissions, assignments)
+                        tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncSubmissionsAndGrades(context, submissions, assignments) }
                     }
                 }
             }

@@ -55,7 +55,8 @@ typealias UserDto = UserResponse
 // Login Request (POST /api/auth/token/)
 data class LoginRequest(
     val email: String,
-    val password: String
+    val password: String,
+    val role: String? = null
 )
 
 // Legacy alias for LoginRequest
@@ -73,13 +74,15 @@ data class RefreshTokenRequest(
 )
 
 data class ForgotPasswordRequest(
-    val email: String
+    val email: String,
+    val role: String? = null
 )
 
 data class ForgotPasswordConfirmRequest(
     val email: String,
     val otp: String,
-    @SerializedName("new_password") val newPassword: String
+    @SerializedName("new_password") val newPassword: String,
+    val role: String? = null
 )
 
 data class PasswordResetResponse(
@@ -111,5 +114,4 @@ data class EmailVerificationOtpResponse(
     val user: UserResponse? = null,
     val error: String? = null
 )
-
 

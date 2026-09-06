@@ -1,8 +1,8 @@
 # 📱 SURE Touch (SURE ProEd) Android Application
 
 [![Android Build](https://img.shields.io/badge/Android-Jetpack%20Compose-green.svg)](https://developer.android.com/jetpack/compose)
-[![Version](https://img.shields.io/badge/Release-v1.1.0-blue.svg)](https://github.com/Albertpradeep-007/SureTouch-APP/releases/tag/v1.1.0)
-[![Target SDK](https://img.shields.io/badge/Target%20SDK-35-orange.svg)](https://developer.android.com/about/versions/15)
+[![Version](https://img.shields.io/badge/Release-v1.1.8-blue.svg)](https://github.com/Albertpradeep-007/SureTouch-APP/releases/tag/v1.1.8)
+[![Target SDK](https://img.shields.io/badge/Target%20SDK-37-orange.svg)](https://developer.android.com/about/versions/15)
 [![License](https://img.shields.io/badge/License-SURE%20Trust-red.svg)](https://suretrust.org)
 
 Official native Android application for **SURE Trust (SURE ProEd)** — enabling students, mentors, volunteers, and trustees to track academic progress, live classes, course assignments, screening exams, certificates, and real-time attendance seamlessly.
@@ -35,7 +35,7 @@ Official native Android application for **SURE Trust (SURE ProEd)** — enabling
 - **Architecture**: Clean Architecture + MVVM (Model-View-ViewModel) + Repository Pattern
 - **UI Framework**: Modern **Jetpack Compose** with Material 3 Design & dynamic dark/light theme support
 - **Networking**: Retrofit 2 + OkHttp 4 + Kotlin Coroutines & Flow
-- **Authentication**: JWT Bearer Tokens with automatic refresh flow & encrypted secure storage
+- **Authentication**: JWT Bearer Tokens with session-scoped refresh and private application preferences
 - **Background Tasks**: Android AlarmManager + Foreground Notification Channels for class schedule reminders
 
 ---
@@ -79,10 +79,12 @@ gradlew.bat assembleDebug
 
 ## 🔒 Security & Privacy
 - Zero cleartext traffic allowed in production (usesCleartextTraffic=false).
-- JWT tokens and session credentials stored in Android Keystore encrypted preferences.
-- Strict Proguard & R8 code shrinking rules enabled for release builds.
+- JWT tokens and session credentials are stored in private application preferences; cloud backup and device transfer of app data are disabled.
+- Release shrinking is currently disabled. Direct APK updates retain the existing published signing certificate for installation compatibility.
 
 ---
 
 ## 📄 License & Ownership
 Copyright © 2026 **SURE Trust (Skill Upgradation for Rural-youth Empowerment)**. All rights reserved.
+
+See [the production release review](RELEASE_READINESS.md) for the verified candidate, VM findings, expected student states, and remaining rollout requirements.

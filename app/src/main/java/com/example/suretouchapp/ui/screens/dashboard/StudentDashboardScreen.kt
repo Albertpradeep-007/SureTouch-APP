@@ -226,7 +226,7 @@ fun StudentDashboardScreen(
     var showSoftSkillsScreen by remember { mutableStateOf(false) }
     val dashboardRepository = remember(tokenManager) { DashboardRepository(tokenManager) }
     var dashboardSnapshot by remember {
-        mutableStateOf(DashboardSnapshot(cohortCode = tokenManager.getCohortCode().ifBlank { null }))
+        mutableStateOf(DashboardSnapshot())
     }
     var isDashboardLoading by remember { mutableStateOf(true) }
     var isConnected by remember { mutableStateOf(true) }
@@ -294,9 +294,8 @@ fun StudentDashboardScreen(
     }
 
     LaunchedEffect(Unit) {
-        val email = tokenManager.getUserEmail().trim().lowercase()
         val role = tokenManager.getUserRole().trim().uppercase()
-        if (role == "ADMIN" || role == "SUPERADMIN" || email.startsWith("admin@") || email.contains("admin")) {
+        if (role == "ADMIN" || role == "SUPERADMIN") {
             tokenManager.clear()
             return@LaunchedEffect
         }
@@ -396,10 +395,20 @@ fun StudentDashboardScreen(
     }
 
     if (showGradesScreen) {
-        ProfessionalGradesScreen(
-            snapshot = dashboardSnapshot,
-            onBack = { showGradesScreen = false }
-        )
+        BackendConnectionGate(
+            isLoading = isDashboardLoading,
+            isConnected = isConnected,
+            hasData = hasLoadedOnce,
+            isOffline = isOffline,
+            errorTitle = errorTitle,
+            errorMessage = connectionError,
+            onRetry = { refreshDashboard() }
+        ) {
+            ProfessionalGradesScreen(
+                snapshot = dashboardSnapshot,
+                onBack = { showGradesScreen = false }
+            )
+        }
         return
     }
 
@@ -520,7 +529,20 @@ fun StudentDashboardScreen(
                     )
                 }
 
-                CleanTimetableDashboardView(
+                if (!hasLoadedOnce && !isDashboardLoading) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.CloudOff, null, tint = ColorTextSubtext, modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Student data unavailable", fontWeight = FontWeight.Bold, color = ColorTextTitles)
+                        Text("We couldn't load your account. Retry to see your enrollment and academic records.", textAlign = TextAlign.Center, color = ColorTextSubtext)
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = { refreshDashboard() }) { Text("Retry") }
+                    }
+                } else CleanTimetableDashboardView(
                     onNavigateToCourses = onNavigateToCourses,
                     onNavigateToAssignments = onNavigateToAssignments,
                     onNavigateToNotifications = onNavigateToNotifications,
@@ -1177,9 +1199,7 @@ fun CleanTimetableDashboardView(
 ) {
     var showCustomizeSheet by rememberSaveable { mutableStateOf(false) }
     val completedGrades = dashboardSnapshot.grades.filter { it.marks != null }
-    val hasPreScreenResult = !dashboardSnapshot.screeningMarksObtained.isNullOrBlank() ||
-        !dashboardSnapshot.screeningPercentage.isNullOrBlank() ||
-        !dashboardSnapshot.screeningGrade.isNullOrBlank()
+    val hasPreScreenResult = dashboardSnapshot.hasPublishedScreeningResult()
     val gradeAverage = completedGrades.mapNotNull { it.percentage }
         .takeIf { it.isNotEmpty() }
         ?.average()
@@ -1201,7 +1221,7 @@ fun CleanTimetableDashboardView(
             ?.takeIf { it.isNotBlank() }
             ?.let { "Pre-screen • ${if (it.endsWith("%")) it else "$it%"}" }
             ?: "Pre-screen result published"
-        dashboardSnapshot.cohortCode == null -> "Module grades after cohort"
+        dashboardSnapshot.cohortCode == null -> "No results yet"
         completedGrades.isEmpty() -> "No scores yet"
         gradeAverage != null -> "${completedGrades.size} tests • $gradeAverage%"
         else -> "Module test results"
@@ -2090,7 +2110,7 @@ private fun StudentMetricCard(
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun ProfessionalGradesScreen(
+internal fun ProfessionalGradesScreen(
     snapshot: DashboardSnapshot,
     onBack: () -> Unit
 ) {
@@ -2103,7 +2123,8 @@ private fun ProfessionalGradesScreen(
         !snapshot.screeningMarksObtained.isNullOrBlank() -> snapshot.screeningMarksObtained
         else -> "--"
     }
-    val publishedModules = snapshot.grades.count { it.marks != null }
+    val hasScreeningResult = snapshot.hasPublishedScreeningResult()
+    val publishedResults = snapshot.publishedResultCount()
 
     Scaffold(
         containerColor = ColorCanvasBg,
@@ -2149,11 +2170,11 @@ private fun ProfessionalGradesScreen(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.12f)).padding(vertical = 13.dp),
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                GradeSummaryCell("SCORE", percentage)
+                                GradeSummaryCell("RESULTS", publishedResults.toString())
                                 Box(Modifier.width(1.dp).height(38.dp).background(Color.White.copy(alpha = 0.22f)))
-                                GradeSummaryCell("GRADE", snapshot.screeningGrade ?: "--")
+                                GradeSummaryCell("SCREENING", if (hasScreeningResult) percentage else "Not recorded")
                                 Box(Modifier.width(1.dp).height(38.dp).background(Color.White.copy(alpha = 0.22f)))
-                                GradeSummaryCell("STATUS", if (snapshot.screeningQualified) "Qualified" else "Published")
+                                GradeSummaryCell("STATUS", if (publishedResults > 0) "Published" else "Awaiting results")
                             }
                         }
                     }
@@ -2167,12 +2188,12 @@ private fun ProfessionalGradesScreen(
                         Text("Official results published by SURE ProEd", fontSize = 12.sp, color = ColorTextSubtext)
                     }
                     Surface(shape = RoundedCornerShape(8.dp), color = ColorGreenIconBg) {
-                        Text("${1 + publishedModules} RESULT${if (publishedModules == 0) "" else "S"}", modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ColorGreenIcon)
+                        Text("$publishedResults RESULT${if (publishedResults == 1) "" else "S"}", modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ColorGreenIcon)
                     }
                 }
             }
 
-            item {
+            if (hasScreeningResult) item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
@@ -2200,6 +2221,21 @@ private fun ProfessionalGradesScreen(
                 }
             }
 
+            if (!hasScreeningResult) item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, ColorBorderHairline)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("No screening result yet", fontWeight = FontWeight.Bold, color = ColorTextTitles)
+                        Spacer(Modifier.height(6.dp))
+                        Text(snapshot.screeningEmptyMessage(), fontSize = 12.sp, color = ColorTextSubtext)
+                    }
+                }
+            }
+
             item {
                 Text("Module Test Results", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ColorTextTitles)
                 Text("Module marks appear here after mentor evaluation.", fontSize = 12.sp, color = ColorTextSubtext)
@@ -2213,15 +2249,15 @@ private fun ProfessionalGradesScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(13.dp),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surface,
                         border = BorderStroke(1.dp, ColorBorderHairline)
                     ) {
                         AssessmentMarksRow(
                             title = grade.title.ifBlank { "Module ${grade.moduleNumber} Test" },
                             subtitle = grade.percentage?.let { "$it%" } ?: "Result not published",
                             marks = grade.marks?.let { "$it / ${grade.maxMarks}" } ?: "--",
-                            result = when { grade.marks == null -> if (grade.unlocked) "READY" else "LOCKED"; grade.passed -> "PASS"; else -> "RETRY" },
-                            passed = grade.passed
+                            result = when { grade.marks == null -> "PENDING"; grade.passed -> "PASS"; else -> "RETRY" },
+                            passed = grade.marks != null && grade.passed
                         )
                     }
                 }

@@ -2,17 +2,31 @@ package com.example.suretouchapp.data.api
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.io.IOException
+import java.util.Locale
+import java.util.UUID
 
-class TokenManager(context: Context) {
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("sure_proed_prefs", Context.MODE_PRIVATE)
+class TokenManager internal constructor(
+    private val prefs: SharedPreferences,
+    private val clearNotifications: () -> Unit = {}
+) {
+    constructor(context: Context) : this(
+        context.getSharedPreferences("sure_proed_prefs", Context.MODE_PRIVATE),
+        {
+            androidx.core.app.NotificationManagerCompat.from(context).cancelAll()
+            context.getSharedPreferences("sure_proed_notification_delivery", Context.MODE_PRIVATE).edit().clear().apply()
+        }
+    )
 
     companion object {
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
         private const val KEY_USER_EMAIL = "user_email"
         private const val KEY_USER_NAME = "user_name"
-        private const val KEY_REGISTERED_USERS = "registered_users"
+        private const val KEY_SESSION_ID = "session_id"
+        private const val KEY_IDENTITY_CONTRACT_VERSION = "identity_contract_version"
+        private const val IDENTITY_CONTRACT_VERSION = 1
+        private val sessionLock = Any()
         private const val KEY_USER_ROLE = "user_role"
         private const val KEY_APPLICATION_NOTICE_COURSE = "application_notice_course"
         private const val KEY_APPLICATION_NOTICE_TIME = "application_notice_time"
@@ -25,132 +39,99 @@ class TokenManager(context: Context) {
         )
     }
 
-    fun logout() {
+    init {
+        synchronized(sessionLock) {
+            // Earlier APKs could retain a token for a mapped-email account while
+            // displaying another identity. Require a fresh, canonical sign-in once.
+            if (prefs.contains(KEY_ACCESS_TOKEN) &&
+                prefs.getInt(KEY_IDENTITY_CONTRACT_VERSION, 0) != IDENTITY_CONTRACT_VERSION
+            ) {
+                clearUserSessionAndProfile()
+            }
+        }
+    }
+
+    fun logout() = synchronized(sessionLock) {
         clearUserSessionAndProfile()
         sessionExpiredFlow.tryEmit(Unit)
+        Unit
     }
 
-    fun clearUserSessionAndProfile() {
-        prefs.edit()
-            .remove(KEY_ACCESS_TOKEN)
-            .remove(KEY_REFRESH_TOKEN)
-            .remove(KEY_USER_NAME)
-            .remove(KEY_USER_EMAIL)
-            .remove(KEY_USER_ROLE)
-            .remove("offline_session")
-            .remove("cohort_code")
-            .remove("student_code")
-            .remove("profile_phone")
-            .remove("profile_qualification")
-            .remove("profile_college")
-            .remove("profile_bio")
-            .remove("profile_github")
-            .remove("profile_linkedin")
-            .remove("profile_tagline")
-            .remove("profile_specialization")
-            .remove("profile_graduation_year")
-            .remove("profile_city")
-            .remove("profile_state")
-            .remove("profile_country")
-            .remove("profile_gender")
-            .remove("profile_dob")
-            .remove("profile_permanent_address")
-            .remove("profile_father_name")
-            .remove("profile_mother_name")
-            .remove("profile_skills")
-            .remove("profile_hobbies")
-            .remove("profile_languages")
-            .remove("profile_portfolio")
-            .remove("profile_photo_url")
-            .remove("profile_resume_url")
-            .remove("profile_resume_name")
-            .remove("mentor_cover_photo_url")
-            .remove("profile_designation")
-            .remove("profile_company")
-            .remove("profile_location")
-            .remove("profile_experience")
-            .remove("mentor_id")
-            .remove("new_account_welcome")
-            .remove("needs_course_selection")
-            .remove(KEY_APPLICATION_NOTICE_COURSE)
-            .remove(KEY_APPLICATION_NOTICE_TIME)
-            .remove(KEY_APPLICATION_NOTICE_UNREAD)
-            .remove("last_application_number")
-            .remove("last_application_status")
-            .remove("last_application_course_id")
-            .remove("last_application_course_title")
-            .remove("last_application_cohort_id")
-            .remove("last_application_qualified")
-            .apply()
+    fun logoutIfCurrentSession(sessionId: String) = synchronized(sessionLock) {
+        if (getSessionId() == sessionId) logout()
     }
 
-    fun clear() {
-        logout()
+    fun clearUserSessionAndProfile() = synchronized(sessionLock) {
+        // This preference file contains account data only. Clearing it also removes
+        // legacy fields and notice state that a maintained removal list can miss.
+        prefs.edit().clear().putString(KEY_SESSION_ID, UUID.randomUUID().toString()).apply()
+        clearNotifications()
     }
 
-    fun saveToken(access: String, refresh: String) {
-        prefs.edit()
+    fun clear() = logout()
+
+    /** A login begins a fresh session; token refresh must use saveRefreshedToken. */
+    fun saveToken(access: String, refresh: String) = synchronized(sessionLock) {
+        clearNotifications()
+        prefs.edit().clear()
+            .putString(KEY_SESSION_ID, UUID.randomUUID().toString())
+            .putInt(KEY_IDENTITY_CONTRACT_VERSION, IDENTITY_CONTRACT_VERSION)
             .putString(KEY_ACCESS_TOKEN, access)
             .putString(KEY_REFRESH_TOKEN, refresh)
+            .putBoolean("session_identity_pending", true)
             .putBoolean("offline_session", false)
             .apply()
     }
 
-    fun startOfflineSession() {
-        prefs.edit()
-            .remove(KEY_ACCESS_TOKEN)
-            .remove(KEY_REFRESH_TOKEN)
+    fun saveRefreshedToken(sessionId: String, access: String, refresh: String): Boolean =
+        synchronized(sessionLock) {
+            if (getSessionId() != sessionId) return@synchronized false
+            prefs.edit().putString(KEY_ACCESS_TOKEN, access)
+                .putString(KEY_REFRESH_TOKEN, refresh).apply()
+            true
+        }
+
+    fun getSessionId(): String = synchronized(sessionLock) {
+        prefs.getString(KEY_SESSION_ID, null) ?: UUID.randomUUID().toString().also {
+            prefs.edit().putString(KEY_SESSION_ID, it).apply()
+        }
+    }
+
+    fun isCurrentSession(sessionId: String): Boolean = getSessionId() == sessionId
+
+    fun requireCurrentSession(sessionId: String) {
+        if (!isCurrentSession(sessionId)) throw IOException("Account session changed. Please reload.")
+    }
+
+    /** Keep response validation and all related preference/cache writes atomic with logout. */
+    fun <T> withCurrentSession(sessionId: String, action: () -> T): T = synchronized(sessionLock) {
+        requireCurrentSession(sessionId)
+        action()
+    }
+
+    fun startOfflineSession() = synchronized(sessionLock) {
+        prefs.edit().clear()
+            .putString(KEY_SESSION_ID, UUID.randomUUID().toString())
             .putBoolean("offline_session", true)
             .apply()
     }
 
-    fun saveUserInfo(name: String, email: String) {
-        val normalizedEmail = email.trim().lowercase()
-        val previousEmail = getUserEmail().trim().lowercase()
+    fun saveUserInfo(name: String, email: String) = synchronized(sessionLock) {
+        val normalizedEmail = email.trim().lowercase(Locale.US)
+        val previousEmail = getUserEmail().trim().lowercase(Locale.US)
         val editor = prefs.edit()
+        if (previousEmail != normalizedEmail && !prefs.getBoolean("session_identity_pending", false)) {
+            // Also clean legacy cached data when the previous email is blank.
+            val retainedKeys = setOf(KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_SESSION_ID, KEY_IDENTITY_CONTRACT_VERSION, "offline_session")
+            prefs.all.keys.filterNot { it in retainedKeys }.forEach(editor::remove)
+            if (previousEmail.isNotBlank()) {
+                editor.putString(KEY_SESSION_ID, UUID.randomUUID().toString())
+            }
+        }
+        editor.remove("session_identity_pending")
             .putString(KEY_USER_NAME, name)
             .putString(KEY_USER_EMAIL, normalizedEmail)
-        if (previousEmail.isNotBlank() && previousEmail != normalizedEmail) {
-            editor.remove("cohort_code")
-                .remove("student_code")
-                .remove("profile_phone")
-                .remove("profile_qualification")
-                .remove("profile_college")
-                .remove("profile_bio")
-                .remove("profile_github")
-                .remove("profile_linkedin")
-                .remove("profile_tagline")
-                .remove("profile_specialization")
-                .remove("profile_graduation_year")
-                .remove("profile_city")
-                .remove("profile_state")
-                .remove("profile_country")
-                .remove("profile_gender")
-                .remove("profile_dob")
-                .remove("profile_permanent_address")
-                .remove("profile_father_name")
-                .remove("profile_mother_name")
-                .remove("profile_skills")
-                .remove("profile_hobbies")
-                .remove("profile_languages")
-                .remove("profile_portfolio")
-                .remove("profile_photo_url")
-                .remove("profile_resume_url")
-                .remove("profile_resume_name")
-                .remove("mentor_cover_photo_url")
-                .remove("profile_designation")
-                .remove("profile_company")
-                .remove("profile_location")
-                .remove("profile_experience")
-                .remove("mentor_id")
-                .remove("last_application_number")
-                .remove("last_application_status")
-                .remove("last_application_course_id")
-                .remove("last_application_course_title")
-                .remove("last_application_cohort_id")
-                .remove("last_application_qualified")
-        }
-        editor.apply()
+            .apply()
     }
 
     fun registerUserAccount(email: String, pass: String, name: String) {
@@ -291,10 +272,7 @@ class TokenManager(context: Context) {
         "COMPANY", "RECRUITER", "EMPLOYER", "HR"
     )
 
-    fun clearAll() {
-        prefs.edit().clear().apply()
-        sessionExpiredFlow.tryEmit(Unit)
-    }
+    fun clearAll() = logout()
 
     fun saveStudentProfileDetails(
         phone: String = getPhone(),

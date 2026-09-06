@@ -45,6 +45,8 @@ import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.ForgotPasswordConfirmRequest
 import com.example.suretouchapp.data.model.ForgotPasswordRequest
+import com.example.suretouchapp.data.model.accountRoleChoices
+import com.example.suretouchapp.data.model.accountRoleLabel
 import com.example.suretouchapp.data.model.TokenObtainRequest
 import com.example.suretouchapp.ui.components.SureTrustLogo
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
@@ -123,6 +125,9 @@ fun AuthScreen(
     var isLoginTab by remember { mutableStateOf(true) }
     
     var loginEmail by remember { mutableStateOf("") }
+    var loginRole by remember { mutableStateOf<String?>(null) }
+    var loginRoleOptions by remember { mutableStateOf(emptyList<String>()) }
+    var matchedLoginRoles by remember { mutableStateOf(emptyList<String>()) }
     var loginPassword by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var showForgotPassword by remember { mutableStateOf(false) }
@@ -281,7 +286,7 @@ fun AuthScreen(
                         // 1. Log In Form
                         OutlinedTextField(
                             value = loginEmail,
-                            onValueChange = { loginEmail = it },
+                            onValueChange = { loginEmail = it; loginRole = null; loginRoleOptions = emptyList(); matchedLoginRoles = emptyList() },
                             label = { Text("Email Address") },
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Email,
@@ -344,51 +349,33 @@ fun AuthScreen(
                                     val cleanPass = loginPassword.trim()
                                     try {
                                         val api = ApiClient.getService(tokenManager)
-                                        val req = TokenObtainRequest(email = cleanEmail, password = cleanPass)
+                                        val req = TokenObtainRequest(email = cleanEmail, password = cleanPass, role = loginRole)
                                         val response = api.login(req)
                                         if (response.isSuccessful && response.body() != null) {
                                             val tokens = response.body()!!
                                             tokenManager.saveToken(tokens.access, tokens.refresh ?: "")
-                                            tokenManager.saveUserInfo(cleanEmail.substringBefore("@"), cleanEmail)
-                                            // Fetch user profile — backend returns only the caller's own record
-                                            // for non-admin users (UserViewSet.get_queryset returns filter(id=user.id))
-                                            try {
-                                                val profileApi = ApiClient.getService(tokenManager)
-                                                // Ask the backend for only this account. This avoids loading and
-                                                // deserializing a full user page during the login handoff.
-                                                val usersList = profileApi.getUsers(search = cleanEmail).body()?.results.orEmpty()
-                                                val me = usersList.find { it.email.equals(cleanEmail, ignoreCase = true) }
-                                                    ?: if (usersList.size == 1) usersList.firstOrNull() else null
-                                                if (me != null) {
-                                                    val role = me.role ?: "STUDENT"
-                                                    val isStaff = me.isStaff == true
-                                                    val isAdmin = role.equals("ADMIN", ignoreCase = true) ||
-                                                            role.equals("SUPERADMIN", ignoreCase = true) ||
-                                                            isStaff
-                                                    if (isAdmin) {
-                                                        tokenManager.clear()
-                                                        isLoading = false
-                                                        showAdminRedirectDialog = true
-                                                        return@launch
-                                                    }
-                                                    val name = listOfNotNull<String>(me.firstName, me.lastName)
-                                                        .joinToString(" ")
-                                                        .ifBlank { cleanEmail.substringBefore("@") }
-                                                    tokenManager.saveUserRole(role)
-                                                    tokenManager.saveUserInfo(name, cleanEmail)
-                                                    val mePhone = me.phoneNumber
-                                                    if (!mePhone.isNullOrBlank()) tokenManager.savePhone(mePhone)
-                                                    val meGender = me.gender
-                                                    if (!meGender.isNullOrBlank()) tokenManager.saveGender(meGender)
-                                                    val meDob = me.dateOfBirth
-                                                    if (!meDob.isNullOrBlank()) tokenManager.saveDob(meDob)
+                                            // Email aliases can belong to a different primary account.
+                                            // Only the token's authenticated caller determines identity/role.
+                                            val me = com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager)
+                                                .verifyCurrentAccount()
+                                            if (com.example.suretouchapp.data.repository.accountWorkspace(me.role) ==
+                                                com.example.suretouchapp.data.repository.AccountWorkspace.UNSUPPORTED
+                                            ) {
+                                                tokenManager.clear()
+                                                if (me.role.equals("ADMIN", true) || me.role.equals("SUPERADMIN", true)) {
+                                                    showAdminRedirectDialog = true
+                                                } else {
+                                                    errorMessage = "This account role is not supported in this app. Please use the web portal."
                                                 }
-                                            } catch (_: Exception) {}
+                                                return@launch
+                                            }
                                             onAuthSuccess()
 
                                         } else {
                                             val rawError = response.errorBody()?.string().orEmpty()
-                                            errorMessage = formatApiErrorMessage(rawError, "Invalid credentials. Please verify your email and password.")
+                                            loginRoleOptions = accountRoleChoices(rawError)
+                                            if (loginRoleOptions.isNotEmpty()) matchedLoginRoles = loginRoleOptions
+                                            errorMessage = if (loginRoleOptions.isEmpty()) formatApiErrorMessage(rawError, "Invalid credentials. Please verify your email and password.") else null
                                         }
                                     } catch (e: Exception) {
                                         errorMessage = "The SURE ProEd server is unavailable. Sign-in requires a connection."
@@ -406,10 +393,15 @@ fun AuthScreen(
                             if (isLoading) {
                                 SureTrustLoadingIndicator(size = 28.dp, logoSize = 17.dp, spinnerColor = Color.White)
                             } else {
-                                Text("Log In", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text(loginRole?.let { "Log In as ${accountRoleLabel(it)}" } ?: "Log In", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
+                        if (loginRole != null && matchedLoginRoles.size > 1) {
+                            TextButton(onClick = { loginRoleOptions = matchedLoginRoles }, enabled = !isLoading) {
+                                Text("Change account role")
+                            }
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
 
                         // Divider OR
@@ -623,6 +615,7 @@ fun AuthScreen(
                                                     if (education.isNotBlank() && education != "Select Education / Degree") {
                                                         tokenManager.saveStudentProfileDetails(qualification = education)
                                                     }
+                                                    com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager).verifyCurrentAccount()
                                                     onAuthSuccess()
                                                 } else {
                                                     // Fallback: Login via password
@@ -637,6 +630,7 @@ fun AuthScreen(
                                                         if (cleanPhone.isNotBlank()) tokenManager.savePhone(cleanPhone)
                                                         if (gender.isNotBlank() && gender != "Select Gender") tokenManager.saveGender(gender)
                                                         if (cleanDob.isNotBlank()) tokenManager.saveDob(cleanDob)
+                                                        com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager).verifyCurrentAccount()
                                                         onAuthSuccess()
                                                     } else {
                                                         isOtpVerificationPending = false
@@ -1286,6 +1280,7 @@ fun AuthScreen(
                                                     if (education.isNotBlank() && education != "Select Education / Degree") {
                                                         tokenManager.saveStudentProfileDetails(qualification = education)
                                                     }
+                                                    com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager).verifyCurrentAccount()
                                                     onAuthSuccess()
                                                 } else {
                                                     errorMessage = "Could not sign in automatically. Please log in with your credentials."
@@ -1408,13 +1403,24 @@ fun AuthScreen(
             }
         }
 
+        AccountRoleChoiceDialog(
+            roles = loginRoleOptions,
+            onSelect = { role ->
+                loginRole = role
+                loginRoleOptions = emptyList()
+                successMessage = "${accountRoleLabel(role)} account selected. Enter its password and tap Log In."
+            },
+            onDismiss = { loginRoleOptions = emptyList() }
+        )
+
         if (showForgotPassword) {
             ForgotPasswordSheet(
                 tokenManager = tokenManager,
                 initialEmail = loginEmail.trim(),
                 onDismiss = { showForgotPassword = false },
-                onSuccess = { updatedEmail ->
+                onSuccess = { updatedEmail, updatedRole ->
                     loginEmail = updatedEmail
+                    loginRole = updatedRole
                     loginPassword = ""
                     showForgotPassword = false
                     successMessage = "Password reset successfully. You can now log in with your new password."
@@ -1496,6 +1502,7 @@ fun AuthScreen(
                             if (!access.isNullOrBlank()) {
                                 tokenManager.saveToken(access, refresh ?: "")
                                 runCatching { com.example.suretouchapp.data.repository.StudentProfileRepository(tokenManager).load() }
+                                com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager).verifyCurrentAccount()
                                 onAuthSuccess()
                             } else if (!code.isNullOrBlank()) {
                                 val api = ApiClient.getService(tokenManager)
@@ -1523,20 +1530,11 @@ fun AuthScreen(
                                         tokenManager.saveUserInfo(userName, body.user?.email ?: "")
                                         tokenManager.saveUserRole(body.user?.role ?: "STUDENT")
                                         runCatching { com.example.suretouchapp.data.repository.StudentProfileRepository(tokenManager).load() }
+                                        com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager).verifyCurrentAccount()
                                         onAuthSuccess()
                                     } else {
-                                        try {
-                                            val usersList = api.getUsers().body()?.results.orEmpty()
-                                            val me = usersList.firstOrNull()
-                                            if (me != null) {
-                                                val name = listOfNotNull<String>(me.firstName, me.lastName).joinToString(" ").ifBlank { me.email.substringBefore("@") }
-                                                tokenManager.saveUserInfo(name, me.email)
-                                                tokenManager.saveUserRole(me.role ?: "STUDENT")
-                                                val mePhoto = me.effectiveProfilePhoto
-                                                if (!mePhoto.isNullOrBlank()) tokenManager.saveProfilePhotoUrl(mePhoto)
-                                            }
-                                        } catch (_: Exception) {}
                                         runCatching { com.example.suretouchapp.data.repository.StudentProfileRepository(tokenManager).load() }
+                                        com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager).verifyCurrentAccount()
                                         onAuthSuccess()
                                     }
                                 } else {
@@ -1719,9 +1717,11 @@ private fun ForgotPasswordSheet(
     tokenManager: TokenManager,
     initialEmail: String = "",
     onDismiss: () -> Unit,
-    onSuccess: (String) -> Unit
+    onSuccess: (String, String?) -> Unit
 ) {
     var email by remember { mutableStateOf(initialEmail) }
+    var resetRole by remember { mutableStateOf<String?>(null) }
+    var resetRoleOptions by remember { mutableStateOf(emptyList<String>()) }
     var otp by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -1735,6 +1735,17 @@ private fun ForgotPasswordSheet(
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val semanticColors = sureSemanticColors()
+
+    AccountRoleChoiceDialog(
+        roles = resetRoleOptions,
+        forPasswordReset = true,
+        onSelect = { role ->
+            resetRole = role
+            resetRoleOptions = emptyList()
+            infoMessage = "${accountRoleLabel(role)} account selected. Tap Send Verification Code to reset only this account."
+        },
+        onDismiss = { resetRoleOptions = emptyList() }
+    )
 
     LaunchedEffect(resendCountdown) {
         if (resendCountdown > 0) {
@@ -1879,10 +1890,13 @@ private fun ForgotPasswordSheet(
             }
 
             // Input Fields
+            resetRole?.let { role ->
+                Text("Resetting ${accountRoleLabel(role)} account", fontWeight = FontWeight.SemiBold)
+            }
             if (!isOtpSent) {
                 OutlinedTextField(
                     value = email,
-                    onValueChange = { email = it; errorMessage = null },
+                    onValueChange = { email = it; errorMessage = null; resetRole = null; resetRoleOptions = emptyList() },
                     label = { Text("Registered Email Address") },
                     placeholder = { Text("e.g. yourname@example.com") },
                     leadingIcon = { Icon(Icons.Default.Email, null, tint = MaterialTheme.colorScheme.primary) },
@@ -1913,14 +1927,15 @@ private fun ForgotPasswordSheet(
                             infoMessage = null
                             try {
                                 val response = ApiClient.getService(tokenManager)
-                                    .requestPasswordReset(ForgotPasswordRequest(targetEmail))
+                                    .requestPasswordReset(ForgotPasswordRequest(targetEmail, role = resetRole))
                                 if (response.isSuccessful) {
                                     isOtpSent = true
                                     resendCountdown = 45
                                     infoMessage = "Verification OTP sent! Please check your inbox (and spam folder)."
                                 } else {
                                     val rawError = response.errorBody()?.string().orEmpty()
-                                    errorMessage = formatApiErrorMessage(rawError, "Could not send password reset OTP. Please check the email and try again.")
+                                    resetRoleOptions = accountRoleChoices(rawError)
+                                    errorMessage = if (resetRoleOptions.isEmpty()) formatApiErrorMessage(rawError, "Could not send password reset OTP. Please check the email and try again.") else null
                                 }
                             } catch (_: Exception) {
                                 errorMessage = "Unable to connect to SURE ProEd server. Please check your network."
@@ -1990,7 +2005,7 @@ private fun ForgotPasswordSheet(
                                         infoMessage = null
                                         try {
                                             val response = ApiClient.getService(tokenManager)
-                                                .requestPasswordReset(ForgotPasswordRequest(email.trim()))
+                                                .requestPasswordReset(ForgotPasswordRequest(email.trim(), role = resetRole))
                                             if (response.isSuccessful) {
                                                 otp = ""
                                                 resendCountdown = 45
@@ -2123,11 +2138,12 @@ private fun ForgotPasswordSheet(
                                                     ForgotPasswordConfirmRequest(
                                                         email = email.trim().lowercase(),
                                                         otp = otp.trim(),
-                                                        newPassword = newPassword.trim()
+                                                        newPassword = newPassword.trim(),
+                                                        role = resetRole
                                                     )
                                                 )
                                             if (response.isSuccessful) {
-                                                onSuccess(email.trim().lowercase())
+                                                onSuccess(email.trim().lowercase(), resetRole)
                                             } else {
                                                 val rawError = response.errorBody()?.string().orEmpty()
                                                 errorMessage = formatApiErrorMessage(rawError, "The OTP code is invalid or has expired. Please request a new code.")
@@ -2151,7 +2167,7 @@ private fun ForgotPasswordSheet(
                         if (isLoading) {
                             SureTrustLoadingIndicator(size = 24.dp, logoSize = 14.dp, spinnerColor = Color.White)
                         } else {
-                            Text("Reset Password & Sign In", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("Reset Password", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

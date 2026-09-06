@@ -16,10 +16,12 @@ class StudentProfileRepository(private val tokenManager: TokenManager) {
     private val service get() = ApiClient.getService(tokenManager)
 
     suspend fun load(): StudentProfileDto? {
+        val sessionId = tokenManager.getSessionId()
         val email = tokenManager.getUserEmail().trim().lowercase()
 
         // 1. Fetch student profile directly via "me" endpoint
         val response = runCatching { service.getStudentProfileById("me") }.getOrNull()
+        return tokenManager.withCurrentSession(sessionId) {
         val matchedProfile = if (response?.isSuccessful == true) response.body() else null
         val meUser = matchedProfile?.user
 
@@ -78,11 +80,11 @@ class StudentProfileRepository(private val tokenManager: TokenManager) {
                 fatherName = matchedProfile.fatherName ?: tokenManager.getFatherName(),
                 motherName = matchedProfile.motherName ?: tokenManager.getMotherName()
             )
-            return matchedProfile
+            return@withCurrentSession matchedProfile
         }
 
         // 3. Fallback: Return DTO populated with authenticated student's local/cached data
-        return StudentProfileDto(
+        StudentProfileDto(
             id = "",
             studentCode = tokenManager.getStudentCode().takeIf(String::isNotBlank),
             tagline = tokenManager.getTagline().takeIf(String::isNotBlank),
@@ -107,6 +109,8 @@ class StudentProfileRepository(private val tokenManager: TokenManager) {
             portfolioUrl = tokenManager.getPortfolioUrl().takeIf(String::isNotBlank),
             cohortCode = tokenManager.getCohortCode().takeIf(String::isNotBlank)
         )
+    }
+
     }
 
     suspend fun update(profileId: String, body: ApiBody): Response<StudentProfileDto> =

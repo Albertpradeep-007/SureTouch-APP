@@ -1,5 +1,6 @@
 package com.example.suretouchapp.data.api
 
+import com.example.suretouchapp.BuildConfig
 import com.example.suretouchapp.data.model.RefreshTokenRequest
 import com.example.suretouchapp.data.model.TokenResponse
 import com.google.gson.Gson
@@ -21,6 +22,7 @@ object ApiClient {
     private const val BASE_URL = "https://sureproed.com/api/"
 
     @Volatile private var apiService: ApiService? = null
+    private var apiSessionId: String? = null
     private val refreshLock = Any()
 
     fun resolveServerUrl(value: String): String {
@@ -36,29 +38,36 @@ object ApiClient {
         }
     }
 
-    fun getService(tokenManager: TokenManager): ApiService {
-        return apiService ?: synchronized(this) {
-            apiService ?: createService(tokenManager).also { apiService = it }
-        }
+    fun getService(tokenManager: TokenManager): ApiService = synchronized(this) {
+        val sessionId = tokenManager.getSessionId()
+        apiService?.takeIf { apiSessionId == sessionId }
+            ?: createService(tokenManager, sessionId).also {
+                apiService = it
+                apiSessionId = sessionId
+            }
     }
 
-    private fun createService(tokenManager: TokenManager): ApiService {
+    private fun createService(tokenManager: TokenManager, sessionId: String): ApiService {
             val logging = HttpLoggingInterceptor().apply {
                 // BODY logging materially slows large list responses and may expose student data.
-                level = HttpLoggingInterceptor.Level.BASIC
+                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             }
 
             val authInterceptor = Interceptor { chain ->
-                val original = chain.request()
-                val requestBuilder = original.newBuilder()
-
-                val token = tokenManager.getAccessToken()
-                if (!token.isNullOrEmpty()) {
-                    requestBuilder.header("Authorization", "Bearer $token")
+                val request = tokenManager.withCurrentSession(sessionId) {
+                    chain.request().newBuilder().apply {
+                        tokenManager.getAccessToken()?.takeIf(String::isNotBlank)?.let {
+                            header("Authorization", "Bearer $it")
+                        }
+                        header("Accept", "application/json")
+                    }.build()
                 }
-
-                requestBuilder.header("Accept", "application/json")
-                chain.proceed(requestBuilder.build())
+                val response = chain.proceed(request)
+                if (!tokenManager.isCurrentSession(sessionId)) {
+                    response.close()
+                    throw java.io.IOException("Account session changed. Please reload.")
+                }
+                response
             }
 
             val dispatcher = Dispatcher().apply {
@@ -73,13 +82,14 @@ object ApiClient {
                     if (response.retryCount() >= 2 || response.request.url.encodedPath.contains("/auth/token/")) {
                         return@authenticator null
                     }
-                    val refreshToken = tokenManager.getRefreshToken()?.takeIf(String::isNotBlank)
-                        ?: return@authenticator null
-
                     synchronized(refreshLock) {
+                        val (storedRefreshToken, latestAccessToken) = tokenManager.withCurrentSession(sessionId) {
+                            tokenManager.getRefreshToken() to tokenManager.getAccessToken()
+                        }
+                        val refreshToken = storedRefreshToken?.takeIf(String::isNotBlank)
+                            ?: return@synchronized null
                         val requestAccessToken = response.request.header("Authorization")
                             ?.removePrefix("Bearer ")
-                        val latestAccessToken = tokenManager.getAccessToken()
                         if (!latestAccessToken.isNullOrBlank() && latestAccessToken != requestAccessToken) {
                             return@synchronized response.request.newBuilder()
                                 .header("Authorization", "Bearer $latestAccessToken")
@@ -102,17 +112,19 @@ object ApiClient {
                             .execute()
                         refreshResponse.use { tokenResponse ->
                             if (!tokenResponse.isSuccessful) {
-                                tokenManager.logout()
+                                tokenManager.logoutIfCurrentSession(sessionId)
                                 return@synchronized null
                             }
                             val refreshed = runCatching {
                                 Gson().fromJson(tokenResponse.body?.string(), TokenResponse::class.java)
                             }.getOrNull()
                             if (refreshed == null) {
-                                tokenManager.logout()
+                                tokenManager.logoutIfCurrentSession(sessionId)
                                 return@synchronized null
                             }
-                            tokenManager.saveToken(refreshed.access, refreshed.refresh ?: refreshToken)
+                            if (refreshed.access.isBlank() || !tokenManager.saveRefreshedToken(
+                                    sessionId, refreshed.access, refreshed.refresh ?: refreshToken
+                                )) return@synchronized null
                             response.request.newBuilder()
                                 .header("Authorization", "Bearer ${refreshed.access}")
                                 .build()

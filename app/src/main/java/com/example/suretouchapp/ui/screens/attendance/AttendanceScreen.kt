@@ -185,6 +185,11 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                 it == StudentSessionAttendance.BELOW_THRESHOLD ||
                 it == StudentSessionAttendance.ABSENT
         }
+    val overviewState = com.example.suretouchapp.ui.screens.dashboard.attendanceOverviewState(
+        hasCohort = tokenManager.getCohortCode().isNotBlank(),
+        sessionCount = records.size,
+        recordedSessionCount = recordedStudentStates.size
+    )
     val presentCount = recordedStudentStates.count { it == StudentSessionAttendance.PRESENT }
     val calculatedPercentage = calculateStudentAttendancePercentage(records, studentIdentifiers)
     val percentage = if (!isStudent) 0 else (authoritativePercentage ?: calculatedPercentage ?: 0.0).toInt()
@@ -235,6 +240,12 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                     SureTrustLoadingIndicator(message = "Loading attendance records...")
                 }
+            } else if (!hasLoadedOnce) {
+                Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text("Attendance could not be loaded", fontWeight = FontWeight.Bold)
+                    Text(connectionError ?: "Please check your connection and try again.")
+                    Button(onClick = { scope.launch { loadAttendance() } }) { Text("Retry") }
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding),
@@ -242,7 +253,7 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Student Attendance Overview Card
-                    item {
+                    if (!isStudent || overviewState == com.example.suretouchapp.ui.screens.dashboard.AttendanceOverviewState.RECORDED) item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
@@ -344,7 +355,8 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                     Text("No Attendance Records Yet", fontWeight = FontWeight.Bold, color = AttendanceInk, fontSize = 15.sp)
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        if (isStudent) "You're all set! As soon as your classes begin, your attendance history will be recorded right here."
+                                        if (isStudent && tokenManager.getCohortCode().isBlank()) "Enroll in a course to start tracking attendance. Your history will appear after your cohort classes begin."
+                                        else if (isStudent) "No classes scheduled yet. Your attendance history will appear once your cohort classes begin."
                                         else "No class sessions scheduled for your assigned cohorts yet.",
                                         fontSize = 12.sp,
                                         color = AttendanceMuted,

@@ -503,6 +503,7 @@ object SureProEdNotificationManager {
         try {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
             val intent = Intent(context, ClassScheduleAlarmReceiver::class.java).apply {
+                putExtra(ClassScheduleAlarmReceiver.EXTRA_ACCOUNT_SESSION, com.example.suretouchapp.data.api.TokenManager(context).getSessionId())
                 putExtra(ClassScheduleAlarmReceiver.EXTRA_SESSION_ID, session.id)
                 putExtra(ClassScheduleAlarmReceiver.EXTRA_SESSION_TITLE, session.sessionTitle ?: "Live Class")
                 putExtra(ClassScheduleAlarmReceiver.EXTRA_START_TIME, session.startTime ?: "Soon")

@@ -28,6 +28,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.suretouchapp.R
 import com.example.suretouchapp.data.model.AppVersionInfoDto
 import com.example.suretouchapp.data.ota.AppUpdateManager
+import com.example.suretouchapp.data.ota.canDismissUpdate
 import com.example.suretouchapp.data.ota.UpdateState
 import kotlinx.coroutines.launch
 import java.io.File
@@ -53,7 +54,7 @@ fun AppUpdateDialog(
             errorMessage = null
         )
         is UpdateState.Downloading -> UpdateDialogViewState(
-            info = null,
+            info = updateState.info,
             isDownloading = true,
             progress = updateState.progress,
             downloadedFile = null,
@@ -64,10 +65,10 @@ fun AppUpdateDialog(
             isDownloading = false,
             progress = 1f,
             downloadedFile = updateState.file,
-            errorMessage = null
+            errorMessage = updateState.installMessage
         )
         is UpdateState.Error -> UpdateDialogViewState(
-            info = null,
+            info = updateState.info,
             isDownloading = false,
             progress = 0f,
             downloadedFile = null,
@@ -76,16 +77,17 @@ fun AppUpdateDialog(
         else -> return
     }
     val waitingForFirstByte = updateState is UpdateState.Downloading && updateState.bytesRead == 0L
+    val canDismiss = canDismissUpdate(info?.isMandatory == true, isDownloading)
 
     Dialog(
         onDismissRequest = {
-            if (!isDownloading) {
+            if (canDismiss) {
                 onDismiss()
             }
         },
         properties = DialogProperties(
-            dismissOnBackPress = !isDownloading,
-            dismissOnClickOutside = !isDownloading
+            dismissOnBackPress = canDismiss,
+            dismissOnClickOutside = canDismiss
         )
     ) {
         Card(
@@ -97,7 +99,7 @@ fun AppUpdateDialog(
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
-                if (!isDownloading) {
+                if (canDismiss) {
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
@@ -129,7 +131,7 @@ fun AppUpdateDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (downloadedFile != null) Icons.Default.CheckCircle else Icons.Default.SystemUpdate,
+                            imageVector = if (downloadedFile != null && info != null) Icons.Default.CheckCircle else Icons.Default.SystemUpdate,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(32.dp)
@@ -139,7 +141,7 @@ fun AppUpdateDialog(
                     Spacer(Modifier.height(16.dp))
 
                     Text(
-                        text = if (downloadedFile != null) "Update Ready to Install" else "New Version Available!",
+                        text = if (downloadedFile != null && info != null) "Update Ready to Install" else "New Version Available!",
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 20.sp,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -286,9 +288,9 @@ fun AppUpdateDialog(
 
                     // Action Buttons
                     Column(Modifier.fillMaxWidth()) {
-                        if (downloadedFile != null) {
+                        if (downloadedFile != null && info != null) {
                             Button(
-                                onClick = { AppUpdateManager.installApk(context, downloadedFile) },
+                                onClick = { AppUpdateManager.installApk(context, downloadedFile, info) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(48.dp),
@@ -340,7 +342,7 @@ fun AppUpdateDialog(
                             }
                         }
 
-                        if (!isDownloading) {
+                        if (canDismiss) {
                             Spacer(Modifier.height(8.dp))
                             TextButton(
                                 onClick = onDismiss,
