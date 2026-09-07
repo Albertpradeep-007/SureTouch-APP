@@ -32,6 +32,8 @@ class NotificationSyncWorker(
             SureProEdNotificationManager.createChannels(context)
             val api = ApiClient.getService(tokenManager)
 
+            runCatching { MobilePushRegistration.register(context, tokenManager, accountSession) }
+
             // 1. Fetch & sync announcements
             runCatching {
                 val annResp = api.getAnnouncements()
@@ -50,7 +52,7 @@ class NotificationSyncWorker(
                 }
             }
 
-            // 3. Fetch & sync attendance / class schedules & exact 15m alarms
+            // 3. Fetch & sync attendance / class schedules & 10-minute alarms
             runCatching {
                 val attResp = api.getAttendance(pageSize = 500)
                 if (attResp.isSuccessful) {

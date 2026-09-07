@@ -48,6 +48,7 @@ import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -160,22 +161,12 @@ fun TimetableScreen(
         label = "live_alpha"
     )
 
+    val joinScope = rememberCoroutineScope()
     fun openLink(link: String?) {
-        val clean = link?.trim().orEmpty()
-        if (clean.isBlank()) {
-            Toast.makeText(context, "No meeting link available", Toast.LENGTH_SHORT).show()
-            return
+        val session = attendance.firstOrNull {
+            it.meetingLink == link && TimetableSessionPolicy.resolveStatus(it) == TimetableClassStatus.ONGOING
         }
-        val uri = if (clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true)) {
-            Uri.parse(clean)
-        } else {
-            Uri.parse("https://$clean")
-        }
-        try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-        } catch (e: Exception) {
-            Toast.makeText(context, "Could not launch link: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+        joinScope.launch { ClassJoinLauncher.join(context, tokenManager, session) }
     }
 
     LaunchedEffect(refreshTrigger) {

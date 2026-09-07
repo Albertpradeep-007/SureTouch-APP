@@ -64,6 +64,7 @@ import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private var currentDeepLinkData by mutableStateOf<Uri?>(null)
+    private var liveClassNavigationRequest by mutableLongStateOf(0L)
     private var notificationNavigationRequest by mutableLongStateOf(0L)
     private var noticesNavigationRequest by mutableLongStateOf(0L)
     private var assignmentsNavigationRequest by mutableLongStateOf(0L)
@@ -72,6 +73,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         currentDeepLinkData = intent?.data
+        if (intent?.getBooleanExtra("open_live_class", false) == true) liveClassNavigationRequest++
         otaPreviewRequested = BuildConfig.DEBUG && intent?.getBooleanExtra("preview_ota_update", false) == true
         if (intent?.getBooleanExtra("open_notifications", false) == true) {
             notificationNavigationRequest++
@@ -111,6 +113,7 @@ class MainActivity : ComponentActivity() {
                             AppNavigation(
                                 deepLinkUri = currentDeepLinkData,
                                 notificationRequestId = notificationNavigationRequest,
+                                liveClassRequestId = liveClassNavigationRequest,
                                 noticesRequestId = noticesNavigationRequest,
                                 assignmentsRequestId = assignmentsNavigationRequest,
                                 otaPreviewRequested = otaPreviewRequested
@@ -125,6 +128,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         currentDeepLinkData = intent.data
+        if (intent.getBooleanExtra("open_live_class", false)) liveClassNavigationRequest++
         otaPreviewRequested = BuildConfig.DEBUG && intent.getBooleanExtra("preview_ota_update", false)
         if (intent.getBooleanExtra("open_notifications", false)) {
             notificationNavigationRequest++
@@ -142,6 +146,7 @@ class MainActivity : ComponentActivity() {
 fun AppNavigation(
     deepLinkUri: Uri? = null,
     notificationRequestId: Long = 0L,
+    liveClassRequestId: Long = 0L,
     noticesRequestId: Long = 0L,
     assignmentsRequestId: Long = 0L,
     otaPreviewRequested: Boolean = false
@@ -291,9 +296,11 @@ fun AppNavigation(
         }
     }
 
-    LaunchedEffect(notificationRequestId, noticesRequestId, assignmentsRequestId) {
+    LaunchedEffect(notificationRequestId, noticesRequestId, assignmentsRequestId, liveClassRequestId) {
         if (tokenManager.isLoggedIn()) {
-            if (notificationRequestId > 0) {
+            if (liveClassRequestId > 0) {
+                navController.navigate(Screen.LiveClass.route)
+            } else if (notificationRequestId > 0) {
                 navController.navigate(Screen.Notifications.route)
             } else if (noticesRequestId > 0) {
                 navController.navigate(Screen.Notices.route)
@@ -308,6 +315,7 @@ fun AppNavigation(
             AuthScreen(
                 tokenManager = tokenManager,
                 onAuthSuccess = {
+                    NotificationSyncWorker.triggerImmediateSync(context)
                     val destination = accountDestination(tokenManager)
                     navController.navigate(destination) {
                         popUpTo(Screen.Auth.route) { inclusive = true }

@@ -225,7 +225,7 @@ object SureProEdNotificationManager {
             .setGroup(GROUP_STUDENT_UPDATES)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_EVENT)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
         notifyIfAllowed(context, ("announcement_" + announcement.id).hashCode(), builder.build())
     }
@@ -287,7 +287,7 @@ object SureProEdNotificationManager {
             .setGroup(GROUP_STUDENT_UPDATES)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_EVENT)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
         notifyIfAllowed(context, ("assignment_" + assignment.id).hashCode(), builder.build())
     }
@@ -391,7 +391,7 @@ object SureProEdNotificationManager {
             .setGroup(GROUP_STUDENT_UPDATES)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
         notifyIfAllowed(context, ("grade_" + id).hashCode(), builder.build())
     }
@@ -466,7 +466,7 @@ object SureProEdNotificationManager {
 
             if (startMillis != null) {
                 val diffMillis = startMillis - now
-                val reminderThresholdMillis = 15 * 60 * 1000L
+                val reminderThresholdMillis = 10 * 60 * 1000L
 
                 if (diffMillis in 0..reminderThresholdMillis) {
                     if (sessionKey !in delivered15mReminders) {
@@ -560,7 +560,7 @@ object SureProEdNotificationManager {
             .setGroup(GROUP_STUDENT_UPDATES)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_EVENT)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
         notifyIfAllowed(context, ("scheduled_" + session.id).hashCode(), builder.build())
     }
@@ -600,7 +600,7 @@ object SureProEdNotificationManager {
             .setGroup(GROUP_STUDENT_UPDATES)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_EVENT)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
         notifyIfAllowed(context, ("cancelled_" + session.id).hashCode(), builder.build())
     }
@@ -640,7 +640,7 @@ object SureProEdNotificationManager {
             .setGroup(GROUP_STUDENT_UPDATES)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_EVENT)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
         notifyIfAllowed(context, ("rescheduled_" + session.id).hashCode(), builder.build())
     }
@@ -654,24 +654,11 @@ object SureProEdNotificationManager {
     ) {
         createChannels(context)
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val titleText = "Class Starting in 15 Minutes!"
-        val meetCode = if (!meetingLink.isNullOrBlank()) meetingLink.substringAfterLast("/").substringBefore("?").takeIf(String::isNotBlank) else null
-        val meetText = if (!meetingLink.isNullOrBlank()) " Join via Google Meet." else " Open class dashboard."
-        val meetCodeMsg = if (meetCode != null) "\nLaptop Code: $meetCode (meet.google.com)" else ""
-        val messageText = "$title starts at $startTime.$meetText$meetCodeMsg"
-
-        val launchIntent = if (!meetingLink.isNullOrBlank()) {
-            try {
-                Intent(Intent.ACTION_VIEW, Uri.parse(meetingLink)).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-            } catch (_: Exception) {
-                Intent(context, MainActivity::class.java)
-            }
-        } else {
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
+        val titleText = "Class Starting in 10 Minutes!"
+        val messageText = "$title starts at $startTime. Open the app to view the latest class details."
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("open_live_class", true)
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -697,24 +684,9 @@ object SureProEdNotificationManager {
             .setGroup(GROUP_STUDENT_UPDATES)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
-        if (!meetingLink.isNullOrBlank()) {
-            val joinIntent = Intent(Intent.ACTION_VIEW, Uri.parse(meetingLink)).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            val joinPendingIntent = PendingIntent.getActivity(
-                context,
-                ("join_meet_" + sessionId).hashCode(),
-                joinIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.addAction(
-                R.drawable.ic_sureproed_notification,
-                "Join Google Meet",
-                joinPendingIntent
-            )
-        }
+        builder.addAction(R.drawable.ic_sureproed_notification, "Open class", pendingIntent)
 
         notifyIfAllowed(context, ("reminder_15m_" + sessionId).hashCode(), builder.build())
     }
@@ -826,7 +798,7 @@ object SureProEdNotificationManager {
             .setGroup(GROUP_STUDENT_UPDATES)
             .setPriority(category.priority)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             
         notifyIfAllowed(context, item.id.hashCode(), builder.build())
     }

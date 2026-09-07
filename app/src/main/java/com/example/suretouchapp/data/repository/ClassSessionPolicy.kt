@@ -254,11 +254,11 @@ object TimetableSessionPolicy {
         val startAt = LocalDateTime.of(date, startTime)
         val endAt = LocalDateTime.of(date, endTime)
 
-        if (backendStatus == "COMPLETED" || (session.conducted && backendStatus != "SCHEDULED" && backendStatus != "UPCOMING" && !session.isCancelledSession())) {
+        if (backendStatus == "COMPLETED" || (session.conducted && backendStatus != "SCHEDULED" && backendStatus != "UPCOMING" && backendStatus != "ONGOING" && backendStatus != "LIVE" && !session.isCancelledSession())) {
             return TimetableClassStatus.ENDED
         }
 
-        val earlyJoinStart = startAt.minusMinutes(15)
+        val earlyJoinStart = startAt.minusMinutes(10)
         return when {
             now.isBefore(earlyJoinStart) -> {
                 val isToday = now.toLocalDate().isEqual(date)
@@ -270,7 +270,6 @@ object TimetableSessionPolicy {
                 }
             }
             !now.isAfter(endAt.plusMinutes(15)) -> TimetableClassStatus.ONGOING
-            backendStatus == "SCHEDULED" || backendStatus == "UPCOMING" -> TimetableClassStatus.UPCOMING
             else -> TimetableClassStatus.ENDED
         }
     }
@@ -281,7 +280,7 @@ object TimetableSessionPolicy {
         allowedCohorts: Set<String> = emptySet()
     ): Pair<AttendanceDto?, TimetableClassStatus> {
         val cohortFiltered = sessions.filter { session ->
-            !session.isCancelledSession() &&
+            resolveStatus(session, now) !in setOf(TimetableClassStatus.CANCELLED, TimetableClassStatus.RESCHEDULED, TimetableClassStatus.ENDED) &&
                 (allowedCohorts.isEmpty() || session.cohort in allowedCohorts || session.cohortCode in allowedCohorts)
         }
 
@@ -353,43 +352,16 @@ object LiveClassSelector {
             it.isCancelledSession() && parseSessionLocalDate(it.date)?.isEqual(today) == true
         }
 
-        // 1. Check for ONGOING session
+        // Use the same exact join window as the timetable and dashboard.
         for (session in cohortFiltered) {
             if (session.meetingLink.isNullOrBlank()) continue
-            if (session.isCancelledSession()) continue
-            if (session.classStatus.equals("COMPLETED", ignoreCase = true) ||
-                session.effectiveStatus.equals("COMPLETED", ignoreCase = true)
-            ) continue
+            if (TimetableSessionPolicy.resolveStatus(session, now) != TimetableClassStatus.ONGOING) continue
             val date = parseSessionLocalDate(session.date) ?: continue
-            if (!date.isEqual(today)) continue
-            val startTime = ClassSchedulePolicy.parseLocalTime(session.startTime) ?: continue
-            val endTime = ClassSchedulePolicy.parseLocalTime(session.endTime) ?: startTime.plusHours(1)
-            val startAt = LocalDateTime.of(date, startTime)
-            val endAt = LocalDateTime.of(date, endTime)
-
-            if (!now.isBefore(startAt) && now.isBefore(endAt)) {
-                return LiveClassUiState.Ongoing(session)
-            }
-        }
-
-        // 2. Check for STARTING SOON session (within 15 minutes before start time)
-        for (session in cohortFiltered) {
-            if (session.meetingLink.isNullOrBlank()) continue
-            if (session.isCancelledSession()) continue
-            if (session.classStatus.equals("COMPLETED", ignoreCase = true) ||
-                session.effectiveStatus.equals("COMPLETED", ignoreCase = true)
-            ) continue
-            val date = parseSessionLocalDate(session.date) ?: continue
-            if (!date.isEqual(today)) continue
-            val startTime = ClassSchedulePolicy.parseLocalTime(session.startTime) ?: continue
-            val startAt = LocalDateTime.of(date, startTime)
-
-            if (now.isBefore(startAt)) {
-                val diff = Duration.between(now, startAt).toMinutes()
-                if (diff in 0..15) {
-                    return LiveClassUiState.StartingSoon(session, diff)
-                }
-            }
+            val start = ClassSchedulePolicy.parseLocalTime(session.startTime) ?: continue
+            val startAt = LocalDateTime.of(date, start)
+            return if (now.isBefore(startAt)) {
+                LiveClassUiState.StartingSoon(session, (Duration.between(now, startAt).seconds + 59) / 60)
+            } else LiveClassUiState.Ongoing(session)
         }
 
         // 3. Find next future scheduled session

@@ -454,7 +454,7 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                         StudentSessionAttendance.BELOW_THRESHOLD -> "PARTIAL"
                                         StudentSessionAttendance.ABSENT -> "ABSENT"
                                         StudentSessionAttendance.CANCELLED -> "CANCELLED"
-                                        StudentSessionAttendance.PENDING -> "UPCOMING"
+                                        StudentSessionAttendance.PENDING -> if (record.studentDashboardData?.attendanceStatus == "IDENTITY_REVIEW_REQUIRED") "IDENTITY REVIEW" else "PENDING"
                                     }
                                     val stateColor = when (studentState) {
                                         StudentSessionAttendance.PRESENT -> semanticColors.success

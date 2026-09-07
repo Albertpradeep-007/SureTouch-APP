@@ -1,6 +1,6 @@
 # Production onboarding — SURE ProEd
 
-Use [APK v1.1.9](https://github.com/Albertpradeep-007/SureTouch-APP/releases/tag/v1.1.9), version code 16. The in-app OTA endpoint also serves this release.
+Use [APK v1.1.10](https://github.com/Albertpradeep-007/SureTouch-APP/releases/tag/v1.1.10), version code 17. The in-app OTA endpoint also serves this release.
 
 ## Existing seeded students
 
@@ -34,3 +34,13 @@ If a reset code does not arrive, check spam and use the latest requested code. S
 The G2-26 VLSI historical register has been imported: 50 sessions and 1,350 explicit P/A marks for its 27 mapped students. Historical rows are labelled in the app. Students outside that register do not inherit its history. Existing live attendance, grades and cohort assignments remain unchanged. Completed live classes count even after their live session has been closed.
 
 The release has automated backend and emulator coverage. A representative student should still complete a real mailbox reset and sign in on their own phone during the first onboarding session; those external inbox/device steps cannot be established by mocked-email tests.
+
+
+## September 7 notification and attendance update
+
+- Firebase Cloud Messaging delivers session-bound notification IDs. The authenticated app fetches the content; a message for another login session is discarded.
+- Allow Android notifications. Force-stop and disabled permissions can prevent delivery; reopen the app after force-stop.
+- Join opens 10 minutes before class. Student joins are checked by the backend and recorded as supporting evidence, without awarding attendance from a button tap.
+- Verified Google email takes priority over display names. Name similarity handles initials, token order and spelling differences to suggest roster candidates for staff review. Similarity is not a probability or verified identity.
+- Uncertain identities display IDENTITY REVIEW and do not count as finalized absences. Missed module tests are recorded for admin review without automatically removing cohort access.
+- Firebase private credentials are outside both repositories and the APK. Backend .env stores only project ID and credential-file path.

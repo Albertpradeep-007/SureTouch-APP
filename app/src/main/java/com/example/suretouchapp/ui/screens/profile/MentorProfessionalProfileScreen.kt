@@ -1342,9 +1342,8 @@ private fun MentorProfileMainView(
     }
 
     // Persistent Cover and Avatar Photo URIs with fallback to LinkedIn / Profile
-    var coverPhotoUri by remember {
-        mutableStateOf(tokenManager.getCoverPhotoUrl())
-    }
+    val syncedCover = rememberSyncedProfileMedia(tokenManager)
+    val coverPhotoUri = syncedCover.url
     var showCoverOptionsDialog by remember { mutableStateOf(false) }
     var profilePhotoUri by remember {
         mutableStateOf(tokenManager.getProfilePhotoUrl() ?: profile?.profilePhoto)
@@ -1355,19 +1354,17 @@ private fun MentorProfileMainView(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            coverPhotoUri = uri.toString()
-            tokenManager.saveCoverPhotoUrl(uri.toString())
-            Toast.makeText(context, "Cover photo updated", Toast.LENGTH_SHORT).show()
+            syncedCover.update(uri)
         }
     }
 
+    val syncedAvatar = rememberSyncedProfileMedia(tokenManager, "profile_photo")
+    LaunchedEffect(syncedAvatar.url) { profilePhotoUri = syncedAvatar.url }
     val avatarLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            profilePhotoUri = uri.toString()
-            tokenManager.saveProfilePhotoUrl(uri.toString())
-            Toast.makeText(context, "Profile photo updated", Toast.LENGTH_SHORT).show()
+            syncedAvatar.update(uri)
         }
     }
 
@@ -2467,8 +2464,7 @@ private fun MentorProfileMainView(
                 hasCustomCover = !coverPhotoUri.isNullOrBlank(),
                 onUploadNew = { coverLauncher.launch("image/*") },
                 onRemoveCover = {
-                    coverPhotoUri = null
-                    tokenManager.saveCoverPhotoUrl(null)
+                    syncedCover.update(null)
                     Toast.makeText(context, "Cover photo removed. Default banner restored.", Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { showCoverOptionsDialog = false }

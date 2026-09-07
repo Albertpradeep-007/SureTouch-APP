@@ -112,24 +112,18 @@ private fun getSessionState(
     backendStatus: String?,
     now: LocalDateTime
 ): SessionState {
-    val backend = backendStatus?.trim()?.uppercase(Locale.US)
-    if (backend == "CANCELLED") {
-        return SessionState.CANCELLED
-    }
-    if (backend == "COMPLETED") {
-        return SessionState.COMPLETED
-    }
-    val date = com.example.suretouchapp.data.repository.parseSessionLocalDate(dateValue) ?: return SessionState.UPCOMING
-    val start = com.example.suretouchapp.data.repository.ClassSchedulePolicy.parseLocalTime(startValue) ?: return SessionState.UPCOMING
-    val end = com.example.suretouchapp.data.repository.ClassSchedulePolicy.parseLocalTime(endValue) ?: start.plusHours(1)
-    val startAt = LocalDateTime.of(date, start)
-    val endAt = LocalDateTime.of(date, end)
-    val earlyJoinStart = startAt.minusMinutes(15)
-    return when {
-        now.isBefore(earlyJoinStart) -> SessionState.UPCOMING
-        !now.isAfter(endAt.plusMinutes(15)) -> SessionState.LIVE_NOW
-        backend == "SCHEDULED" || backend == "UPCOMING" -> SessionState.UPCOMING
-        else -> SessionState.COMPLETED
+    val status = com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(
+        com.example.suretouchapp.data.model.AttendanceDto(
+            date = dateValue, startTime = startValue, endTime = endValue,
+            classStatus = backendStatus
+        ), now
+    )
+    return when (status) {
+        com.example.suretouchapp.data.repository.TimetableClassStatus.ONGOING -> SessionState.LIVE_NOW
+        com.example.suretouchapp.data.repository.TimetableClassStatus.ENDED -> SessionState.COMPLETED
+        com.example.suretouchapp.data.repository.TimetableClassStatus.CANCELLED,
+        com.example.suretouchapp.data.repository.TimetableClassStatus.RESCHEDULED -> SessionState.CANCELLED
+        else -> SessionState.UPCOMING
     }
 }
 

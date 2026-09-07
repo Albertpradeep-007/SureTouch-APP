@@ -10,6 +10,9 @@ typealias ApiBody = Map<String, @JvmSuppressWildcards Any?>
 
 /** Retrofit surface synchronized with the supplied SURE ProEd OpenAPI document. */
 interface ApiService {
+    @POST("attendance/{id}/portal-join/")
+    suspend fun recordPortalJoin(@Path("id") id: String): Response<okhttp3.ResponseBody>
+
     // One backend-owned read powers the student dashboard and journey.
     @GET("students/statistics/") suspend fun getStudentStatistics(): Response<StudentStatisticsDto>
 
@@ -24,6 +27,8 @@ interface ApiService {
     @POST("users/forgot_password_confirm/")
     suspend fun confirmPasswordReset(@Body request: ForgotPasswordConfirmRequest): Response<PasswordResetResponse>
 
+    @Multipart @PATCH("users/me/") suspend fun uploadCurrentUserMedia(@Part image: MultipartBody.Part): Response<UserResponse>
+    @PATCH("users/me/") suspend fun patchCurrentUser(@Body body: ApiBody): Response<UserResponse>
     @GET("users/me/") suspend fun getCurrentUser(): Response<UserResponse>
 
     @GET("users/")
@@ -183,6 +188,8 @@ interface ApiService {
     @POST("job-references/") suspend fun createJobReference(@Body body: ApiBody): Response<JobReferenceDto>
     @PATCH("job-references/{id}/") suspend fun patchJobReference(@Path("id") id: String, @Body body: ApiBody): Response<JobReferenceDto>
 
+    @POST("notifications/push/mobile/") suspend fun registerMobilePush(@Body body: ApiBody): Response<ApiBody>
+    @GET("notifications/{id}/") suspend fun getNotification(@Path("id") id: String): Response<NotificationDto>
     @GET("notifications/") suspend fun getNotifications(): Response<PaginatedResponse<NotificationDto>>
     @POST("notifications/") suspend fun sendNotification(@Body body: ApiBody): Response<NotificationDto>
     @POST("notifications/{id}/mark-read/") suspend fun markNotificationRead(@Path("id") id: String): Response<NotificationDto>

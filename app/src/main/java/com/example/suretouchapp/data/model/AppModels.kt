@@ -447,6 +447,10 @@ data class NotificationDto(
 )
 
 data class StudentStatisticsDto(
+    @SerializedName("course_percentage") val coursePercentage: Double = 0.0,
+    @SerializedName("time_elapsed_percentage") val timeElapsedPercentage: Double = 0.0,
+    @SerializedName("attendance_present") val attendancePresent: Int = 0,
+    @SerializedName("attendance_total") val attendanceTotal: Int = 0,
     @SerializedName("student_code") val studentCode: String? = null,
     @SerializedName("total_applications") val totalApplications: Int = 0,
     @SerializedName("qualified_applications") val qualifiedApplications: Int = 0,

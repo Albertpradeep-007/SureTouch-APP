@@ -266,7 +266,8 @@ private fun StudentProfileContent(
     val isLinkedinConnected = profile?.isLinkedinConnected == true || !linkedinUrl.isNullOrBlank()
 
     // Cover and Avatar
-    var coverPhotoUri by remember { mutableStateOf(tokenManager.getCoverPhotoUrl()) }
+    val syncedCover = rememberSyncedProfileMedia(tokenManager)
+    val coverPhotoUri = syncedCover.url
     var showCoverOptionsDialog by remember { mutableStateOf(false) }
     var profilePhotoUri by remember {
         mutableStateOf(tokenManager.getProfilePhotoUrl() ?: profile?.effectiveProfilePhoto)
@@ -302,9 +303,7 @@ private fun StudentProfileContent(
 
     val coverLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            coverPhotoUri = uri.toString()
-            tokenManager.saveCoverPhotoUrl(uri.toString())
-            Toast.makeText(context, "Cover photo updated", Toast.LENGTH_SHORT).show()
+            syncedCover.update(uri)
         }
     }
 
@@ -1283,8 +1282,7 @@ private fun StudentProfileContent(
                 hasCustomCover = !coverPhotoUri.isNullOrBlank(),
                 onUploadNew = { coverLauncher.launch("image/*") },
                 onRemoveCover = {
-                    coverPhotoUri = null
-                    tokenManager.saveCoverPhotoUrl(null)
+                    syncedCover.update(null)
                     Toast.makeText(context, "Cover photo removed. Default banner restored.", Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { showCoverOptionsDialog = false }

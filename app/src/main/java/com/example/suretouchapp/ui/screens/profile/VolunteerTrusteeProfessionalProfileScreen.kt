@@ -105,7 +105,8 @@ fun VolunteerTrusteeProfessionalProfileScreen(
     var availabilityNotes by remember { mutableStateOf("") }
     var linkedinUrl by remember { mutableStateOf(tokenManager.getLinkedinUrl()) }
 
-    var coverPhotoUri by remember { mutableStateOf(tokenManager.getCoverPhotoUrl()) }
+    val syncedCover = rememberSyncedProfileMedia(tokenManager)
+    val coverPhotoUri = syncedCover.url
     var showCoverOptionsDialog by remember { mutableStateOf(false) }
     var profilePhotoUri by remember { mutableStateOf(tokenManager.getProfilePhotoUrl()) }
     var cohortFilter by remember { mutableStateOf("ALL") }
@@ -161,9 +162,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
 
     val coverLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            coverPhotoUri = uri.toString()
-            tokenManager.saveCoverPhotoUrl(uri.toString())
-            Toast.makeText(context, "Cover photo updated", Toast.LENGTH_SHORT).show()
+            syncedCover.update(uri)
         }
     }
 
@@ -783,8 +782,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                     hasCustomCover = !coverPhotoUri.isNullOrBlank(),
                     onUploadNew = { coverLauncher.launch("image/*") },
                     onRemoveCover = {
-                        coverPhotoUri = null
-                        tokenManager.saveCoverPhotoUrl(null)
+                        syncedCover.update(null)
                         Toast.makeText(context, "Cover photo removed. Default banner restored.", Toast.LENGTH_SHORT).show()
                     },
                     onDismiss = { showCoverOptionsDialog = false }

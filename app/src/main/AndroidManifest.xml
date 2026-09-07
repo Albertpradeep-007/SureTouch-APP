@@ -22,6 +22,11 @@
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.SureTouchAPP">
 
+        <service android:name=".ui.screens.notifications.SureProEdMessagingService" android:exported="false">
+            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+        </service>
+        <meta-data android:name="firebase_analytics_collection_enabled" android:value="false" />
+
         <receiver
             android:name=".ui.screens.notifications.ClassScheduleAlarmReceiver"
             android:exported="false" />

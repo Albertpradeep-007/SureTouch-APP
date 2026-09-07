@@ -46,6 +46,8 @@ import com.example.suretouchapp.data.repository.LiveClassUiState
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.example.suretouchapp.data.repository.ClassJoinLauncher
 import java.time.LocalDateTime
 
 private val ColorDarkHeader = Color(0xFF262626)
@@ -124,15 +126,9 @@ fun LiveClassScreen(
         label = "LivePulseAlpha"
     )
 
-    val launchGoogleMeet = {
-        if (googleMeetUrl.isBlank()) {
-            Toast.makeText(context, "No live-class link is available.", Toast.LENGTH_LONG).show()
-        } else try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(googleMeetUrl))
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(context, "Opening Google Meet: $googleMeetUrl", Toast.LENGTH_LONG).show()
-        }
+    val joinScope = rememberCoroutineScope()
+    val launchGoogleMeet: () -> Unit = {
+        joinScope.launch { ClassJoinLauncher.join(context, tokenManager, activeSession) }
     }
 
     Scaffold(
@@ -272,7 +268,7 @@ fun LiveClassScreen(
                                 text = when (val s = liveState) {
                                     is LiveClassUiState.Ongoing -> s.session.notes ?: "Live session is currently in progress."
                                     is LiveClassUiState.StartingSoon -> "Class starts at ${s.session.startTime}. Early access is active so you can join and test audio/video."
-                                    is LiveClassUiState.AwaitingUpcoming -> "Next live session is scheduled on ${s.nextSession.date}. Google Meet link activates 15 minutes before start."
+                                    is LiveClassUiState.AwaitingUpcoming -> "Next live session is scheduled on ${s.nextSession.date}. Google Meet link activates 10 minutes before start."
                                     is LiveClassUiState.Cancelled -> "Notice: ${s.reason ?: "This class session was cancelled by the mentor."}"
                                     is LiveClassUiState.NoClassScheduled -> "There are no live classes currently scheduled for your cohort."
                                 },

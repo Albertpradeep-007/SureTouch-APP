@@ -16,6 +16,7 @@ data class RegisterRequest(
 
 // User Response (POST /api/users/ success response)
 data class UserResponse(
+    @SerializedName("banner_image") val bannerImage: String? = null,
     val id: String? = null,
     val email: String,
     @SerializedName("first_name") val firstName: String? = null,

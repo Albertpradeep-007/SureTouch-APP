@@ -95,9 +95,9 @@ fun InAppDocumentViewerDialog(
                             val connection = URL(resolvedUrl).openConnection() as HttpURLConnection
                             connection.connectTimeout = 10000
                             connection.readTimeout = 10000
-                            connection.instanceFollowRedirects = true
+                            connection.instanceFollowRedirects = false
                             connection.setRequestProperty("User-Agent", "SureTrust-Android/1.0")
-                            if (!token.isNullOrBlank()) {
+                            if (!token.isNullOrBlank() && java.net.URI(resolvedUrl).scheme == "https" && java.net.URI(resolvedUrl).host.equals("sureproed.com", ignoreCase = true)) {
                                 connection.setRequestProperty("Authorization", "Bearer $token")
                             }
                             connection.connect()
