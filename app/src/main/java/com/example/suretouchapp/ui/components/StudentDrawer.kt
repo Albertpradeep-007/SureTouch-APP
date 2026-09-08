@@ -101,6 +101,9 @@ fun StudentDrawerContent(
         onCloseDrawer
     ) {
         listOf(
+            DrawerItemSpec("Home / Dashboard", Icons.Default.Home) {
+                onCloseDrawer()
+            },
             DrawerItemSpec("Attendance Record", Icons.Default.HowToReg) {
                 onCloseDrawer()
                 onNavigateToAttendance()

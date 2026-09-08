@@ -366,7 +366,8 @@ data class AssignmentDto(
 data class AssignmentSubmissionRequest(
     @SerializedName("submission_url") val submissionLink: String,
     val assignment: String? = null,
-    @SerializedName("submission_text") val submissionText: String? = null
+    @SerializedName("submission_text") val submissionText: String? = null,
+    @SerializedName("github_repo_url") val githubRepoUrl: String? = null
 )
 
 data class SubmissionDto(

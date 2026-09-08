@@ -57,6 +57,53 @@ object NetworkUtils {
             )
         }
     }
+
+    /**
+     * Extracts a readable error description from Django REST Framework or API JSON responses.
+     */
+    fun parseBackendErrorMessage(errorBody: String?): String? {
+        if (errorBody.isNullOrBlank()) return null
+        return runCatching {
+            val trimmed = errorBody.trim()
+            if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+                return trimmed.take(200)
+            }
+            if (trimmed.startsWith("[")) {
+                val array = org.json.JSONArray(trimmed)
+                if (array.length() > 0) return array.optString(0) else return null
+            }
+            val json = org.json.JSONObject(trimmed)
+            when {
+                json.has("detail") -> json.optString("detail")
+                json.has("error") -> json.optString("error")
+                json.has("message") -> json.optString("message")
+                json.has("non_field_errors") -> {
+                    val arr = json.optJSONArray("non_field_errors")
+                    if (arr != null && arr.length() > 0) arr.optString(0) else json.optString("non_field_errors")
+                }
+                json.has("submission_url") -> {
+                    val arr = json.optJSONArray("submission_url")
+                    val msg = if (arr != null && arr.length() > 0) arr.optString(0) else json.optString("submission_url")
+                    "Submission URL: $msg"
+                }
+                json.has("assignment") -> {
+                    val arr = json.optJSONArray("assignment")
+                    val msg = if (arr != null && arr.length() > 0) arr.optString(0) else json.optString("assignment")
+                    "Assignment: $msg"
+                }
+                else -> {
+                    val keys = json.keys()
+                    if (keys.hasNext()) {
+                        val firstKey = keys.next()
+                        val value = json.opt(firstKey)
+                        val msg = if (value is org.json.JSONArray && value.length() > 0) value.optString(0) else value?.toString().orEmpty()
+                        val cleanKey = firstKey.replace("_", " ").replaceFirstChar { it.uppercase() }
+                        "$cleanKey: $msg"
+                    } else null
+                }
+            }
+        }.getOrNull()
+    }
 }
 
 data class NetworkErrorInfo(

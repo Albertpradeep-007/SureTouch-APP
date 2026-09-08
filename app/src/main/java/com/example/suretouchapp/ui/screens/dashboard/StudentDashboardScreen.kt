@@ -376,6 +376,7 @@ fun StudentDashboardScreen(
     var submissionSubmitted by remember { mutableStateOf(false) }
 
     if (showTimetableScreen) {
+        BackHandler { showTimetableScreen = false }
         TimetableScreen(
             tokenManager = tokenManager,
             onBack = { showTimetableScreen = false }
@@ -384,11 +385,13 @@ fun StudentDashboardScreen(
     }
 
     if (showAttendanceScreen) {
+        BackHandler { showAttendanceScreen = false }
         AttendanceScreen(tokenManager = tokenManager, onNavigateBack = { showAttendanceScreen = false })
         return
     }
 
     if (showGradesScreen) {
+        BackHandler { showGradesScreen = false }
         BackendConnectionGate(
             isLoading = isDashboardLoading,
             isConnected = isConnected,
@@ -407,6 +410,7 @@ fun StudentDashboardScreen(
     }
 
     if (showFeedbackScreen) {
+        BackHandler { showFeedbackScreen = false }
         FeedbackScreen(
             tokenManager = tokenManager,
             onBack = { showFeedbackScreen = false }
@@ -415,6 +419,7 @@ fun StudentDashboardScreen(
     }
 
     if (showLifeSkillsScreen) {
+        BackHandler { showLifeSkillsScreen = false }
         LifeSkillsScreen(
             tokenManager = tokenManager,
             onBack = { showLifeSkillsScreen = false }
@@ -423,11 +428,16 @@ fun StudentDashboardScreen(
     }
 
     if (showSoftSkillsScreen) {
+        BackHandler { showSoftSkillsScreen = false }
         SoftSkillsScreen(
             tokenManager = tokenManager,
             onBack = { showSoftSkillsScreen = false }
         )
         return
+    }
+
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
     }
 
     BackendConnectionGate(
@@ -608,7 +618,8 @@ fun StudentDashboardScreen(
                             isLinkedinActionLoading = false
                         }
                     },
-                    isProfilePending = isProfilePending
+                    isProfilePending = isProfilePending,
+                    tokenManager = tokenManager
                 )
 
                 // Profile Incomplete Popup Dialog
@@ -1189,7 +1200,8 @@ fun CleanTimetableDashboardView(
     isGithubActionLoading: Boolean = false,
     onGithubAction: () -> Unit = {},
     onLinkedinAction: () -> Unit = {},
-    isProfilePending: Boolean = false
+    isProfilePending: Boolean = false,
+    tokenManager: TokenManager? = null
 ) {
     var showCustomizeSheet by rememberSaveable { mutableStateOf(false) }
     val completedGrades = dashboardSnapshot.grades.filter { it.marks != null }
@@ -1343,9 +1355,9 @@ fun CleanTimetableDashboardView(
         )
     )
 
-    val defaultTileTitles = gridModules.take(9).map { it.title }.toSet()
+    val defaultTileTitles = remember(gridModules) { gridModules.take(9).map { it.title }.toSet() }
     var enabledTileTitles by rememberSaveable(stateSaver = QuickAccessSelectionSaver) {
-        mutableStateOf(defaultTileTitles)
+        mutableStateOf(tokenManager?.getQuickAccessTitles("STUDENT") ?: defaultTileTitles)
     }
     val visibleGridModules = gridModules.filter { it.title in enabledTileTitles }
 
@@ -2007,6 +2019,7 @@ fun CleanTimetableDashboardView(
                                 } else {
                                     enabledTileTitles + tile.title
                                 }
+                                tokenManager?.saveQuickAccessTitles("STUDENT", enabledTileTitles)
                             }
                             .padding(horizontal = 8.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -2042,6 +2055,7 @@ fun CleanTimetableDashboardView(
                                 } else {
                                     enabledTileTitles + tile.title
                                 }
+                                tokenManager?.saveQuickAccessTitles("STUDENT", enabledTileTitles)
                             },
                             colors = CheckboxDefaults.colors(checkedColor = ColorPrimaryPurple)
                         )
@@ -2054,7 +2068,10 @@ fun CleanTimetableDashboardView(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedButton(
-                        onClick = { enabledTileTitles = defaultTileTitles },
+                        onClick = {
+                            enabledTileTitles = defaultTileTitles
+                            tokenManager?.resetQuickAccessTitles("STUDENT")
+                        },
                         modifier = Modifier.weight(1f),
                         border = BorderStroke(1.dp, ColorPrimaryPurple)
                     ) {
@@ -2108,6 +2125,7 @@ internal fun ProfessionalGradesScreen(
     snapshot: DashboardSnapshot,
     onBack: () -> Unit
 ) {
+    BackHandler { onBack() }
     val percentage = snapshot.screeningPercentage?.trim()?.takeIf { it.isNotEmpty() }?.let {
         if (it.endsWith("%")) it else "$it%"
     } ?: "--"

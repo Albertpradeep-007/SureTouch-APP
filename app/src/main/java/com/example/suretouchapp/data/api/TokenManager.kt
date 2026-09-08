@@ -468,6 +468,19 @@ class TokenManager internal constructor(
     fun isLoggedIn(): Boolean = !getAccessToken().isNullOrEmpty() || prefs.getBoolean("offline_session", false)
 
     fun hasVerifiedIdentity(): Boolean = isLoggedIn() && !prefs.getBoolean("session_identity_pending", false)
+
+    fun getQuickAccessTitles(role: String = "STUDENT"): Set<String>? = synchronized(sessionLock) {
+        val raw = prefs.getStringSet("quick_access_titles_${role.uppercase()}", null)
+        return raw?.toSet()
+    }
+
+    fun saveQuickAccessTitles(role: String = "STUDENT", titles: Set<String>) = synchronized(sessionLock) {
+        prefs.edit().putStringSet("quick_access_titles_${role.uppercase()}", titles.toSet()).apply()
+    }
+
+    fun resetQuickAccessTitles(role: String = "STUDENT") = synchronized(sessionLock) {
+        prefs.edit().remove("quick_access_titles_${role.uppercase()}").apply()
+    }
 }
 
 data class CachedApplicationSnapshot(

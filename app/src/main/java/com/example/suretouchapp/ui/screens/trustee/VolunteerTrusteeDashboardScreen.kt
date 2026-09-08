@@ -296,6 +296,7 @@ fun VolunteerTrusteeDashboardScreen(
                         item { OperationsCard(summary, isLoading, onNavigateToProgrammes) }
                         item {
                             QuickAccess(
+                                tokenManager = tokenManager,
                                 onAttendance = onNavigateToAttendance,
                                 onProgrammes = onNavigateToProgrammes,
                                 onVolunteers = onNavigateToPeople,
@@ -792,6 +793,7 @@ private fun Metric(value: String, label: String, icon: ImageVector, tint: Color,
 
 @Composable
 private fun QuickAccess(
+    tokenManager: TokenManager? = null,
     onAttendance: () -> Unit,
     onProgrammes: () -> Unit,
     onVolunteers: () -> Unit,
@@ -821,7 +823,8 @@ private fun QuickAccess(
         Shortcut("Request Form", "Request admin help", Icons.Default.SupportAgent, Color(0xFFE53935), Color(0xFFFFECE9), onSupport)
     )
     var showCustomizer by remember { mutableStateOf(false) }
-    var visibleTitles by remember { mutableStateOf(shortcuts.map { it.title }.toSet()) }
+    val defaultTitles = remember(shortcuts) { shortcuts.map { it.title }.toSet() }
+    var visibleTitles by remember { mutableStateOf(tokenManager?.getQuickAccessTitles("VOLUNTEER") ?: defaultTitles) }
     val visibleShortcuts = shortcuts.filter { it.title in visibleTitles }
     Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -850,11 +853,17 @@ private fun QuickAccess(
                 Column {
                     shortcuts.forEach { item ->
                         Row(Modifier.fillMaxWidth().clickable {
-                            visibleTitles = if (item.title in visibleTitles && visibleTitles.size > 3) visibleTitles - item.title else visibleTitles + item.title
+                            visibleTitles = (if (item.title in visibleTitles && visibleTitles.size > 3) visibleTitles - item.title else visibleTitles + item.title).also {
+                                tokenManager?.saveQuickAccessTitles("VOLUNTEER", it)
+                            }
                         }, verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = item.title in visibleTitles,
-                                onCheckedChange = { checked -> visibleTitles = if (checked) visibleTitles + item.title else if (visibleTitles.size > 3) visibleTitles - item.title else visibleTitles },
+                                onCheckedChange = { checked ->
+                                    visibleTitles = (if (checked) visibleTitles + item.title else if (visibleTitles.size > 3) visibleTitles - item.title else visibleTitles).also {
+                                        tokenManager?.saveQuickAccessTitles("VOLUNTEER", it)
+                                    }
+                                },
                                 colors = CheckboxDefaults.colors(checkedColor = Purple)
                             )
                             Text(item.title, color = Ink, fontSize = 13.sp)
@@ -863,7 +872,7 @@ private fun QuickAccess(
                 }
             },
             confirmButton = { Button(onClick = { showCustomizer = false }, colors = ButtonDefaults.buttonColors(containerColor = Purple)) { Text("Done") } },
-            dismissButton = { TextButton(onClick = { visibleTitles = shortcuts.map { it.title }.toSet() }) { Text("Reset") } }
+            dismissButton = { TextButton(onClick = { visibleTitles = defaultTitles; tokenManager?.resetQuickAccessTitles("VOLUNTEER") }) { Text("Reset") } }
         )
     }
 }

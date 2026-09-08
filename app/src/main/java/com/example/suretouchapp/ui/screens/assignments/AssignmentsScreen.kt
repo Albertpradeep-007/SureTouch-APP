@@ -1,5 +1,7 @@
 package com.example.suretouchapp.ui.screens.assignments
 
+import androidx.activity.compose.BackHandler
+
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 
 import androidx.compose.animation.AnimatedVisibility
@@ -121,6 +123,17 @@ fun AssignmentsScreen(
     var selectedAssignmentForFeedback by remember { mutableStateOf<AssignmentItem?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     var submissionInputLink by remember { mutableStateOf("") }
+    var submissionErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    BackHandler {
+        if (selectedAssignmentForSubmission != null) {
+            selectedAssignmentForSubmission = null
+        } else if (selectedAssignmentForFeedback != null) {
+            selectedAssignmentForFeedback = null
+        } else {
+            onBack()
+        }
+    }
     var isSubmitting by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     var isConnected by remember { mutableStateOf(true) }
@@ -549,6 +562,7 @@ fun AssignmentsScreen(
                                                 onClick = {
                                                     selectedAssignmentForSubmission = item
                                                     submissionInputLink = item.submittedLink ?: ""
+                                                    submissionErrorMessage = null
                                                 },
                                                 colors = ButtonDefaults.buttonColors(containerColor = ColorPrimaryPurple),
                                                 shape = RoundedCornerShape(8.dp),
@@ -570,6 +584,7 @@ fun AssignmentsScreen(
                                                 onClick = {
                                                     selectedAssignmentForSubmission = item
                                                     submissionInputLink = item.submittedLink ?: ""
+                                                    submissionErrorMessage = null
                                                 },
                                                 shape = RoundedCornerShape(8.dp),
                                                 border = BorderStroke(1.dp, ColorPrimaryPurple),
@@ -625,14 +640,45 @@ fun AssignmentsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                         OutlinedTextField(
                             value = submissionInputLink,
-                            onValueChange = { submissionInputLink = it },
+                            onValueChange = {
+                                submissionInputLink = it
+                                if (submissionErrorMessage != null) submissionErrorMessage = null
+                            },
                             label = { Text("Submission Link (GitHub / Google Drive)") },
                             placeholder = { Text("https://github.com/username/project") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = RoundedCornerShape(8.dp),
-                            colors = SureFormDefaults.outlinedTextFieldColors()
+                            colors = SureFormDefaults.outlinedTextFieldColors(),
+                            isError = submissionErrorMessage != null
                         )
+                        if (!submissionErrorMessage.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.ErrorOutline,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = submissionErrorMessage!!,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 },
                 confirmButton = {
@@ -640,27 +686,69 @@ fun AssignmentsScreen(
                     Button(
                         onClick = {
                             if (!isConnected) return@Button
-                            if (submissionInputLink.isBlank()) return@Button
+                            val rawInput = submissionInputLink.trim()
+                            if (rawInput.isBlank()) {
+                                submissionErrorMessage = "Please enter your submission link."
+                                return@Button
+                            }
+                            val cleanLink = when {
+                                rawInput.startsWith("http://", ignoreCase = true) || rawInput.startsWith("https://", ignoreCase = true) -> rawInput
+                                rawInput.contains(".") -> "https://$rawInput"
+                                else -> rawInput
+                            }
+                            if (!cleanLink.startsWith("http://", ignoreCase = true) && !cleanLink.startsWith("https://", ignoreCase = true)) {
+                                submissionErrorMessage = "Please enter a valid link (e.g. https://github.com/... or Google Drive URL)."
+                                return@Button
+                            }
+
                             isSubmitting = true
+                            submissionErrorMessage = null
                             scope.launch {
                                 val api = ApiClient.getService(tokenManager)
-                                val cleanLink = submissionInputLink.trim()
+                                val isGithub = cleanLink.contains("github.com", ignoreCase = true)
                                 val req = AssignmentSubmissionRequest(
                                     submissionLink = cleanLink,
                                     assignment = target.id,
-                                    submissionText = cleanLink
+                                    submissionText = cleanLink,
+                                    githubRepoUrl = if (isGithub) cleanLink else null
                                 )
-                                val response = if (!target.submissionId.isNullOrBlank()) {
+                                var response = if (!target.submissionId.isNullOrBlank()) {
                                     val patchRes = runCatching {
-                                        api.patchSubmission(target.submissionId, mapOf(
+                                        val patchMap = mutableMapOf<String, Any>(
                                             "submission_url" to cleanLink,
                                             "submission_text" to cleanLink
-                                        ))
+                                        )
+                                        if (isGithub) patchMap["github_repo_url"] = cleanLink
+                                        api.patchSubmission(target.submissionId, patchMap)
                                     }.getOrNull()
                                     if (patchRes?.isSuccessful == true) patchRes
                                     else runCatching { api.submitAssignment(req) }.getOrNull()
                                 } else {
                                     runCatching { api.submitAssignment(req) }.getOrNull()
+                                }
+
+                                // Fallback: if assignment submission indicates unique constraint or already exists, lookup and PATCH
+                                if (response == null || !response.isSuccessful) {
+                                    val errStr = runCatching { response?.errorBody()?.string() }.getOrNull()
+                                    val isDuplicate = (response?.code() == 400 || response?.code() == 409) &&
+                                        (errStr?.contains("unique", ignoreCase = true) == true || errStr?.contains("already", ignoreCase = true) == true)
+                                    if (isDuplicate || target.submissionId.isNullOrBlank()) {
+                                        val existingSub = runCatching { api.getSubmissions() }.getOrNull()
+                                            ?.body()?.results?.firstOrNull { it.assignment == target.id }
+                                        if (existingSub != null) {
+                                            val fallbackPatch = runCatching {
+                                                val patchMap = mutableMapOf<String, Any>(
+                                                    "submission_url" to cleanLink,
+                                                    "submission_text" to cleanLink
+                                                )
+                                                if (isGithub) patchMap["github_repo_url"] = cleanLink
+                                                api.patchSubmission(existingSub.id, patchMap)
+                                            }.getOrNull()
+                                            if (fallbackPatch?.isSuccessful == true) {
+                                                response = fallbackPatch
+                                            }
+                                        }
+                                    }
                                 }
 
                                 if (response?.isSuccessful == true) {
@@ -676,10 +764,23 @@ fun AssignmentsScreen(
                                         )
                                     }
                                     selectedAssignmentForSubmission = null
+                                    submissionErrorMessage = null
                                     android.widget.Toast.makeText(context, "Assignment submitted successfully.", android.widget.Toast.LENGTH_SHORT).show()
                                     loadAssignments()
                                 } else {
-                                    android.widget.Toast.makeText(context, "Unable to submit the assignment. Please check connection and try again.", android.widget.Toast.LENGTH_SHORT).show()
+                                    val errorBodyStr = runCatching { response?.errorBody()?.string() }.getOrNull()
+                                    val backendMessage = NetworkUtils.parseBackendErrorMessage(errorBodyStr)
+                                    val finalError = when {
+                                        !backendMessage.isNullOrBlank() -> backendMessage
+                                        response != null && response.code() == 400 -> "Invalid submission link or format. Please verify your link."
+                                        response != null && (response.code() == 401 || response.code() == 403) -> "Submission rejected: Authorization issue."
+                                        response != null && response.code() == 404 -> "Assignment not found on server."
+                                        response != null && response.code() >= 500 -> "SURE Trust server error (${response.code()}). Please try again shortly."
+                                        !NetworkUtils.isNetworkAvailable(context) -> "No Internet Connection. Please check your connection and try again."
+                                        else -> "Submission could not be completed. Please try again."
+                                    }
+                                    submissionErrorMessage = finalError
+                                    android.widget.Toast.makeText(context, finalError, android.widget.Toast.LENGTH_LONG).show()
                                 }
                                 isSubmitting = false
                             }

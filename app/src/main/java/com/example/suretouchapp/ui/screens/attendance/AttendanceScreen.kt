@@ -1,5 +1,6 @@
 package com.example.suretouchapp.ui.screens.attendance
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -78,6 +79,7 @@ private fun resolveStudentName(student: StudentProfileDto): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
+    BackHandler { onNavigateBack() }
     val isStudent = tokenManager.getUserRole().equals("STUDENT", ignoreCase = true)
     val context = androidx.compose.ui.platform.LocalContext.current
     var records by remember { mutableStateOf<List<AttendanceDto>>(emptyList()) }

@@ -627,6 +627,7 @@ fun MentorDashboardScreen(
                     )
                     when (selectedTab) {
                         0 -> MentorHomeContent(
+                            tokenManager = tokenManager,
                             summary = summary,
                             isLoading = isLoading,
                             isReadOnly = isSelectedCohortReadOnly,
@@ -1132,6 +1133,7 @@ private fun MentorNavItem(modifier: Modifier, icon: ImageVector, label: String, 
 // ============================================================
 @Composable
 private fun MentorHomeContent(
+    tokenManager: TokenManager? = null,
     summary: MentorSummary,
     isLoading: Boolean,
     isReadOnly: Boolean,
@@ -1270,6 +1272,7 @@ private fun MentorHomeContent(
         }
         item {
             MentorQuickAccessSection(
+                tokenManager = tokenManager,
                 onCourses = onCourses,
                 onStudents = onStudents,
                 onAssignments = onAssignments,
@@ -1560,6 +1563,7 @@ private data class QuickTile(val title: String, val subtitle: String, val icon: 
 
 @Composable
 private fun MentorQuickAccessSection(
+    tokenManager: TokenManager? = null,
     onCourses: () -> Unit,
     onStudents: () -> Unit,
     onAssignments: () -> Unit,
@@ -1585,7 +1589,8 @@ private fun MentorQuickAccessSection(
         QuickTile("Messages",      "Send by role",         Icons.AutoMirrored.Filled.Message,    Color(0xFFDB2777), Color(0xFFFCE7F3), onMessages),
         QuickTile("Request Form",  "Request admin help",   Icons.Default.SupportAgent,            Color(0xFFB45309), Color(0xFFFFF7ED), onSupport)
     )
-    var visibleTitles by remember { mutableStateOf(allTiles.map { it.title }.toSet()) }
+    val defaultTitles = remember(allTiles) { allTiles.map { it.title }.toSet() }
+    var visibleTitles by remember { mutableStateOf(tokenManager?.getQuickAccessTitles("MENTOR") ?: defaultTitles) }
     var showCustomizer by remember { mutableStateOf(false) }
     val tiles = allTiles.filter { it.title in visibleTitles }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -1616,14 +1621,18 @@ private fun MentorQuickAccessSection(
                     allTiles.forEach { tile ->
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable {
-                                visibleTitles = if (tile.title in visibleTitles && visibleTitles.size > 3) visibleTitles - tile.title else visibleTitles + tile.title
+                                visibleTitles = (if (tile.title in visibleTitles && visibleTitles.size > 3) visibleTitles - tile.title else visibleTitles + tile.title).also {
+                                    tokenManager?.saveQuickAccessTitles("MENTOR", it)
+                                }
                             }.padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
                                 checked = tile.title in visibleTitles,
                                 onCheckedChange = { checked ->
-                                    visibleTitles = if (checked) visibleTitles + tile.title else if (visibleTitles.size > 3) visibleTitles - tile.title else visibleTitles
+                                    visibleTitles = (if (checked) visibleTitles + tile.title else if (visibleTitles.size > 3) visibleTitles - tile.title else visibleTitles).also {
+                                        tokenManager?.saveQuickAccessTitles("MENTOR", it)
+                                    }
                                 },
                                 colors = CheckboxDefaults.colors(checkedColor = MC_Primary)
                             )
@@ -1633,7 +1642,7 @@ private fun MentorQuickAccessSection(
                 }
             },
             confirmButton = { Button(onClick = { showCustomizer = false }, colors = ButtonDefaults.buttonColors(containerColor = MC_Primary)) { Text("Done") } },
-            dismissButton = { TextButton(onClick = { visibleTitles = allTiles.map { it.title }.toSet() }) { Text("Reset") } }
+            dismissButton = { TextButton(onClick = { visibleTitles = defaultTitles; tokenManager?.resetQuickAccessTitles("MENTOR") }) { Text("Reset") } }
         )
     }
 }

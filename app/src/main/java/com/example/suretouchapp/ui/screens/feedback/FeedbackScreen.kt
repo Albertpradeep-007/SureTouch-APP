@@ -1,5 +1,7 @@
 package com.example.suretouchapp.ui.screens.feedback
 
+import androidx.activity.compose.BackHandler
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,6 +56,7 @@ fun FeedbackScreen(
     tokenManager: TokenManager,
     onBack: () -> Unit
 ) {
+    BackHandler { onBack() }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Classes & Tutor Review", "General & App Support")
 

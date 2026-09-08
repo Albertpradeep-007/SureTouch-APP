@@ -1,5 +1,7 @@
 package com.example.suretouchapp.ui.screens.timetable
 
+import androidx.activity.compose.BackHandler
+
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -117,6 +119,7 @@ fun TimetableScreen(
     onBack: () -> Unit,
     onNavigateToLiveClass: () -> Unit = {}
 ) {
+    BackHandler { onBack() }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val semanticColors = sureSemanticColors()

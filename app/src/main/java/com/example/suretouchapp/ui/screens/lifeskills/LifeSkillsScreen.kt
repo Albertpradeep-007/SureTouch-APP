@@ -1,5 +1,7 @@
 package com.example.suretouchapp.ui.screens.lifeskills
 
+import androidx.activity.compose.BackHandler
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -63,6 +65,7 @@ fun LifeSkillsScreen(
     tokenManager: TokenManager,
     onBack: () -> Unit
 ) {
+    BackHandler { onBack() }
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
