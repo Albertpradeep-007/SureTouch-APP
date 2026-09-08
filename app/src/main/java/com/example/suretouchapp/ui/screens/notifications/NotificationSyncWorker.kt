@@ -34,51 +34,22 @@ class NotificationSyncWorker(
 
             runCatching { MobilePushRegistration.register(context, tokenManager, accountSession) }
 
-            // 1. Fetch & sync announcements
-            runCatching {
-                val annResp = api.getAnnouncements()
-                if (annResp.isSuccessful) {
-                    val list = annResp.body()?.results.orEmpty()
-                    tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncAnnouncements(context, list) }
-                }
+            val list = com.example.suretouchapp.data.repository.NotificationRepository(tokenManager).load()
+            tokenManager.withCurrentSession(accountSession) {
+                SureProEdNotificationManager.syncUnread(context, list, completeSnapshot = true)
             }
-
-            // 2. Fetch & sync notifications
-            runCatching {
-                val notifResp = api.getNotifications()
-                if (notifResp.isSuccessful) {
-                    val list = notifResp.body()?.results.orEmpty()
-                    tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncUnread(context, list) }
-                }
-            }
-
-            // 3. Fetch & sync attendance / class schedules & 10-minute alarms
-            runCatching {
-                val attResp = api.getAttendance(pageSize = 500)
-                if (attResp.isSuccessful) {
-                    val sessions = attResp.body()?.results.orEmpty()
-                    tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncTimetableAndClasses(context, sessions) }
-                }
-            }
-
-            // 4. Fetch & sync assignments & grades
-            runCatching {
-                val assignResp = api.getAssignments()
-                if (assignResp.isSuccessful) {
-                    val assignments = assignResp.body()?.results.orEmpty()
-                    tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncAssignments(context, assignments) }
-
-                    val subResp = api.getSubmissions()
-                    if (subResp.isSuccessful) {
-                        val submissions = subResp.body()?.results.orEmpty()
-                        tokenManager.withCurrentSession(accountSession) { SureProEdNotificationManager.syncSubmissionsAndGrades(context, submissions, assignments) }
-                    }
+            val attendance = api.getAttendance(pageSize = 500)
+            if (attendance.isSuccessful) {
+                tokenManager.withCurrentSession(accountSession) {
+                    SureProEdNotificationManager.syncTimetableAndClasses(context, attendance.body()?.results.orEmpty())
                 }
             }
 
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Result.retry()
+            if (!tokenManager.isCurrentSession(accountSession) || runAttemptCount >= 4) Result.success() else Result.retry()
         }
     }
 

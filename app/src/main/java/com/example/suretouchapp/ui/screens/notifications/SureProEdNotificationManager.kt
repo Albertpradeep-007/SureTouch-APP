@@ -25,6 +25,8 @@ import com.example.suretouchapp.data.model.AttendanceDto
 import com.example.suretouchapp.data.model.NotificationDto
 import com.example.suretouchapp.data.model.SubmissionDto
 import com.example.suretouchapp.data.repository.isCancelledSession
+import com.example.suretouchapp.data.repository.latestNotifications
+import com.example.suretouchapp.data.repository.notificationVersion
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -69,7 +71,7 @@ object SureProEdNotificationManager {
                 this.vibrationPattern = vibrationPattern
                 enableLights(true)
                 lightColor = 0xFF7C3AED.toInt()
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             },
             NotificationChannel(CHANNEL_CLASS_REMINDERS, "Class Schedule & Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "15-minute upcoming class reminders and newly scheduled live classes with Google Meet links"
@@ -78,7 +80,7 @@ object SureProEdNotificationManager {
                 this.vibrationPattern = vibrationPattern
                 enableLights(true)
                 lightColor = 0xFFDC2626.toInt()
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             },
             NotificationChannel(CHANNEL_ACADEMIC, "Academic and Cohort Updates", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Screening, student verification, cohort assignment, and timetable changes"
@@ -87,7 +89,7 @@ object SureProEdNotificationManager {
                 this.vibrationPattern = vibrationPattern
                 enableLights(true)
                 lightColor = 0xFF2563EB.toInt()
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             },
             NotificationChannel(CHANNEL_LEARNING, "Classes and Assignments", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Live classes, attendance, assignments, module tests, and grades"
@@ -96,7 +98,7 @@ object SureProEdNotificationManager {
                 this.vibrationPattern = vibrationPattern
                 enableLights(true)
                 lightColor = 0xFF059669.toInt()
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             },
             NotificationChannel(CHANNEL_COMMUNITY, "SURE TRUST Activities", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Tree plantation, blood donation, life skills, and helping-society activities"
@@ -110,7 +112,7 @@ object SureProEdNotificationManager {
                 this.vibrationPattern = vibrationPattern
                 enableLights(true)
                 lightColor = 0xFFF59E0B.toInt()
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             }
         )
         manager.createNotificationChannels(channels)
@@ -166,30 +168,7 @@ object SureProEdNotificationManager {
     }
 
     fun syncAnnouncements(context: Context, announcements: List<AnnouncementDto>) {
-        if (!canPost(context) || announcements.isEmpty()) return
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val delivered = prefs.getStringSet(KEY_DELIVERED_ANNOUNCEMENT_IDS, emptySet()).orEmpty().toMutableSet()
-        
-        val activeList = announcements
-            .filter { it.isActive }
-            .sortedWith(compareByDescending<AnnouncementDto> { it.isPinned }.thenByDescending { it.createdAt?.ifBlank { it.id } ?: it.id })
-        var hasDeliveredNew = false
-
-        for (item in activeList) {
-            if (item.id !in delivered) {
-                showAnnouncementNotification(context, item)
-                delivered += item.id
-                hasDeliveredNew = true
-            }
-        }
-
-        if (hasDeliveredNew) {
-            playNotificationSound(context)
-        }
-
-        prefs.edit()
-            .putStringSet(KEY_DELIVERED_ANNOUNCEMENT_IDS, delivered.toList().takeLast(200).toSet())
-            .apply()
+        // Personal notifications are synchronized from the authoritative API feed.
     }
 
     fun showAnnouncementNotification(context: Context, announcement: AnnouncementDto) {
@@ -231,26 +210,7 @@ object SureProEdNotificationManager {
     }
 
     fun syncAssignments(context: Context, assignments: List<AssignmentDto>) {
-        if (!canPost(context) || assignments.isEmpty()) return
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val delivered = prefs.getStringSet(KEY_DELIVERED_ASSIGNMENT_IDS, emptySet()).orEmpty().toMutableSet()
-        var hasNew = false
-
-        for (assignment in assignments) {
-            if (assignment.id.isNotBlank() && assignment.id !in delivered) {
-                showAssignmentNotification(context, assignment)
-                delivered += assignment.id
-                hasNew = true
-            }
-        }
-
-        if (hasNew) {
-            playNotificationSound(context)
-        }
-
-        prefs.edit()
-            .putStringSet(KEY_DELIVERED_ASSIGNMENT_IDS, delivered.toList().takeLast(200).toSet())
-            .apply()
+        // Personal notifications are synchronized from the authoritative API feed.
     }
 
     fun showAssignmentNotification(context: Context, assignment: AssignmentDto) {
@@ -297,59 +257,7 @@ object SureProEdNotificationManager {
         submissions: List<SubmissionDto>,
         assignments: List<AssignmentDto> = emptyList()
     ) {
-        if (!canPost(context)) return
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val deliveredGrades = prefs.getStringSet(KEY_DELIVERED_GRADE_IDS, emptySet()).orEmpty().toMutableSet()
-        val assignmentMap = assignments.associateBy { it.id }
-        var hasNewGrade = false
-
-        for (submission in submissions) {
-            val isEvaluated = submission.evaluated || !submission.marksObtained.isNullOrBlank() || submission.passed != null
-            if (isEvaluated) {
-                val scoreKey = "${submission.id}_${submission.marksObtained}_${submission.evaluated}"
-                if (scoreKey !in deliveredGrades) {
-                    val assignmentTitle = assignmentMap[submission.assignment]?.title ?: "Assignment"
-                    val score = submission.marksObtained ?: "Evaluated"
-                    val feedback = submission.feedback ?: if (submission.passed == true) "Passed! Well done." else "Evaluation completed."
-                    showGradeNotification(
-                        context = context,
-                        id = submission.id,
-                        title = assignmentTitle,
-                        gradeOrScore = score,
-                        feedback = feedback
-                    )
-                    deliveredGrades += scoreKey
-                    hasNewGrade = true
-                }
-            }
-        }
-
-        for (assignment in assignments) {
-            val hasGrade = !assignment.grade.isNullOrBlank() || assignment.score != null || assignment.status?.uppercase() in setOf("GRADED", "EVALUATED")
-            if (hasGrade) {
-                val gradeKey = "${assignment.id}_grade_${assignment.grade}_${assignment.score}"
-                if (gradeKey !in deliveredGrades) {
-                    val score = assignment.grade ?: assignment.score?.let { "$it Marks" } ?: "Graded"
-                    showGradeNotification(
-                        context = context,
-                        id = assignment.id,
-                        title = assignment.title.ifBlank { "Cohort Assignment" },
-                        gradeOrScore = score,
-                        feedback = "Your score/grade has been published."
-                    )
-                    deliveredGrades += gradeKey
-                    hasNewGrade = true
-                }
-            }
-        }
-
-        if (hasNewGrade) {
-            playNotificationSound(context)
-        }
-
-        prefs.edit()
-            .putStringSet(KEY_DELIVERED_GRADE_IDS, deliveredGrades.toList().takeLast(200).toSet())
-            .apply()
+        // Personal notifications are synchronized from the authoritative API feed.
     }
 
     fun showGradeNotification(
@@ -396,27 +304,53 @@ object SureProEdNotificationManager {
         notifyIfAllowed(context, ("grade_" + id).hashCode(), builder.build())
     }
 
-    fun syncUnread(context: Context, notifications: List<NotificationDto>) {
-        if (!canPost(context)) return
+    fun syncUnread(context: Context, notifications: List<NotificationDto>, completeSnapshot: Boolean = false) {
+        val manager = com.example.suretouchapp.data.api.TokenManager(context)
+        val session = manager.getSessionId()
+        manager.withCurrentSession(session) {
+            if (!manager.isLoggedIn()) return@withCurrentSession
+            val owner = runCatching {
+                val payload = manager.getAccessToken()!!.split('.')[1]
+                val json = String(android.util.Base64.decode(payload, android.util.Base64.URL_SAFE))
+                org.json.JSONObject(json).getString("user_id")
+            }.getOrNull()
+            if (owner != null && notifications.any { it.user != owner }) return@withCurrentSession
+            syncCurrentUnread(context, notifications, completeSnapshot)
+        }
+    }
+
+    @Synchronized
+    private fun syncCurrentUnread(context: Context, notifications: List<NotificationDto>, completeSnapshot: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val delivered = prefs.getStringSet(KEY_DELIVERED_IDS, emptySet()).orEmpty().toMutableSet()
-        var hasNew = false
-
-        val sortedList = notifications
-            .filter { !it.isRead && it.id !in delivered }
-            .sortedByDescending { it.createdAt.ifBlank { it.id } }
-
-        sortedList.take(5).forEach { notification ->
-            show(context, notification)
-            delivered += notification.id
-            hasNew = true
+        val latest = latestNotifications(notifications)
+        if (completeSnapshot) {
+            val current = latest.map { it.id }.toSet()
+            (delivered - current).forEach { id ->
+                dismissNotification(context, id)
+                prefs.edit().remove("version_$id").apply()
+                prefs.edit().putBoolean("deleted_$id", true).apply()
+                delivered.remove(id)
+            }
         }
-
-        if (hasNew) {
-            playNotificationSound(context)
+        latest.forEach { item ->
+            if (prefs.getBoolean("deleted_${item.id}", false) && !completeSnapshot) return@forEach
+            val version = notificationVersion(item)
+            val previous = prefs.getString("version_${item.id}", null)
+            val older = previous != null && runCatching {
+                java.time.Instant.parse(version) < java.time.Instant.parse(previous)
+            }.getOrDefault(false)
+            if (!older) {
+                if (completeSnapshot) prefs.edit().remove("deleted_${item.id}").apply()
+                if (item.isRead) dismissNotification(context, item.id)
+                else if (canPost(context) && (item.id !in delivered || previous != version)) show(context, item)
+                if (item.isRead || canPost(context)) {
+                    delivered += item.id
+                    prefs.edit().putString("version_${item.id}", version).apply()
+                }
+            }
         }
-
-        prefs.edit().putStringSet(KEY_DELIVERED_IDS, delivered.toList().takeLast(200).toSet()).apply()
+        prefs.edit().putStringSet(KEY_DELIVERED_IDS, delivered).apply()
     }
 
     fun syncTimetableAndClasses(context: Context, sessions: List<AttendanceDto>) {
@@ -435,6 +369,7 @@ object SureProEdNotificationManager {
             val isRescheduled = status == "RESCHEDULED"
 
             if (isCancelled) {
+                cancelClassAlarm(context, session.id)
                 val cancelKey = "${session.id}_cancelled_${session.notes.orEmpty()}"
                 if (cancelKey !in deliveredCancelled) {
                     showClassCancelledNotification(context, session)
@@ -445,6 +380,7 @@ object SureProEdNotificationManager {
             }
 
             if (isRescheduled) {
+                cancelClassAlarm(context, session.id)
                 val reschedKey = "${session.id}_rescheduled_${session.date}_${session.startTime.orEmpty()}"
                 if (reschedKey !in deliveredRescheduled) {
                     showClassRescheduledNotification(context, session)
@@ -554,6 +490,7 @@ object SureProEdNotificationManager {
             .setSubText("SURE ProEd • Timetable")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setSound(defaultSoundUri)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVibrate(longArrayOf(0, 300, 200, 300))
@@ -562,7 +499,7 @@ object SureProEdNotificationManager {
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
-        notifyIfAllowed(context, ("scheduled_" + session.id).hashCode(), builder.build())
+        showClassState(context, session.id, builder.build())
     }
 
     fun showClassCancelledNotification(context: Context, session: AttendanceDto) {
@@ -602,7 +539,7 @@ object SureProEdNotificationManager {
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
-        notifyIfAllowed(context, ("cancelled_" + session.id).hashCode(), builder.build())
+        showClassState(context, session.id, builder.build())
     }
 
     fun showClassRescheduledNotification(context: Context, session: AttendanceDto) {
@@ -642,7 +579,7 @@ object SureProEdNotificationManager {
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
-        notifyIfAllowed(context, ("rescheduled_" + session.id).hashCode(), builder.build())
+        showClassState(context, session.id, builder.build())
     }
 
     fun showUpcomingClassReminder(
@@ -688,7 +625,23 @@ object SureProEdNotificationManager {
 
         builder.addAction(R.drawable.ic_sureproed_notification, "Open class", pendingIntent)
 
-        notifyIfAllowed(context, ("reminder_15m_" + sessionId).hashCode(), builder.build())
+        showClassState(context, sessionId, builder.build())
+    }
+
+    private fun showClassState(context: Context, id: String, notification: android.app.Notification) {
+        val system = NotificationManagerCompat.from(context)
+        listOf("scheduled_", "cancelled_", "rescheduled_", "reminder_15m_").forEach {
+            system.cancel((it + id).hashCode())
+        }
+        notifyIfAllowed(context, ("class_state_" + id).hashCode(), notification)
+    }
+
+    private fun cancelClassAlarm(context: Context, id: String) {
+        val pending = PendingIntent.getBroadcast(context, id.hashCode(),
+            Intent(context, ClassScheduleAlarmReceiver::class.java),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) ?: return
+        (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)?.cancel(pending)
+        pending.cancel()
     }
 
     fun parseClassStartTimeMillis(dateStr: String?, timeStr: String?): Long? {
@@ -792,6 +745,7 @@ object SureProEdNotificationManager {
             .setSubText("SURE ProEd • ${category.label}")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setSound(defaultSoundUri)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVibrate(longArrayOf(0, 300, 200, 300))

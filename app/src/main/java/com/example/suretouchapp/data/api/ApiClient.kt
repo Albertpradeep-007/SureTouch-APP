@@ -24,6 +24,7 @@ object ApiClient {
     @Volatile private var apiService: ApiService? = null
     private var apiSessionId: String? = null
     private val refreshLock = Any()
+    internal var testServiceFactory: ((TokenManager, String) -> ApiService)? = null
 
     fun resolveServerUrl(value: String): String {
         val trimmed = value.trim()
@@ -40,6 +41,7 @@ object ApiClient {
 
     fun getService(tokenManager: TokenManager): ApiService = synchronized(this) {
         val sessionId = tokenManager.getSessionId()
+        if (BuildConfig.DEBUG) testServiceFactory?.let { return@synchronized it(tokenManager, sessionId) }
         apiService?.takeIf { apiSessionId == sessionId }
             ?: createService(tokenManager, sessionId).also {
                 apiService = it
@@ -47,7 +49,7 @@ object ApiClient {
             }
     }
 
-    private fun createService(tokenManager: TokenManager, sessionId: String): ApiService {
+    internal fun createService(tokenManager: TokenManager, sessionId: String, baseUrl: String = BASE_URL): ApiService {
             val logging = HttpLoggingInterceptor().apply {
                 // BODY logging materially slows large list responses and may expose student data.
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
@@ -56,7 +58,7 @@ object ApiClient {
             val authInterceptor = Interceptor { chain ->
                 val request = tokenManager.withCurrentSession(sessionId) {
                     chain.request().newBuilder().apply {
-                        tokenManager.getAccessToken()?.takeIf(String::isNotBlank)?.let {
+                        tokenManager.getAccessToken()?.takeIf { it.isNotBlank() && !chain.request().url.encodedPath.contains("/auth/token/") }?.let {
                             header("Authorization", "Bearer $it")
                         }
                         header("Accept", "application/json")
@@ -97,7 +99,7 @@ object ApiClient {
                         }
 
                         val refreshRequest = Request.Builder()
-                            .url("${BASE_URL}auth/token/refresh/")
+                            .url("${baseUrl}auth/token/refresh/")
                             .post(
                                 Gson().toJson(RefreshTokenRequest(refreshToken))
                                     .toRequestBody("application/json".toMediaType())
@@ -112,17 +114,20 @@ object ApiClient {
                             .execute()
                         refreshResponse.use { tokenResponse ->
                             if (!tokenResponse.isSuccessful) {
-                                tokenManager.logoutIfCurrentSession(sessionId)
-                                return@synchronized null
+                                if (tokenResponse.code == 400 || tokenResponse.code == 401) {
+                                    tokenManager.logoutIfCurrentSession(sessionId)
+                                    return@synchronized null
+                                }
+                                throw java.io.IOException("Account refresh temporarily unavailable. Please retry.")
                             }
                             val refreshed = runCatching {
                                 Gson().fromJson(tokenResponse.body?.string(), TokenResponse::class.java)
                             }.getOrNull()
                             if (refreshed == null) {
-                                tokenManager.logoutIfCurrentSession(sessionId)
-                                return@synchronized null
+                                throw java.io.IOException("Invalid refresh response. Please retry.")
                             }
-                            if (refreshed.access.isBlank() || !tokenManager.saveRefreshedToken(
+                            if (refreshed.access.isNullOrBlank()) throw java.io.IOException("Incomplete refresh response. Please retry.")
+                            if (!tokenManager.saveRefreshedToken(
                                     sessionId, refreshed.access, refreshed.refresh ?: refreshToken
                                 )) return@synchronized null
                             response.request.newBuilder()
@@ -141,7 +146,7 @@ object ApiClient {
                 .build()
 
             val retrofit = Retrofit.Builder()
-                .baseUrl(BASE_URL)
+                .baseUrl(baseUrl)
                 .client(okHttpClient)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()

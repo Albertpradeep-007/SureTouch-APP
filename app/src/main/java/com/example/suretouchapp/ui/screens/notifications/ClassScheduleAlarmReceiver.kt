@@ -9,18 +9,14 @@ class ClassScheduleAlarmReceiver : BroadcastReceiver() {
         val manager = com.example.suretouchapp.data.api.TokenManager(context)
         val accountSession = intent.getStringExtra(EXTRA_ACCOUNT_SESSION) ?: return
         if (!manager.isLoggedIn() || !manager.isCurrentSession(accountSession)) return
-        val title = intent.getStringExtra(EXTRA_SESSION_TITLE) ?: "Live Class"
-        val startTime = intent.getStringExtra(EXTRA_START_TIME) ?: "Soon"
-        val meetingLink = intent.getStringExtra(EXTRA_MEETING_LINK)
-        val sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: System.currentTimeMillis().toString()
-
-        manager.withCurrentSession(accountSession) { SureProEdNotificationManager.showUpcomingClassReminder(
-            context = context,
-            sessionId = sessionId,
-            title = title,
-            startTime = startTime,
-            meetingLink = meetingLink
-        ) }
+        val sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: return
+        val work = androidx.work.OneTimeWorkRequestBuilder<ClassReminderWorker>()
+            .setInputData(androidx.work.workDataOf(EXTRA_ACCOUNT_SESSION to accountSession, EXTRA_SESSION_ID to sessionId))
+            .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
+            .build()
+        androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(
+            "class-reminder-$accountSession-$sessionId", androidx.work.ExistingWorkPolicy.REPLACE, work
+        )
     }
 
     companion object {

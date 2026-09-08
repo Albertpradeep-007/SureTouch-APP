@@ -153,6 +153,15 @@ fun AppNavigation(
 ) {
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
+    val accountSession = remember { mutableStateOf(tokenManager.getSessionId()) }
+    DisposableEffect(tokenManager) {
+        val prefs = context.getSharedPreferences("sure_proed_prefs", android.content.Context.MODE_PRIVATE)
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, name ->
+            if (name == "session_id" || name == null) accountSession.value = tokenManager.getSessionId()
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
     val updateState by AppUpdateManager.updateState.collectAsState()
@@ -280,7 +289,7 @@ fun AppNavigation(
     val role = tokenManager.getUserRole().trim().uppercase()
     val isUnsupportedRole = com.example.suretouchapp.data.repository.accountWorkspace(role) ==
         com.example.suretouchapp.data.repository.AccountWorkspace.UNSUPPORTED
-    val startDestination = accountDestination(tokenManager)
+    val startDestination = remember { accountDestination(tokenManager) }
 
     LaunchedEffect(tokenManager) {
         if (isUnsupportedRole && tokenManager.isLoggedIn()) {
@@ -297,7 +306,7 @@ fun AppNavigation(
     }
 
     LaunchedEffect(notificationRequestId, noticesRequestId, assignmentsRequestId, liveClassRequestId) {
-        if (tokenManager.isLoggedIn()) {
+        if (tokenManager.hasVerifiedIdentity()) {
             if (liveClassRequestId > 0) {
                 navController.navigate(Screen.LiveClass.route)
             } else if (notificationRequestId > 0) {
@@ -324,14 +333,14 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.Dashboard.route) {
+        accountComposable(Screen.Dashboard.route, accountSession) {
             if (tokenManager.getUserRole() != "STUDENT" || !tokenManager.isLoggedIn()) {
                 LaunchedEffect(Unit) {
                     navController.navigate(accountDestination(tokenManager)) {
                         popUpTo(Screen.Dashboard.route) { inclusive = true }
                     }
                 }
-                return@composable
+                return@accountComposable
             }
             StudentDashboardScreen(
                 tokenManager = tokenManager,
@@ -359,7 +368,7 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.MentorDashboard.route) {
+        accountComposable(Screen.MentorDashboard.route, accountSession) {
             MentorDashboardScreen(
                 tokenManager = tokenManager,
                 onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
@@ -381,7 +390,7 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.VolunteerTrusteeDashboard.route) {
+        accountComposable(Screen.VolunteerTrusteeDashboard.route, accountSession) {
             VolunteerTrusteeDashboardScreen(
                 tokenManager = tokenManager,
                 onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
@@ -404,21 +413,21 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.MentorMessages.route) {
+        accountComposable(Screen.MentorMessages.route, accountSession) {
             MentorMessagesScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.TrusteePeople.route) {
+        accountComposable(Screen.TrusteePeople.route, accountSession) {
             TrusteePeopleScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.TrusteeMentors.route) {
+        accountComposable(Screen.TrusteeMentors.route, accountSession) {
             TrusteePeopleScreen(
                 tokenManager = tokenManager,
                 initialFilter = "MENTORS",
@@ -426,28 +435,28 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.VolunteerTasks.route) {
+        accountComposable(Screen.VolunteerTasks.route, accountSession) {
             VolunteerTasksScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.VolunteerImpact.route) {
+        accountComposable(Screen.VolunteerImpact.route, accountSession) {
             VolunteerImpactScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.VolunteerInterviews.route) {
+        accountComposable(Screen.VolunteerInterviews.route, accountSession) {
             VolunteerInterviewsScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.VolunteerProgrammes.route) {
+        accountComposable(Screen.VolunteerProgrammes.route, accountSession) {
             VolunteerProgrammesScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() },
@@ -455,14 +464,14 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.VolunteerSchedule.route) {
+        accountComposable(Screen.VolunteerSchedule.route, accountSession) {
             VolunteerScheduleScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Courses.route) {
+        accountComposable(Screen.Courses.route, accountSession) {
             CoursesScreen(
                 tokenManager = tokenManager,
                 onBack = {
@@ -480,7 +489,7 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.EnrolledCourse.route) {
+        accountComposable(Screen.EnrolledCourse.route, accountSession) {
             EnrolledCourseScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() },
@@ -489,56 +498,56 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.Assignments.route) {
+        accountComposable(Screen.Assignments.route, accountSession) {
             AssignmentsScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Attendance.route) {
+        accountComposable(Screen.Attendance.route, accountSession) {
             AttendanceScreen(
                 tokenManager = tokenManager,
                 onNavigateBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Notifications.route) {
+        accountComposable(Screen.Notifications.route, accountSession) {
             NotificationsScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Profile.route) {
+        accountComposable(Screen.Profile.route, accountSession) {
             ProfileScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Support.route) {
+        accountComposable(Screen.Support.route, accountSession) {
             SupportRequestsScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.LifeSkillsTraining.route) {
+        accountComposable(Screen.LifeSkillsTraining.route, accountSession) {
             LifeSkillsScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.SoftSkillsTraining.route) {
+        accountComposable(Screen.SoftSkillsTraining.route, accountSession) {
             SoftSkillsScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Timetable.route) {
+        accountComposable(Screen.Timetable.route, accountSession) {
             TimetableScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() },
@@ -546,7 +555,7 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.ApplicationTracker.route) {
+        accountComposable(Screen.ApplicationTracker.route, accountSession) {
             com.example.suretouchapp.ui.screens.screening.ApplicationTrackerScreen(
                 tokenManager = tokenManager,
                 onBack = {
@@ -561,14 +570,14 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.Certificates.route) {
+        accountComposable(Screen.Certificates.route, accountSession) {
             com.example.suretouchapp.ui.screens.certificates.CertificatesScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.LiveClass.route) {
+        accountComposable(Screen.LiveClass.route, accountSession) {
             com.example.suretouchapp.ui.screens.liveclass.LiveClassScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() },
@@ -576,14 +585,14 @@ fun AppNavigation(
             )
         }
 
-        composable(Screen.MentorDesk.route) {
+        accountComposable(Screen.MentorDesk.route, accountSession) {
             com.example.suretouchapp.ui.screens.mentor.MentorDeskScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Notices.route) {
+        accountComposable(Screen.Notices.route, accountSession) {
             com.example.suretouchapp.ui.screens.notices.NoticesScreen(
                 tokenManager = tokenManager,
                 onBack = { navController.popBackStack() }
@@ -606,7 +615,7 @@ fun AppNavigation(
 }
 
 private fun accountDestination(tokenManager: TokenManager): String {
-    if (!tokenManager.isLoggedIn()) return Screen.Auth.route
+    if (!tokenManager.hasVerifiedIdentity()) return Screen.Auth.route
     return when (com.example.suretouchapp.data.repository.accountWorkspace(tokenManager.getUserRole())) {
         com.example.suretouchapp.data.repository.AccountWorkspace.STUDENT -> {
             if (tokenManager.needsCourseSelection()) Screen.Courses.route else Screen.Dashboard.route
@@ -615,4 +624,13 @@ private fun accountDestination(tokenManager: TokenManager): String {
         com.example.suretouchapp.data.repository.AccountWorkspace.VOLUNTEER -> Screen.VolunteerTrusteeDashboard.route
         com.example.suretouchapp.data.repository.AccountWorkspace.UNSUPPORTED -> Screen.Auth.route
     }
+}
+
+/** Keep sign-in alive while tokens are saved; discard each private screen's old state. */
+private fun androidx.navigation.NavGraphBuilder.accountComposable(
+    route: String,
+    sessionId: State<String>,
+    content: @Composable () -> Unit
+) {
+    composable(route) { key(sessionId.value) { content() } }
 }

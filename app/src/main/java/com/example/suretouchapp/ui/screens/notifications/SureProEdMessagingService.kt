@@ -24,7 +24,7 @@ class SureProEdMessagingService : FirebaseMessagingService() {
             .setInputData(workDataOf("account_session" to session, "notification_id" to id))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST).build()
-        WorkManager.getInstance(this).enqueueUniqueWork("mobile_push_$id", ExistingWorkPolicy.KEEP, work)
+        WorkManager.getInstance(this).enqueueUniqueWork("mobile_push_${session}_$id", ExistingWorkPolicy.APPEND_OR_REPLACE, work)
     }
 }
 
@@ -50,7 +50,10 @@ class MobilePushWorker(context: Context, params: WorkerParameters) : CoroutineWo
         return try {
             // Only the account's authenticated API can supply the notification text.
             val response = ApiClient.getService(manager).getNotification(id)
-            if (response.code() in setOf(401, 403, 404)) return Result.success()
+            if (response.code() in setOf(401, 403, 404)) {
+                manager.withCurrentSession(session) { SureProEdNotificationManager.dismissNotification(applicationContext, id) }
+                return Result.success()
+            }
             if (!response.isSuccessful) return Result.retry()
             val notification = response.body() ?: return Result.success()
             manager.withCurrentSession(session) {

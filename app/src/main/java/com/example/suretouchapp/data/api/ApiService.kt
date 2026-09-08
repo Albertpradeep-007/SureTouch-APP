@@ -190,7 +190,9 @@ interface ApiService {
 
     @POST("notifications/push/mobile/") suspend fun registerMobilePush(@Body body: ApiBody): Response<ApiBody>
     @GET("notifications/{id}/") suspend fun getNotification(@Path("id") id: String): Response<NotificationDto>
-    @GET("notifications/") suspend fun getNotifications(): Response<PaginatedResponse<NotificationDto>>
+    @GET("notifications/") suspend fun getNotifications(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<NotificationDto>>
+    @DELETE("notifications/{id}/") suspend fun deleteNotification(@Path("id") id: String): Response<Unit>
+    @POST("notifications/{id}/mark-unread/") suspend fun markNotificationUnread(@Path("id") id: String): Response<NotificationDto>
     @POST("notifications/") suspend fun sendNotification(@Body body: ApiBody): Response<NotificationDto>
     @POST("notifications/{id}/mark-read/") suspend fun markNotificationRead(@Path("id") id: String): Response<NotificationDto>
     @POST("notifications/mark-all-read/") suspend fun markAllNotificationsRead(): Response<ApiBody>

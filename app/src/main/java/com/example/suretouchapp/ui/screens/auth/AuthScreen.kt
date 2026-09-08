@@ -377,7 +377,12 @@ fun AuthScreen(
                                             if (loginRoleOptions.isNotEmpty()) matchedLoginRoles = loginRoleOptions
                                             errorMessage = if (loginRoleOptions.isEmpty()) formatApiErrorMessage(rawError, "Invalid credentials. Please verify your email and password.") else null
                                         }
+                                    } catch (e: kotlinx.coroutines.CancellationException) {
+                                        throw e
                                     } catch (e: Exception) {
+                                        // Record only the error category and code location, never credentials or responses.
+                                        val location = e.stackTrace.firstOrNull { it.className.startsWith("com.example.suretouchapp.") }
+                                        android.util.Log.w("AuthScreen", "Sign-in failed: ${e.javaClass.simpleName} at $location")
                                         errorMessage = "The SURE ProEd server is unavailable. Sign-in requires a connection."
                                     } finally {
                                         isLoading = false

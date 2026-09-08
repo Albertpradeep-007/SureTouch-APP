@@ -15,6 +15,7 @@ class TokenManager internal constructor(
         {
             androidx.core.app.NotificationManagerCompat.from(context).cancelAll()
             context.getSharedPreferences("sure_proed_notification_delivery", Context.MODE_PRIVATE).edit().clear().apply()
+            context.getSharedPreferences("sure_proed_push_registration", Context.MODE_PRIVATE).edit().clear().apply()
         }
     )
 
@@ -110,6 +111,7 @@ class TokenManager internal constructor(
     }
 
     fun startOfflineSession() = synchronized(sessionLock) {
+        clearNotifications()
         prefs.edit().clear()
             .putString(KEY_SESSION_ID, UUID.randomUUID().toString())
             .putBoolean("offline_session", true)
@@ -464,6 +466,8 @@ class TokenManager internal constructor(
     fun getMentorExperience(): Int = prefs.getInt("profile_experience", 0)
 
     fun isLoggedIn(): Boolean = !getAccessToken().isNullOrEmpty() || prefs.getBoolean("offline_session", false)
+
+    fun hasVerifiedIdentity(): Boolean = isLoggedIn() && !prefs.getBoolean("session_identity_pending", false)
 }
 
 data class CachedApplicationSnapshot(

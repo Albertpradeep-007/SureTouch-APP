@@ -66,6 +66,8 @@ fun NotificationsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val accountSession = remember { tokenManager.getSessionId() }
+    var mutationPending by remember { mutableStateOf(false) }
     var notifications by remember { mutableStateOf<List<NotificationDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var isConnected by remember { mutableStateOf(true) }
@@ -113,34 +115,22 @@ fun NotificationsScreen(
         connectionError = null
         errorTitle = null
         try {
-            val api = ApiClient.getService(tokenManager)
-            val res = api.getNotifications()
-            if (res.isSuccessful) {
-                val remoteNotifications = res.body()?.results.orEmpty().sortedByDescending { it.createdAt }
+            val remoteNotifications = com.example.suretouchapp.data.repository.NotificationRepository(tokenManager).load()
+            tokenManager.withCurrentSession(accountSession) {
                 notifications = remoteNotifications
                 tokenManager.markCourseApplicationNoticeRead()
                 mobileNotificationsEnabled = SureProEdNotificationManager.canPost(context)
                 if (mobileNotificationsEnabled) {
-                    SureProEdNotificationManager.syncUnread(context, remoteNotifications)
-                    val announcements = runCatching {
-                        api.getAnnouncements().takeIf { it.isSuccessful }?.body()?.results.orEmpty()
-                    }.getOrDefault(emptyList())
-                    if (announcements.isNotEmpty()) {
-                        SureProEdNotificationManager.syncAnnouncements(context, announcements)
-                    }
+                    SureProEdNotificationManager.syncUnread(context, remoteNotifications, completeSnapshot = true)
                 }
                 isConnected = true
                 hasLoadedOnce = true
                 isOffline = false
                 connectionError = null
                 errorTitle = null
-            } else {
-                val errorInfo = NetworkUtils.getNetworkErrorInfo(context, null)
-                isConnected = false
-                isOffline = errorInfo.isOffline
-                errorTitle = errorInfo.title
-                connectionError = errorInfo.message
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             val errorInfo = NetworkUtils.getNetworkErrorInfo(context, e)
             isConnected = false
@@ -149,6 +139,13 @@ fun NotificationsScreen(
             connectionError = errorInfo.message
         } finally {
             isLoading = false
+        }
+    }
+
+    LaunchedEffect(accountSession) {
+        while (true) {
+            kotlinx.coroutines.delay(15_000)
+            if (!mutationPending) refreshKey += 1
         }
     }
 
@@ -175,11 +172,20 @@ fun NotificationsScreen(
                     },
                     actions = {
                         if (notifications.any { !it.isRead }) {
-                            IconButton(onClick = {
-                                notifications = notifications.map { it.copy(isRead = true) }
-                                SureProEdNotificationManager.dismissAll(context)
+                            IconButton(enabled = !mutationPending, onClick = {
+                                mutationPending = true
                                 scope.launch {
-                                    runCatching { ApiClient.getService(tokenManager).markAllNotificationsRead() }
+                                    try {
+                                        tokenManager.requireCurrentSession(accountSession)
+                                        val response = ApiClient.getService(tokenManager).markAllNotificationsRead()
+                                        check(response.isSuccessful) { "Unable to mark notifications read" }
+                                        tokenManager.withCurrentSession(accountSession) {
+                                            notifications = notifications.map { it.copy(isRead = true) }
+                                            SureProEdNotificationManager.dismissAll(context)
+                                        }
+                                    } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                                    } catch (e: Exception) { connectionError = "Could not save read state. Please retry."
+                                    } finally { mutationPending = false; refreshKey += 1 }
                                 }
                             }) {
                                 Icon(Icons.Default.DoneAll, "Mark all as read", tint = Color.White)
@@ -221,15 +227,21 @@ fun NotificationsScreen(
                                 alert = alert,
                                 onClick = {
                                     val remote = notifications.firstOrNull { it.id == alert.id }
-                                    if (remote != null && !remote.isRead) {
-                                        notifications = notifications.map {
-                                            if (it.id == remote.id) it.copy(isRead = true) else it
-                                        }
-                                        SureProEdNotificationManager.dismissNotification(context, remote.id)
+                                    if (remote != null && !remote.isRead && !mutationPending) {
+                                        mutationPending = true
                                         scope.launch {
-                                            runCatching {
-                                                ApiClient.getService(tokenManager).markNotificationRead(remote.id)
-                                            }
+                                            try {
+                                                tokenManager.requireCurrentSession(accountSession)
+                                                val response = ApiClient.getService(tokenManager).markNotificationRead(remote.id)
+                                                val updated = response.takeIf { it.isSuccessful }?.body()
+                                                    ?: throw java.io.IOException("Unable to mark notification read")
+                                                tokenManager.withCurrentSession(accountSession) {
+                                                    notifications = notifications.map { if (it.id == updated.id) updated else it }
+                                                    SureProEdNotificationManager.syncUnread(context, listOf(updated))
+                                                }
+                                            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                                            } catch (e: Exception) { connectionError = "Could not save read state. Please retry."
+                                            } finally { mutationPending = false; refreshKey += 1 }
                                         }
                                     }
                                     onNavigateAction(alert.actionUrl)
@@ -395,7 +407,7 @@ private fun NotificationDto.toStudentAlert(): StudentAlert {
         ).any(searchable::contains) -> "ACADEMIC"
         else -> "ACCOUNT"
     }
-    val timestamp = createdAt.takeIf { it.isNotBlank() }
+    val timestamp = (updatedAt ?: createdAt).takeIf { it.isNotBlank() }
         ?.take(16)
         ?.replace('T', ' ')
         ?: "Just now"

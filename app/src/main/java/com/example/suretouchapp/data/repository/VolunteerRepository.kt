@@ -14,6 +14,9 @@ class VolunteerRepository(private val tokenManager: TokenManager) {
     private val service get() = ApiClient.getService(tokenManager)
 
     suspend fun loadProfile(): VolunteerProfileDto {
+        val session = tokenManager.getSessionId()
+        val identity = service.getCurrentUser().takeIf { it.isSuccessful }?.body()
+            ?: throw IOException("Unable to verify account identity")
         val response = service.getVolunteerProfiles()
         if (!response.isSuccessful) {
             throw IOException("Volunteer profile request failed (${response.code()})")
@@ -22,12 +25,11 @@ class VolunteerRepository(private val tokenManager: TokenManager) {
         val profiles = response.body()?.results.orEmpty()
         val email = tokenManager.getUserEmail().trim()
         val cachedName = tokenManager.getUserName().trim()
-        val profile = profiles.firstOrNull { it.email.equals(email, ignoreCase = true) }
-            ?: profiles.singleOrNull()
-            ?: profiles.firstOrNull { it.fullName.equals(cachedName, ignoreCase = true) }
+        val profile = profiles.singleOrNull { it.user == identity.id }
             ?: throw IOException("No volunteer profile is linked to this account")
 
         val user = loadUser(profile.user)
+        return tokenManager.withCurrentSession(session) {
         val serverName = profile.fullName.ifBlank {
             listOf(profile.firstName, profile.lastName).filter(String::isNotBlank).joinToString(" ")
         }.ifBlank {
@@ -53,12 +55,13 @@ class VolunteerRepository(private val tokenManager: TokenManager) {
             tagline = profile.occupation ?: tokenManager.getTagline()
         )
 
-        return profile.copy(
+        profile.copy(
             fullName = serverName,
             email = serverEmail,
             profilePhoto = serverPhoto?.let(ApiClient::resolveServerUrl),
             phoneNumber = user?.phoneNumber ?: tokenManager.getPhone()
         )
+        }
     }
 
     suspend fun updateProfile(

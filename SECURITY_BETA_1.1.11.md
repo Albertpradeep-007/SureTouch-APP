@@ -1,0 +1,11 @@
+# SURE ProEd 1.1.11 beta (18)
+
+Notification updates retain one ID and the newest server version. Paginated refreshes reconcile read and deleted records; session-scoped push work fetches the authorized current record. Announcement, assignment and grade alerts use backend notifications as their source. Class schedule, reminder, reschedule and cancellation alerts share one Android notification ID. Alarm delivery rechecks the current authenticated class.
+
+Account switches clear notification delivery and device registration state, discard old requests, and reset private screen state. Volunteer identity uses the authenticated user's ID. Sign-in remains mounted while saving tokens and verifying identity. Cancelled identity requests and temporary refresh/server failures retain credentials; confirmed invalid credentials still expire the session. An unverified login cannot open an account workspace.
+
+Primary changes: MainActivity.kt, AuthScreen.kt, TokenManager.kt, ApiClient.kt, ApiService.kt, AccountSessionRepository.kt, VolunteerRepository.kt, NotificationRepository.kt, NotificationState.kt, AppModels.kt, NotificationsScreen.kt, NotificationSyncWorker.kt, SureProEdMessagingService.kt, SureProEdNotificationManager.kt, ClassScheduleAlarmReceiver.kt and ClassReminderWorker.kt. Test coverage includes account identity, session switching, delayed sign-in, refresh recovery, latest notification versions, read/deletion and class updates. Auth cancellation propagates correctly; diagnostic logging records only error types and code locations.
+
+Release validation uses 34 unit tests, release lint, a signed APK build, 20 passing emulator tests, signer verification and installation over v1.1.10. Network test fixtures run only on the emulator's local server. Debug-only localhost support does not permit cleartext traffic in the release APK. Existing signing identity is retained for upgrades. The Compose UI test uses a queued test dispatcher so asynchronous HTTP completion resumes navigation on the UI test clock.
+
+The companion backend merges the current VM attendance work and passes 220 isolated PostgreSQL tests. The browser security branch preserves current remote work, passes 27 tests and a production build, and has no npm audit findings. No production users or academic records are seeded by release verification.

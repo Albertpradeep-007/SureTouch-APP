@@ -35,13 +35,14 @@ class AccountIdentityInstrumentedTest {
         assertNotEquals(AccountWorkspace.STUDENT, accountWorkspace(manager.getUserRole()))
     }
 
-    @Test fun identityFailureCannotLeaveAStudentDefaultSession() = runBlocking {
+    @Test fun temporaryIdentityFailureRetainsCredentialsWithoutOpeningAnUnverifiedWorkspace() = runBlocking {
         val manager = manager()
         val repository = AccountSessionRepository(manager) {
             Response.error<UserResponse>(500, "server error".toResponseBody())
         }
         assertTrue(runCatching { repository.verifyCurrentAccount() }.isFailure)
-        assertFalse(manager.isLoggedIn())
+        assertTrue(manager.isLoggedIn())
+        assertFalse(manager.hasVerifiedIdentity())
     }
 
     @Test fun oldIdentityResponseCannotChangeNewLogin() = runBlocking {

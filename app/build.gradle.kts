@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.suretouchapp"
         minSdk = 24
         targetSdk = 37
-        versionCode = 17
-        versionName = "1.1.10"
+        versionCode = 18
+        versionName = "1.1.11-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -72,6 +72,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

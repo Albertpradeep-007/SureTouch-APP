@@ -18,6 +18,7 @@ class AccountSessionRepository(
         val sessionId = tokenManager.getSessionId()
         try {
             val response = identityLoader()
+            if (response.code() == 401) tokenManager.logoutIfCurrentSession(sessionId)
             val user = response.takeIf { it.isSuccessful }?.body()
                 ?: throw IOException("Unable to verify your account. Please sign in again.")
             if (user.id.isNullOrBlank() || user.email.isBlank() || user.role.isNullOrBlank()) {
@@ -33,8 +34,10 @@ class AccountSessionRepository(
                 user.dateOfBirth?.let(tokenManager::saveDob)
                 user
             }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
         } catch (error: Exception) {
-            tokenManager.logoutIfCurrentSession(sessionId)
+            // Network errors and server failures do not invalidate credentials.
             throw error
         }
     }

@@ -443,7 +443,9 @@ data class NotificationDto(
     @SerializedName("created_at") val createdAt: String,
     @SerializedName("is_read") val isRead: Boolean = false,
     @SerializedName("notification_type") val notificationType: String = "INFO",
-    @SerializedName("action_url") val actionUrl: String? = null
+    @SerializedName("action_url") val actionUrl: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null,
+    val user: String? = null
 )
 
 data class StudentStatisticsDto(
