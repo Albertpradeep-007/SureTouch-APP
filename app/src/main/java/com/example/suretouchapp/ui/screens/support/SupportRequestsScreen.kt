@@ -40,6 +40,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
 import java.util.Locale
+import com.example.suretouchapp.data.repository.AccountPageLoader
+import kotlinx.coroutines.CancellationException
 
 private val SupportPurple = Color(0xFF6C2BD9)
 private val SupportInk @Composable get() = MaterialTheme.colorScheme.onSurface
@@ -55,8 +57,14 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbar = remember { SnackbarHostState() }
+    val accountSession = remember(tokenManager) { tokenManager.getSessionId() }
+    val api = remember(accountSession) { ApiClient.getService(tokenManager) }
+    val canReview = tokenManager.getUserRole().uppercase() in setOf("ADMIN", "VOLUNTEER", "TRUSTEE")
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var requests by remember { mutableStateOf<List<UserRequestDto>>(emptyList()) }
+    var receivedRequests by remember { mutableStateOf<List<UserRequestDto>>(emptyList()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    val visibleRequests = if (selectedTab == 2) receivedRequests else requests
     var isLoading by remember { mutableStateOf(true) }
     var isSubmitting by remember { mutableStateOf(false) }
     var categoryExpanded by remember { mutableStateOf(false) }
@@ -75,9 +83,25 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
 
     suspend fun loadRequests() {
         isLoading = true
-        val response = runCatching { ApiClient.getService(tokenManager).getUserRequests() }.getOrNull()
-        requests = response?.takeIf { it.isSuccessful }?.body()?.results.orEmpty()
-        isLoading = false
+        loadError = null
+        try {
+            val pages = AccountPageLoader(tokenManager)
+            val sent = pages.load("sent requests", { it: UserRequestDto -> it.id }) { api.getUserRequests(scope = "mine", page = it) }
+            val received = if (canReview) pages.load("received requests", { it: UserRequestDto -> it.id }) { api.getUserRequests(scope = "received", page = it) } else emptyList()
+            tokenManager.withCurrentSession(accountSession) {
+                requests = sent
+                receivedRequests = received
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The request may finish after logout or another account signs in.
+            // It must not surface an old-account failure in the new workspace.
+            if (!tokenManager.isCurrentSession(accountSession)) return
+            loadError = "Unable to refresh requests. Please retry."
+        } finally {
+            if (tokenManager.isCurrentSession(accountSession)) isLoading = false
+        }
     }
 
     LaunchedEffect(refreshKey) { loadRequests() }
@@ -117,7 +141,8 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
         Column(Modifier.fillMaxSize().padding(padding)) {
             PrimaryTabRow(selectedTabIndex = selectedTab, containerColor = MaterialTheme.colorScheme.surface, contentColor = SupportPurple) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("New request") }, icon = { Icon(Icons.Default.AddCircle, null) })
-                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("My requests (${requests.size})") }, icon = { Icon(Icons.Default.ConfirmationNumber, null) })
+                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("My sent (${requests.size})") }, icon = { Icon(Icons.Default.ConfirmationNumber, null) })
+                if (canReview) Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Received (${receivedRequests.size})") }, icon = { Icon(Icons.Default.Inbox, null) })
             }
 
             if (selectedTab == 0) {
@@ -179,16 +204,18 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                                         return@launch
                                     }
                                     isSubmitting = true
+                                    try {
+                                    tokenManager.requireCurrentSession(accountSession)
                                     val textType = "text/plain".toMediaTypeOrNull()
                                     val filePart = attachmentUri?.let { uri ->
-                                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                        val bytes = context.contentResolver.openInputStream(uri)?.use { com.example.suretouchapp.data.repository.DocumentPolicy.readBounded(it) }
                                         bytes?.let {
                                             val mediaType = context.contentResolver.getType(uri)?.toMediaTypeOrNull()
                                             MultipartBody.Part.createFormData("attachment", attachmentName ?: "attachment", it.toRequestBody(mediaType))
                                         }
                                     }
                                     val response = runCatching {
-                                        ApiClient.getService(tokenManager).createUserRequest(
+                                        api.createUserRequest(
                                             selectedCategory.value.toRequestBody(textType),
                                             subject.trim().toRequestBody(textType),
                                             description.trim().toRequestBody(textType),
@@ -202,7 +229,11 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                                     } else {
                                         snackbar.showSnackbar("Unable to submit request. Please try again.")
                                     }
-                                    isSubmitting = false
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (_: Exception) {
+                                        snackbar.showSnackbar("Unable to submit. Attach a file no larger than 5 MB and try again.")
+                                    } finally { isSubmitting = false }
                                 }
                             },
                             enabled = !isSubmitting,
@@ -223,16 +254,17 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (requests.isEmpty()) {
+                    if (loadError != null) item { Text(loadError.orEmpty(), color = MaterialTheme.colorScheme.error) }
+                    if (visibleRequests.isEmpty() && loadError == null) {
                         item {
                             Column(Modifier.fillMaxWidth().padding(top = 70.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(Icons.Default.TaskAlt, null, tint = SupportPurple, modifier = Modifier.size(48.dp))
                                 Spacer(Modifier.height(10.dp)); Text("No requests yet", fontWeight = FontWeight.Bold, color = SupportInk)
-                                Text("Your submitted helpdesk requests will appear here.", fontSize = 12.sp, color = SupportMuted)
+                                Text(if (selectedTab == 2) "Requests from your authorized students will appear here." else "Your submitted helpdesk requests will appear here.", fontSize = 12.sp, color = SupportMuted)
                             }
                         }
                     }
-                    items(requests, key = { it.id }) { request -> RequestTrackerCard(request) }
+                    items(visibleRequests, key = { it.id }) { request -> RequestTrackerCard(request, showSender = selectedTab == 2) }
                 }
             }
         }
@@ -240,7 +272,7 @@ fun SupportRequestsScreen(tokenManager: TokenManager, onBack: () -> Unit) {
 }
 
 @Composable
-private fun RequestTrackerCard(request: UserRequestDto) {
+private fun RequestTrackerCard(request: UserRequestDto, showSender: Boolean = false) {
     val semanticColors = sureSemanticColors()
     val (statusColor, statusContainer) = when (request.status) {
         "RESOLVED", "CLOSED" -> semanticColors.success to semanticColors.successContainer
@@ -256,6 +288,7 @@ private fun RequestTrackerCard(request: UserRequestDto) {
                     Text(request.status.replace('_', ' '), color = statusColor, fontWeight = FontWeight.Bold, fontSize = 9.5.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                 }
             }
+            if (showSender) Text(request.senderEmail ?: request.senderRole.orEmpty(), color = SupportMuted, fontSize = 11.sp)
             Text(request.subject, fontWeight = FontWeight.Bold, color = SupportInk, fontSize = 14.sp)
             Text(categoryLabel(request.category), color = SupportMuted, fontSize = 11.sp)
             Text(request.description, color = SupportMuted, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)

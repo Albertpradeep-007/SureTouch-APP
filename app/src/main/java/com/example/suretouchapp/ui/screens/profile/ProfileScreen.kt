@@ -110,7 +110,7 @@ private fun LegacyStudentProfileScreenUnused(tokenManager: TokenManager, onBack:
                         ?: error("Student profile is not available")
                     val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
                     val bytes = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        context.contentResolver.openInputStream(uri)?.use { com.example.suretouchapp.data.repository.DocumentPolicy.readBounded(it) }
                     } ?: error("The selected image could not be read")
                     val extension = mimeType.substringAfter('/', "jpg").substringBefore('+')
                     val photoPart = MultipartBody.Part.createFormData(
@@ -147,15 +147,28 @@ private fun LegacyStudentProfileScreenUnused(tokenManager: TokenManager, onBack:
                         val refreshed = profileRepository.load()
                         profileId = refreshed?.id?.takeIf(String::isNotBlank)
                     }
-                    val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val rawName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                         val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                         if (cursor.moveToFirst() && nameIndex != -1) cursor.getString(nameIndex) else "resume.pdf"
                     } ?: "resume.pdf"
 
-                    val mimeType = context.contentResolver.getType(uri) ?: "application/pdf"
+                    val ext = rawName.substringAfterLast('.', "").lowercase()
+                    if (ext != "pdf" && ext != "docx") {
+                        resumeUploadError = "Please select a valid PDF or Word (.docx) resume document."
+                        return@launch
+                    }
+                    val fileName = rawName.substringAfterLast('/').substringAfterLast('\\').replace(Regex("[\\r\\n\\x00]"), "_")
+
                     val bytes = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        context.contentResolver.openInputStream(uri)?.use { com.example.suretouchapp.data.repository.DocumentPolicy.readBounded(it) }
                     } ?: error("The selected resume file could not be read")
+
+                    val mimeType = when (ext) {
+                        "pdf" -> "application/pdf"
+                        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        "doc" -> "application/msword"
+                        else -> context.contentResolver.getType(uri) ?: "application/pdf"
+                    }
 
                     if (!profileId.isNullOrBlank()) {
                         val resumePart = MultipartBody.Part.createFormData(
@@ -163,18 +176,22 @@ private fun LegacyStudentProfileScreenUnused(tokenManager: TokenManager, onBack:
                             fileName,
                             bytes.toRequestBody(mimeType.toMediaTypeOrNull())
                         )
-                        val response = runCatching { profileRepository.uploadResume(profileId, resumePart) }.getOrNull()
+                        val response = profileRepository.uploadResume(profileId, resumePart)
                         if (response?.isSuccessful == true) {
                             profile = response.body() ?: profileRepository.load()
+
+                            resumeUploadSuccess = "Resume '$fileName' uploaded successfully!"
+                            resumeUploadError = null
+                        } else {
+                            val errMsg = NetworkUtils.parseResponseError(response)
+                            resumeUploadError = errMsg
+                            resumeUploadSuccess = null
                         }
+                    } else {
+                        resumeUploadError = "Unable to identify student profile. Please re-login."
                     }
-                    tokenManager.saveResumeDetails(
-                        resumeUrl = profile?.resume ?: profile?.resumeUrl ?: uri.toString(),
-                        fileName = fileName
-                    )
-                    resumeUploadSuccess = "Resume '$fileName' uploaded successfully!"
                 } catch (e: Exception) {
-                    resumeUploadError = "Could not upload resume. Please check your connection and try again."
+                    resumeUploadError = "Could not upload resume: ${e.localizedMessage ?: "Unknown error"}. Please check your connection."
                 } finally {
                     isResumeUploading = false
                 }
@@ -883,8 +900,8 @@ private fun ResumeAndDocumentsCard(
 ) {
     var showInAppViewer by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
-    val resumeUrl = profile?.resume?.takeIf(String::isNotBlank)
-        ?: profile?.resumeUrl?.takeIf(String::isNotBlank)
+    val resumeUrl = profile?.resumeUrl?.takeIf(String::isNotBlank)
+        ?: profile?.resume?.takeIf(String::isNotBlank)
         ?: tokenManager.getResumeUrl().ifBlank { null }
     val resumeFileName = tokenManager.getResumeName().ifBlank {
         if (resumeUrl != null) "Uploaded_Resume.pdf" else "No resume uploaded yet"
@@ -892,7 +909,7 @@ private fun ResumeAndDocumentsCard(
 
     if (showInAppViewer && !resumeUrl.isNullOrBlank()) {
         com.example.suretouchapp.ui.components.InAppDocumentViewerDialog(
-            documentUrl = resumeUrl,
+            documentUrl = ApiClient.resolveServerUrl(resumeUrl),
             documentTitle = resumeFileName,
             onDismiss = { showInAppViewer = false }
         )
@@ -957,7 +974,7 @@ private fun ResumeAndDocumentsCard(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            if (resumeUrl != null) "Verified Student Resume • Tap to View" else "PDF, DOCX, or DOC up to 10MB",
+                            if (resumeUrl != null) "Verified Student Resume • Tap to View" else "PDF or DOCX up to 5 MB",
                             fontSize = 11.5.sp,
                             color = ProfileMuted
                         )

@@ -9,6 +9,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -54,6 +55,13 @@ import com.example.suretouchapp.data.model.AttendanceDto
 import com.example.suretouchapp.data.model.NotificationDto
 import com.example.suretouchapp.data.model.VolunteerProfileDto
 import com.example.suretouchapp.data.model.VolunteerTaskDto
+import com.example.suretouchapp.data.repository.AccountPageLoader
+import com.example.suretouchapp.data.repository.AttendanceRepository
+import com.example.suretouchapp.data.repository.ClassSchedulePolicy
+import com.example.suretouchapp.data.repository.TimetableSessionPolicy
+import com.example.suretouchapp.data.repository.TimetableClassStatus
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.example.suretouchapp.data.repository.VolunteerRepository
 import com.example.suretouchapp.data.repository.isCancelledSession
 import com.example.suretouchapp.data.repository.isCompletedSession
@@ -123,6 +131,8 @@ fun VolunteerTrusteeDashboardScreen(
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val accountSession = remember(tokenManager) { tokenManager.getSessionId() }
+    val loadMutex = remember { Mutex() }
     val volunteerRepository = remember(tokenManager) { VolunteerRepository(tokenManager) }
     var summary by remember { mutableStateOf(VolunteerDashboardSummary()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -143,18 +153,20 @@ fun VolunteerTrusteeDashboardScreen(
     }
     val context = LocalContext.current
 
-    suspend fun loadDashboard() {
+    suspend fun loadDashboard() = loadMutex.withLock {
+        tokenManager.requireCurrentSession(accountSession)
         var loadSucceeded = false
         isLoading = true
         connectionError = null
         try {
             val api = ApiClient.getService(tokenManager)
+            val pages = AccountPageLoader(tokenManager)
             val payload = coroutineScope {
                 val profile = async { volunteerRepository.loadProfile() }
-                val attendance = async { api.getAttendance().requiredBody("Attendance").results }
-                val tasks = async { api.getVolunteerTasks().requiredBody("Volunteer tasks").results }
-                val announcements = async { api.getAnnouncements().requiredBody("Announcements").results }
-                val notifications = async { api.getNotifications().requiredBody("Notifications").results }
+                val attendance = async { AttendanceRepository(tokenManager).load() }
+                val tasks = async { pages.load("tasks", { it: VolunteerTaskDto -> it.id }) { api.getVolunteerTasks(page = it) } }
+                val announcements = async { pages.load("announcements", { it: AnnouncementDto -> it.id }) { api.getAnnouncements(page = it) } }
+                val notifications = async { pages.load("notifications", { it: NotificationDto -> it.id }) { api.getNotifications(page = it) } }
                 DashboardApiPayload(
                     profile = profile.await(),
                     attendance = attendance.await(),
@@ -163,18 +175,13 @@ fun VolunteerTrusteeDashboardScreen(
                     notifications = notifications.await()
                 )
             }
-            val cohortIds = payload.profile.assignedCohorts.map { it.id }.filter(String::isNotBlank).toSet()
-            val today = LocalDate.now().toString()
-            fun isSessionUpcoming(session: AttendanceDto): Boolean {
-                val isCompleted = session.isCompletedSession() || session.isCancelledSession()
-                val isPastDate = session.date.take(10) < today
-                return !isCompleted && !isPastDate
-            }
-            val upcomingSessions = payload.attendance
-                .filter { it.cohort in cohortIds && isSessionUpcoming(it) }
-                .sortedWith(compareBy<AttendanceDto> { it.date }.thenBy { it.startTime })
+            val now = ClassSchedulePolicy.now()
+            val upcomingSessions = payload.attendance.filter {
+                TimetableSessionPolicy.resolveStatus(it, now) !in setOf(TimetableClassStatus.ENDED, TimetableClassStatus.CANCELLED, TimetableClassStatus.RESCHEDULED)
+            }.sortedWith(compareBy<AttendanceDto> { it.date }.thenBy { it.startTime }.thenBy { it.id })
             val activeTaskStatuses = setOf("PENDING", "IN_PROGRESS", "OPEN", "ASSIGNED")
             val openTasks = payload.tasks.count { it.status.uppercase() in activeTaskStatuses }
+            tokenManager.withCurrentSession(accountSession) {
             summary = VolunteerDashboardSummary(
                 profileName = payload.profile.fullName,
                 profilePhoto = payload.profile.profilePhoto,
@@ -184,24 +191,32 @@ fun VolunteerTrusteeDashboardScreen(
                 announcementCount = payload.announcements.count { it.isActive },
                 unreadNotifications = payload.notifications.count { !it.isRead }
             )
-            SureProEdNotificationManager.syncUnread(context, payload.notifications)
+            SureProEdNotificationManager.syncUnread(context, payload.notifications, completeSnapshot = true)
             SureProEdNotificationManager.syncAnnouncements(context, payload.announcements)
             isConnected = true
             isOffline = false
             connectionError = null
             errorTitle = null
             loadSucceeded = true
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
+            // Drop work for a session replaced by logout or a new login. The
+            // enclosing route is recreated for the new account.
+            if (!tokenManager.isCurrentSession(accountSession)) return@withLock
             val errorInfo = NetworkUtils.getNetworkErrorInfo(context, e)
-            if (!hasLoadedOnce) {
+            run {
                 isConnected = false
                 isOffline = errorInfo.isOffline
                 errorTitle = errorInfo.title
                 connectionError = errorInfo.message
             }
         } finally {
-            if (loadSucceeded) hasLoadedOnce = true
-            isLoading = false
+            if (tokenManager.isCurrentSession(accountSession)) {
+                if (loadSucceeded) hasLoadedOnce = true
+                isLoading = false
+            }
         }
     }
 
@@ -530,8 +545,8 @@ private fun OperationsCard(summary: VolunteerDashboardSummary, isLoading: Boolea
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Volunteer overview", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                        Text("Here's your snapshot for today.", color = Color.White.copy(.9f), fontSize = 13.sp)
+                        Text("SURE ProEd", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                        Text("Volunteer overview", color = Color.White.copy(.9f), fontSize = 13.sp)
                     }
                 }
                 Spacer(Modifier.height(18.dp))
@@ -809,7 +824,7 @@ private fun QuickAccess(
     onSupport: () -> Unit
 ) {
     val shortcuts = listOf(
-        Shortcut("Volunteers", "View & manage", Icons.Default.Groups, Purple, Color(0xFFF1E9FF), onVolunteers),
+        Shortcut("Volunteers", "Cohort network", Icons.Default.Groups, Purple, Color(0xFFF1E9FF), onVolunteers),
         Shortcut("Mentors", "Mentor network", Icons.Default.School, Color(0xFFE87500), Color(0xFFFFF1E3), onMentors),
         Shortcut("Cohorts", "Active cohorts", Icons.Default.Groups, Color(0xFF079447), Color(0xFFE7F8ED), onCohorts),
         Shortcut("Attendance", "Track participation", Icons.Default.EventAvailable, Color(0xFF087EBF), Color(0xFFE8F4FC), onAttendance),
@@ -850,23 +865,43 @@ private fun QuickAccess(
             icon = { Icon(Icons.Default.Tune, null, tint = Purple) },
             title = { Text("Customize quick access") },
             text = {
-                Column {
-                    shortcuts.forEach { item ->
-                        Row(Modifier.fillMaxWidth().clickable {
-                            visibleTitles = (if (item.title in visibleTitles && visibleTitles.size > 3) visibleTitles - item.title else visibleTitles + item.title).also {
-                                tokenManager?.saveQuickAccessTitles("VOLUNTEER", it)
-                            }
-                        }, verticalAlignment = Alignment.CenterVertically) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                    contentPadding = PaddingValues(vertical = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(shortcuts, key = { it.title }) { item ->
+                        val isVisible = item.title in visibleTitles
+                        val canChange = !isVisible || visibleTitles.size > 3
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable(enabled = canChange) {
+                                    visibleTitles = if (isVisible) visibleTitles - item.title else visibleTitles + item.title
+                                    tokenManager?.saveQuickAccessTitles("VOLUNTEER", visibleTitles)
+                                }
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Checkbox(
-                                checked = item.title in visibleTitles,
+                                checked = isVisible,
+                                enabled = canChange,
                                 onCheckedChange = { checked ->
-                                    visibleTitles = (if (checked) visibleTitles + item.title else if (visibleTitles.size > 3) visibleTitles - item.title else visibleTitles).also {
-                                        tokenManager?.saveQuickAccessTitles("VOLUNTEER", it)
-                                    }
+                                    visibleTitles = if (checked) visibleTitles + item.title else visibleTitles - item.title
+                                    tokenManager?.saveQuickAccessTitles("VOLUNTEER", visibleTitles)
                                 },
                                 colors = CheckboxDefaults.colors(checkedColor = Purple)
                             )
-                            Text(item.title, color = Ink, fontSize = 13.sp)
+                            Text(
+                                text = item.title,
+                                modifier = Modifier.weight(1f).padding(start = 8.dp),
+                                color = Ink,
+                                fontSize = 13.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }

@@ -141,12 +141,12 @@ class ClassSessionPolicyTest {
         )
     }
     @Test
-    fun joinOpensExactlyTenMinutesBeforeStart() {
+    fun joinOpensExactlyFifteenMinutesBeforeStart() {
         val session = AttendanceDto(id = "boundary", date = "2026-09-07", startTime = "10:00",
             endTime = "11:00", classStatus = "SCHEDULED", meetingLink = "https://meet.google.com/test")
         val date = LocalDate.of(2026, 9, 7)
-        assertNull(LiveClassSelector.activeSession(listOf(session), date, LocalTime.of(9, 49, 59)))
-        assertSame(session, LiveClassSelector.activeSession(listOf(session), date, LocalTime.of(9, 50)))
+        assertNull(LiveClassSelector.activeSession(listOf(session), date, LocalTime.of(9, 44, 59)))
+        assertSame(session, LiveClassSelector.activeSession(listOf(session), date, LocalTime.of(9, 45)))
         assertNull(LiveClassSelector.activeSession(listOf(session.copy(classStatus = "RESCHEDULED")), date, LocalTime.of(10, 0)))
         assertNull(LiveClassSelector.activeSession(listOf(session.copy(classStatus = "COMPLETED")), date, LocalTime.of(10, 0)))
         assertNull(LiveClassSelector.activeSession(listOf(session), date, LocalTime.of(11, 16)))

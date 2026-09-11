@@ -79,12 +79,12 @@ fun AttendanceDto.isCompletedSession(): Boolean {
     }
     val parsedDate = parseSessionLocalDate(date)
     if (parsedDate != null) {
-        val today = LocalDate.now()
+        val today = ClassSchedulePolicy.now().toLocalDate()
         if (parsedDate.isBefore(today)) {
             return true
         } else if (parsedDate.isEqual(today)) {
             val parsedEnd = ClassSchedulePolicy.parseLocalTime(endTime)
-            if (parsedEnd != null && LocalTime.now().isAfter(parsedEnd.plusMinutes(15))) {
+            if (parsedEnd != null && ClassSchedulePolicy.now().toLocalTime().isAfter(parsedEnd.plusMinutes(15))) {
                 return true
             }
         }
@@ -145,6 +145,15 @@ fun calculateStudentAttendancePercentage(
 }
 
 object ClassSchedulePolicy {
+    const val EARLY_JOIN_MINUTES = 15L
+    const val JOIN_GRACE_MINUTES = 15L
+    val timeZone: java.time.ZoneId = java.time.ZoneId.of("Asia/Kolkata")
+    fun now(): LocalDateTime = LocalDateTime.now(timeZone)
+
+    fun canJoin(session: AttendanceDto, now: LocalDateTime = now()): Boolean =
+        !session.meetingLink.isNullOrBlank() &&
+            TimetableSessionPolicy.resolveStatus(session, now) == TimetableClassStatus.ONGOING
+
     fun parseLocalTime(value: String?): LocalTime? {
         val trimmed = value?.trim()?.takeIf(String::isNotBlank) ?: return null
         val timeFormatters = listOf(
@@ -235,7 +244,7 @@ object ClassSchedulePolicy {
 }
 
 object TimetableSessionPolicy {
-    fun resolveStatus(session: AttendanceDto, now: LocalDateTime = LocalDateTime.now()): TimetableClassStatus {
+    fun resolveStatus(session: AttendanceDto, now: LocalDateTime = ClassSchedulePolicy.now()): TimetableClassStatus {
         if (session.isCancelledSession()) return TimetableClassStatus.CANCELLED
         val backendStatus = session.effectiveStatus?.trim()?.uppercase(Locale.US)
             ?: session.classStatus?.trim()?.uppercase(Locale.US)
@@ -258,7 +267,7 @@ object TimetableSessionPolicy {
             return TimetableClassStatus.ENDED
         }
 
-        val earlyJoinStart = startAt.minusMinutes(10)
+        val earlyJoinStart = startAt.minusMinutes(ClassSchedulePolicy.EARLY_JOIN_MINUTES)
         return when {
             now.isBefore(earlyJoinStart) -> {
                 val isToday = now.toLocalDate().isEqual(date)
@@ -269,14 +278,14 @@ object TimetableSessionPolicy {
                     TimetableClassStatus.AWAITING_UPCOMING
                 }
             }
-            !now.isAfter(endAt.plusMinutes(15)) -> TimetableClassStatus.ONGOING
+            !now.isAfter(endAt.plusMinutes(ClassSchedulePolicy.JOIN_GRACE_MINUTES)) -> TimetableClassStatus.ONGOING
             else -> TimetableClassStatus.ENDED
         }
     }
 
     fun findNextActiveSession(
         sessions: List<AttendanceDto>,
-        now: LocalDateTime = LocalDateTime.now(),
+        now: LocalDateTime = ClassSchedulePolicy.now(),
         allowedCohorts: Set<String> = emptySet()
     ): Pair<AttendanceDto?, TimetableClassStatus> {
         val cohortFiltered = sessions.filter { session ->
@@ -285,7 +294,7 @@ object TimetableSessionPolicy {
         }
 
         // 1. Is there an active ONGOING session right now?
-        val ongoing = cohortFiltered.firstOrNull { resolveStatus(it, now) == TimetableClassStatus.ONGOING }
+        val ongoing = LiveClassSelector.orderedSessions(cohortFiltered, now).firstOrNull { resolveStatus(it, now) == TimetableClassStatus.ONGOING }
         if (ongoing != null) {
             return Pair(ongoing, TimetableClassStatus.ONGOING)
         }
@@ -308,13 +317,13 @@ object TimetableSessionPolicy {
         return Pair(nextSession, status)
     }
 
-    fun getWeekDateRange(now: LocalDate = LocalDate.now()): ClosedRange<LocalDate> {
+    fun getWeekDateRange(now: LocalDate = ClassSchedulePolicy.now().toLocalDate()): ClosedRange<LocalDate> {
         val monday = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         val sunday = now.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
         return monday..sunday
     }
 
-    fun filterCurrentWeekSessions(sessions: List<AttendanceDto>, now: LocalDate = LocalDate.now()): List<AttendanceDto> {
+    fun filterCurrentWeekSessions(sessions: List<AttendanceDto>, now: LocalDate = ClassSchedulePolicy.now().toLocalDate()): List<AttendanceDto> {
         val range = getWeekDateRange(now)
         return sessions.filter { session ->
             val date = parseSessionLocalDate(session.date) ?: return@filter false
@@ -322,7 +331,7 @@ object TimetableSessionPolicy {
         }.sortedWith(compareBy<AttendanceDto> { parseSessionLocalDate(it.date) }.thenBy { it.startTime })
     }
 
-    fun filterHistorySessions(sessions: List<AttendanceDto>, now: LocalDate = LocalDate.now()): List<AttendanceDto> {
+    fun filterHistorySessions(sessions: List<AttendanceDto>, now: LocalDate = ClassSchedulePolicy.now().toLocalDate()): List<AttendanceDto> {
         val range = getWeekDateRange(now)
         return sessions.filter { session ->
             val date = parseSessionLocalDate(session.date) ?: return@filter false
@@ -338,10 +347,25 @@ object TimetableSessionPolicy {
 }
 
 object LiveClassSelector {
+    /** Stable ordering: running classes, early join, grace period, then future classes. */
+    fun orderedSessions(sessions: List<AttendanceDto>, now: LocalDateTime = ClassSchedulePolicy.now()): List<AttendanceDto> =
+        sessions.distinctBy { it.id }.sortedWith(compareBy<AttendanceDto> { session ->
+            val date = parseSessionLocalDate(session.date)
+            val start = ClassSchedulePolicy.parseLocalTime(session.startTime)
+            val end = ClassSchedulePolicy.parseLocalTime(session.endTime) ?: start?.plusHours(1)
+            if (TimetableSessionPolicy.resolveStatus(session, now) == TimetableClassStatus.ONGOING && date != null && start != null && end != null) {
+                when {
+                    now.isBefore(LocalDateTime.of(date, start)) -> 1
+                    now.isBefore(LocalDateTime.of(date, end)) -> 0
+                    else -> 2
+                }
+            } else if (TimetableSessionPolicy.resolveStatus(session, now) in setOf(TimetableClassStatus.CANCELLED, TimetableClassStatus.RESCHEDULED, TimetableClassStatus.ENDED)) 4 else 3
+        }.thenBy { parseSessionLocalDate(it.date) }.thenBy { ClassSchedulePolicy.parseLocalTime(it.startTime) }.thenBy { it.id })
+
     fun resolveLiveClassState(
         sessions: List<AttendanceDto>,
         allowedCohorts: Set<String> = emptySet(),
-        now: LocalDateTime = LocalDateTime.now()
+        now: LocalDateTime = ClassSchedulePolicy.now()
     ): LiveClassUiState {
         val cohortFiltered = sessions.filter { session ->
             allowedCohorts.isEmpty() || session.cohort in allowedCohorts || session.cohortCode in allowedCohorts
@@ -353,7 +377,7 @@ object LiveClassSelector {
         }
 
         // Use the same exact join window as the timetable and dashboard.
-        for (session in cohortFiltered) {
+        for (session in orderedSessions(cohortFiltered, now)) {
             if (session.meetingLink.isNullOrBlank()) continue
             if (TimetableSessionPolicy.resolveStatus(session, now) != TimetableClassStatus.ONGOING) continue
             val date = parseSessionLocalDate(session.date) ?: continue
@@ -367,9 +391,6 @@ object LiveClassSelector {
         // 3. Find next future scheduled session
         val (nextSession, _) = TimetableSessionPolicy.findNextActiveSession(cohortFiltered, now, allowedCohorts)
         if (nextSession != null) {
-            if (todayCancelled != null) {
-                return LiveClassUiState.Cancelled(todayCancelled, todayCancelled.notes)
-            }
             return LiveClassUiState.AwaitingUpcoming(nextSession)
         }
 
@@ -382,8 +403,8 @@ object LiveClassSelector {
 
     fun activeSession(
         sessions: List<AttendanceDto>,
-        date: LocalDate = LocalDate.now(),
-        time: LocalTime = LocalTime.now(),
+        date: LocalDate = ClassSchedulePolicy.now().toLocalDate(),
+        time: LocalTime = ClassSchedulePolicy.now().toLocalTime(),
         allowedCohorts: Set<String> = emptySet()
     ): AttendanceDto? {
         val state = resolveLiveClassState(sessions, allowedCohorts, LocalDateTime.of(date, time))

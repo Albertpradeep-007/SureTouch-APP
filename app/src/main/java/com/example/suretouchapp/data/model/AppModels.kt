@@ -60,6 +60,7 @@ data class StudentProfileDto(
     @SerializedName("github_username") val githubUsername: String? = null,
     @SerializedName("portfolio_url") val portfolioUrl: String? = null,
     @SerializedName("resume") val resume: String? = null,
+    @SerializedName("resume_name") val resumeName: String? = null,
     @SerializedName("resume_url") val resumeUrl: String? = null,
     // Optional deployment extensions used by the student-facing profile UI.
     @SerializedName("father_name") val fatherName: String? = null,
@@ -302,6 +303,7 @@ data class AttendanceDto(
     @SerializedName("meeting_link") val meetingLink: String? = null,
     @SerializedName("recording_link") val recordingLink: String? = null,
     val notes: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null,
     @SerializedName("student_dashboard_data") val studentDashboardData: StudentAttendanceDataDto? = null,
     // Session payloads do not always include a student-specific attendance flag.
     // Defaulting to true made every scheduled class look attended (100%).

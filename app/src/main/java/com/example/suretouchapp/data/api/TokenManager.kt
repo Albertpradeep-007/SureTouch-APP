@@ -13,6 +13,10 @@ class TokenManager internal constructor(
     constructor(context: Context) : this(
         context.getSharedPreferences("sure_proed_prefs", Context.MODE_PRIVATE),
         {
+            // These directories contain only private, reproducible document copies.
+            java.io.File(context.filesDir, "resumes").deleteRecursively()
+            java.io.File(context.cacheDir, "private_documents").deleteRecursively()
+            context.cacheDir.listFiles()?.filter { it.name.startsWith("view_resume_") || it.name.startsWith("temp_resume_") }?.forEach { it.delete() }
             androidx.core.app.NotificationManagerCompat.from(context).cancelAll()
             context.getSharedPreferences("sure_proed_notification_delivery", Context.MODE_PRIVATE).edit().clear().apply()
             context.getSharedPreferences("sure_proed_push_registration", Context.MODE_PRIVATE).edit().clear().apply()
@@ -374,17 +378,31 @@ class TokenManager internal constructor(
     fun getLanguages(): List<String> = prefs.getString("profile_languages", null)?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
     fun getPortfolioUrl(): String = prefs.getString("profile_portfolio", "") ?: ""
 
-    fun saveResumeDetails(resumeUrl: String, fileName: String = "") {
-        prefs.edit()
+    fun saveResumeDetails(resumeUrl: String, fileName: String = "", localPath: String = "") {
+        val editor = prefs.edit()
             .putString("profile_resume_url", resumeUrl.trim())
             .putString("profile_resume_name", fileName.trim())
-            .apply()
+        if (localPath.isNotBlank()) {
+            editor.putString("profile_local_resume_path", localPath.trim())
+        } else {
+            // A server refresh or replacement must never retain a file from an
+            // older resume (or another login session) as a local fallback.
+            editor.remove("profile_local_resume_path")
+        }
+        editor.apply()
     }
+
+    fun saveLocalResumePath(localPath: String) {
+        prefs.edit().putString("profile_local_resume_path", localPath.trim()).apply()
+    }
+
+    fun getLocalResumePath(): String = prefs.getString("profile_local_resume_path", "") ?: ""
 
     fun clearResumeDetails() {
         prefs.edit()
             .remove("profile_resume_url")
             .remove("profile_resume_name")
+            .remove("profile_local_resume_path")
             .apply()
     }
 

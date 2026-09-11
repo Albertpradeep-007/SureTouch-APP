@@ -57,6 +57,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.util.Locale
 
 private val PrimaryPurple = Color(0xFF6D28D9)
@@ -321,7 +322,7 @@ private fun StudentProfileContent(
                     val profileId = profile?.id?.takeIf(String::isNotBlank) ?: "me"
                     val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
                     val bytes = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        context.contentResolver.openInputStream(uri)?.use { com.example.suretouchapp.data.repository.DocumentPolicy.readBounded(it) }
                     } ?: error("Failed to read image")
                     val ext = mime.substringAfter('/', "jpg").substringBefore('+')
                     val part = MultipartBody.Part.createFormData(
@@ -350,16 +351,29 @@ private fun StudentProfileContent(
             scope.launch {
                 isResumeUploading = true
                 try {
-                    val fileName = withContext(Dispatchers.IO) {
+                    val rawName = withContext(Dispatchers.IO) {
                         context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
                             ?.use { cursor ->
                                 if (cursor.moveToFirst()) cursor.getString(0) else null
                             } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "resume.pdf"
                     }
+                    val ext = rawName.substringAfterLast('.', "").lowercase()
+                    if (ext != "pdf" && ext != "docx") {
+                        Toast.makeText(context, "Please select a valid PDF or Word (.docx) resume document.", Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
+                    val fileName = rawName.substringAfterLast('/').substringAfterLast('\\').replace(Regex("[\\r\\n\\x00]"), "_")
+
                     val bytes = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        context.contentResolver.openInputStream(uri)?.use { com.example.suretouchapp.data.repository.DocumentPolicy.readBounded(it) }
                     } ?: error("Failed to read resume file")
-                    val mimeType = context.contentResolver.getType(uri) ?: "application/pdf"
+
+                    val mimeType = when (ext) {
+                        "pdf" -> "application/pdf"
+                        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        "doc" -> "application/msword"
+                        else -> context.contentResolver.getType(uri) ?: "application/pdf"
+                    }
                     val part = MultipartBody.Part.createFormData(
                         "resume", fileName, bytes.toRequestBody(mimeType.toMediaTypeOrNull())
                     )
@@ -367,21 +381,14 @@ private fun StudentProfileContent(
                     if (res.isSuccessful && res.body() != null) {
                         val updatedProfile = res.body()!!
                         onProfileUpdated(updatedProfile)
-                        val serverUrl = updatedProfile.resumeUrl?.takeIf(String::isNotBlank)
-                            ?: updatedProfile.resume?.takeIf(String::isNotBlank)
-                        if (serverUrl != null) {
-                            tokenManager.saveResumeDetails(serverUrl, fileName)
-                        } else {
-                            tokenManager.saveResumeDetails(uri.toString(), fileName)
-                        }
+
                         Toast.makeText(context, "Resume uploaded successfully!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Upload failed: ${res.code()} — please retry.", Toast.LENGTH_LONG).show()
+                        val errorMsg = com.example.suretouchapp.data.api.NetworkUtils.parseResponseError(res)
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                     }
                 } catch (e: Exception) {
-                    val fallbackName = uri.lastPathSegment?.substringAfterLast('/') ?: "resume.pdf"
-                    tokenManager.saveResumeDetails(uri.toString(), fallbackName)
-                    Toast.makeText(context, "Resume saved locally.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Upload failed: ${e.localizedMessage ?: "Unknown error"}. Please check connection.", Toast.LENGTH_LONG).show()
                 } finally {
                     isResumeUploading = false
                 }
@@ -960,6 +967,7 @@ private fun StudentProfileContent(
                 ProfileSectionCard(title = "Resume / Curriculum Vitae", icon = Icons.Default.Description, accentColor = PrimaryPurple) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (!resumeUrl.isNullOrBlank()) {
+                            val isWord = resumeName.endsWith(".docx", ignoreCase = true) || resumeName.endsWith(".doc", ignoreCase = true)
                             Card(
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -974,14 +982,14 @@ private fun StudentProfileContent(
                                 ) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = Color(0xFFEF4444).copy(alpha = 0.15f),
+                                        color = if (isWord) Color(0xFF2563EB).copy(alpha = 0.15f) else Color(0xFFEF4444).copy(alpha = 0.15f),
                                         modifier = Modifier.size(40.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
-                                                Icons.Default.PictureAsPdf,
+                                                if (isWord) Icons.Default.Description else Icons.Default.PictureAsPdf,
                                                 contentDescription = null,
-                                                tint = Color(0xFFDC2626),
+                                                tint = if (isWord) Color(0xFF2563EB) else Color(0xFFDC2626),
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -989,7 +997,7 @@ private fun StudentProfileContent(
                                     Spacer(Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = resumeName.ifBlank { "Student_Resume_CV.pdf" },
+                                            text = resumeName.ifBlank { if (isWord) "Student_Resume_CV.docx" else "Student_Resume_CV.pdf" },
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 13.5.sp,
                                             color = TextMain,
@@ -997,7 +1005,7 @@ private fun StudentProfileContent(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "Official Resume Document • Tap to View",
+                                            text = if (isWord) "Verified Word Resume • Tap to View" else "Official PDF Resume • Tap to View",
                                             fontSize = 11.5.sp,
                                             color = VerifiedGreen
                                         )
@@ -1041,7 +1049,7 @@ private fun StudentProfileContent(
                                             color = TextMain
                                         )
                                         Text(
-                                            text = "Upload your CV below to make it visible to mentors and employers",
+                                            text = "Upload your CV (PDF or DOCX) to make it visible to mentors & recruiters",
                                             fontSize = 11.5.sp,
                                             color = TextMuted
                                         )
@@ -1051,7 +1059,7 @@ private fun StudentProfileContent(
                         }
 
                         Button(
-                            onClick = { resumeLauncher.launch("application/pdf") },
+                            onClick = { resumeLauncher.launch("*/*") },
                             enabled = !isResumeUploading && isLocalBackendConnected,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
@@ -1067,7 +1075,7 @@ private fun StudentProfileContent(
                                 Spacer(Modifier.width(8.dp))
                             }
                             Text(
-                                text = if (!isLocalBackendConnected) "Upload Disabled (Offline)" else if (!resumeUrl.isNullOrBlank()) "Replace Resume (PDF)" else "Upload Resume (PDF)",
+                                text = if (!isLocalBackendConnected) "Upload Disabled (Offline)" else if (!resumeUrl.isNullOrBlank()) "Replace Resume (PDF / DOCX)" else "Upload Resume (PDF / DOCX)",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )

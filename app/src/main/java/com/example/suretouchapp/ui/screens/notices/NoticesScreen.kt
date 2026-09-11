@@ -177,9 +177,7 @@ fun NoticesScreen(
                             }
                         }
                         if (canPublish) {
-                            IconButton(onClick = { showPublishDialog = true }) {
-                                Icon(Icons.Default.AddCircleOutline, "Add Announcement", tint = Color.White)
-                            }
+
                         }
                         IconButton(onClick = { scope.launch { loadNotices() } }) {
                             Icon(Icons.Default.Refresh, "Refresh announcements", tint = Color.White)

@@ -24,12 +24,12 @@ import com.example.suretouchapp.data.model.AssignmentDto
 import com.example.suretouchapp.data.model.AttendanceDto
 import com.example.suretouchapp.data.model.NotificationDto
 import com.example.suretouchapp.data.model.SubmissionDto
+import com.example.suretouchapp.data.repository.ClassSchedulePolicy
 import com.example.suretouchapp.data.repository.isCancelledSession
 import com.example.suretouchapp.data.repository.latestNotifications
 import com.example.suretouchapp.data.repository.notificationVersion
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -51,6 +51,7 @@ object SureProEdNotificationManager {
     private const val KEY_15M_REMINDER_IDS = "reminder_15m_class_ids"
     private const val KEY_DELIVERED_CANCELLED_IDS = "delivered_cancelled_ids"
     private const val KEY_DELIVERED_RESCHEDULED_IDS = "delivered_rescheduled_ids"
+    private const val KEY_TRAY_ID_PREFIX = "tray_id_"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -151,7 +152,13 @@ object SureProEdNotificationManager {
 
     fun dismissNotification(context: Context, notificationId: String) {
         try {
-            NotificationManagerCompat.from(context).cancel(notificationId.hashCode())
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val manager = NotificationManagerCompat.from(context)
+            manager.cancel(notificationId.hashCode())
+            if (prefs.contains(KEY_TRAY_ID_PREFIX + notificationId)) {
+                manager.cancel(prefs.getInt(KEY_TRAY_ID_PREFIX + notificationId, notificationId.hashCode()))
+                prefs.edit().remove(KEY_TRAY_ID_PREFIX + notificationId).commit()
+            }
         } catch (_: Exception) {}
     }
 
@@ -324,12 +331,15 @@ object SureProEdNotificationManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val delivered = prefs.getStringSet(KEY_DELIVERED_IDS, emptySet()).orEmpty().toMutableSet()
         val latest = latestNotifications(notifications)
+        val editor = prefs.edit()
+        val toDismiss = mutableSetOf<String>()
+        val toShow = mutableListOf<NotificationDto>()
         if (completeSnapshot) {
             val current = latest.map { it.id }.toSet()
             (delivered - current).forEach { id ->
-                dismissNotification(context, id)
-                prefs.edit().remove("version_$id").apply()
-                prefs.edit().putBoolean("deleted_$id", true).apply()
+                toDismiss += id
+                editor.remove("version_$id")
+                editor.putBoolean("deleted_$id", true)
                 delivered.remove(id)
             }
         }
@@ -341,18 +351,28 @@ object SureProEdNotificationManager {
                 java.time.Instant.parse(version) < java.time.Instant.parse(previous)
             }.getOrDefault(false)
             if (!older) {
-                if (completeSnapshot) prefs.edit().remove("deleted_${item.id}").apply()
-                if (item.isRead) dismissNotification(context, item.id)
-                else if (canPost(context) && (item.id !in delivered || previous != version)) show(context, item)
+                if (completeSnapshot) editor.remove("deleted_${item.id}")
+                if (item.isRead) toDismiss += item.id
+                else if (canPost(context) && (item.id !in delivered || previous != version)) {
+                    toShow += item
+                    editor.putInt(KEY_TRAY_ID_PREFIX + item.id, trayNotificationId(item))
+                }
                 if (item.isRead || canPost(context)) {
                     delivered += item.id
-                    prefs.edit().putString("version_${item.id}", version).apply()
+                    editor.putString("version_${item.id}", version)
                 }
             }
         }
-        prefs.edit().putStringSet(KEY_DELIVERED_IDS, delivered).apply()
+        editor.putStringSet(KEY_DELIVERED_IDS, delivered)
+        // Persist the delivery version before releasing the process-wide lock.
+        // This prevents the dashboard, WorkManager and FCM from replaying the
+        // same unchanged notification when their refreshes overlap.
+        if (!editor.commit()) return
+        toDismiss.forEach { dismissNotification(context, it) }
+        toShow.forEach { show(context, it) }
     }
 
+    @Synchronized
     fun syncTimetableAndClasses(context: Context, sessions: List<AttendanceDto>) {
         if (!canPost(context) || sessions.isEmpty()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -361,48 +381,46 @@ object SureProEdNotificationManager {
         val deliveredCancelled = prefs.getStringSet(KEY_DELIVERED_CANCELLED_IDS, emptySet()).orEmpty().toMutableSet()
         val deliveredRescheduled = prefs.getStringSet(KEY_DELIVERED_RESCHEDULED_IDS, emptySet()).orEmpty().toMutableSet()
         val now = System.currentTimeMillis()
-        var hasNewAlert = false
-
         for (session in sessions) {
             val status = (session.effectiveStatus ?: session.classStatus)?.trim()?.uppercase(Locale.US)
+            val sessionVersion = sessionNotificationVersion(session)
             val isCancelled = session.isCancelledSession() || status == "CANCELLED"
             val isRescheduled = status == "RESCHEDULED"
 
             if (isCancelled) {
                 cancelClassAlarm(context, session.id)
-                val cancelKey = "${session.id}_cancelled_${session.notes.orEmpty()}"
+                val cancelKey = "${session.id}_cancelled_$sessionVersion"
                 if (cancelKey !in deliveredCancelled) {
                     showClassCancelledNotification(context, session)
                     deliveredCancelled += cancelKey
-                    hasNewAlert = true
                 }
                 continue
             }
 
             if (isRescheduled) {
                 cancelClassAlarm(context, session.id)
-                val reschedKey = "${session.id}_rescheduled_${session.date}_${session.startTime.orEmpty()}"
+                val reschedKey = "${session.id}_rescheduled_$sessionVersion"
                 if (reschedKey !in deliveredRescheduled) {
                     showClassRescheduledNotification(context, session)
                     deliveredRescheduled += reschedKey
-                    hasNewAlert = true
                 }
             }
 
-            val sessionKey = "${session.id}_${session.date}_${session.startTime.orEmpty()}"
+            // Keep the device notification in lockstep with every server-side
+            // change to this class, instead of treating only time changes as new.
+            val sessionKey = sessionVersion
             val startMillis = parseClassStartTimeMillis(session.date, session.startTime)
 
             if (sessionKey !in deliveredSchedules && !isRescheduled) {
                 if (startMillis == null || startMillis >= now - (2 * 3600 * 1000L)) {
                     showClassScheduledNotification(context, session)
                     deliveredSchedules += sessionKey
-                    hasNewAlert = true
                 }
             }
 
             if (startMillis != null) {
                 val diffMillis = startMillis - now
-                val reminderThresholdMillis = 10 * 60 * 1000L
+                val reminderThresholdMillis = ClassSchedulePolicy.EARLY_JOIN_MINUTES * 60 * 1000L
 
                 if (diffMillis in 0..reminderThresholdMillis) {
                     if (sessionKey !in delivered15mReminders) {
@@ -414,7 +432,6 @@ object SureProEdNotificationManager {
                             meetingLink = session.meetingLink
                         )
                         delivered15mReminders += sessionKey
-                        hasNewAlert = true
                     }
                 } else if (diffMillis > reminderThresholdMillis) {
                     schedule15MinAlarm(context, session, startMillis - reminderThresholdMillis)
@@ -422,16 +439,12 @@ object SureProEdNotificationManager {
             }
         }
 
-        if (hasNewAlert) {
-            playNotificationSound(context)
-        }
-
         prefs.edit()
             .putStringSet(KEY_SCHEDULED_CLASS_IDS, deliveredSchedules.toList().takeLast(200).toSet())
             .putStringSet(KEY_15M_REMINDER_IDS, delivered15mReminders.toList().takeLast(200).toSet())
             .putStringSet(KEY_DELIVERED_CANCELLED_IDS, deliveredCancelled.toList().takeLast(200).toSet())
             .putStringSet(KEY_DELIVERED_RESCHEDULED_IDS, deliveredRescheduled.toList().takeLast(200).toSet())
-            .apply()
+            .commit()
     }
 
     private fun schedule15MinAlarm(context: Context, session: AttendanceDto, triggerAtMillis: Long) {
@@ -441,9 +454,6 @@ object SureProEdNotificationManager {
             val intent = Intent(context, ClassScheduleAlarmReceiver::class.java).apply {
                 putExtra(ClassScheduleAlarmReceiver.EXTRA_ACCOUNT_SESSION, com.example.suretouchapp.data.api.TokenManager(context).getSessionId())
                 putExtra(ClassScheduleAlarmReceiver.EXTRA_SESSION_ID, session.id)
-                putExtra(ClassScheduleAlarmReceiver.EXTRA_SESSION_TITLE, session.sessionTitle ?: "Live Class")
-                putExtra(ClassScheduleAlarmReceiver.EXTRA_START_TIME, session.startTime ?: "Soon")
-                putExtra(ClassScheduleAlarmReceiver.EXTRA_MEETING_LINK, session.meetingLink)
             }
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
@@ -463,11 +473,26 @@ object SureProEdNotificationManager {
         }
     }
 
+    private fun sessionNotificationVersion(session: AttendanceDto): String = listOf(
+        session.id,
+        session.updatedAt.orEmpty(),
+        session.date,
+        session.startTime.orEmpty(),
+        session.endTime.orEmpty(),
+        session.effectiveStatus ?: session.classStatus.orEmpty(),
+        session.sessionTitle.orEmpty(),
+        session.notes.orEmpty(),
+    ).joinToString("|")
+
     fun showClassScheduledNotification(context: Context, session: AttendanceDto) {
         createChannels(context)
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val titleText = "Class Scheduled: ${session.sessionTitle?.ifBlank { "Live Session" } ?: "Live Session"}"
-        val meetInfo = if (!session.meetingLink.isNullOrBlank()) "Google Meet link attached." else "Class schedule updated."
+        val meetInfo = when {
+            session.meetingLink.isNullOrBlank() -> "Class schedule updated."
+            ClassSchedulePolicy.canJoin(session) -> "Open the app to join."
+            else -> "Join opens 15 minutes before class."
+        }
         val messageText = "Scheduled on ${session.date} at ${session.startTime ?: "scheduled time"}. $meetInfo"
 
         val launchIntent = Intent(context, MainActivity::class.java).apply {
@@ -547,7 +572,11 @@ object SureProEdNotificationManager {
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val title = session.sessionTitle?.ifBlank { session.courseName } ?: session.courseName ?: "Live Class"
         val titleText = "🗓️ Class Rescheduled: $title"
-        val meetInfo = if (!session.meetingLink.isNullOrBlank()) " Google Meet link attached." else ""
+        val meetInfo = when {
+            session.meetingLink.isNullOrBlank() -> ""
+            ClassSchedulePolicy.canJoin(session) -> " Open the app to join."
+            else -> " Join opens 15 minutes before class."
+        }
         val messageText = "This class has been rescheduled to ${session.date} at ${session.startTime ?: "scheduled time"}.$meetInfo"
 
         val launchIntent = Intent(context, MainActivity::class.java).apply {
@@ -591,7 +620,7 @@ object SureProEdNotificationManager {
     ) {
         createChannels(context)
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val titleText = "Class Starting in 10 Minutes!"
+        val titleText = "Class Starting in 15 Minutes!"
         val messageText = "$title starts at $startTime. Open the app to view the latest class details."
         val launchIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -657,7 +686,7 @@ object SureProEdNotificationManager {
                 return java.time.OffsetDateTime.parse(trimmedDate).toInstant().toEpochMilli()
             } catch (_: Exception) {}
             try {
-                return LocalDateTime.parse(trimmedDate.substringBefore("Z")).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                return LocalDateTime.parse(trimmedDate.substringBefore("Z")).atZone(ClassSchedulePolicy.timeZone).toInstant().toEpochMilli()
             } catch (_: Exception) {}
         }
 
@@ -680,12 +709,12 @@ object SureProEdNotificationManager {
             try {
                 val formatter = DateTimeFormatter.ofPattern(pattern, Locale.US)
                 val dt = LocalDateTime.parse("$cleanDate $cleanTime", formatter)
-                return dt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                return dt.atZone(ClassSchedulePolicy.timeZone).toInstant().toEpochMilli()
             } catch (_: Exception) {}
         }
         try {
             val date = LocalDate.parse(cleanDate)
-            return date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            return date.atStartOfDay(ClassSchedulePolicy.timeZone).toInstant().toEpochMilli()
         } catch (_: Exception) {}
         return null
     }
@@ -730,7 +759,7 @@ object SureProEdNotificationManager {
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            item.id.hashCode(),
+            trayNotificationId(item),
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -754,7 +783,13 @@ object SureProEdNotificationManager {
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             
-        notifyIfAllowed(context, item.id.hashCode(), builder.build())
+        notifyIfAllowed(context, trayNotificationId(item), builder.build())
+    }
+
+    private fun trayNotificationId(item: NotificationDto): Int {
+        val path = item.actionUrl?.substringBefore('?')?.trim().orEmpty()
+        val attendanceId = Regex("^/?attendance/([^/]+)/?$").matchEntire(path)?.groupValues?.getOrNull(1)
+        return attendanceId?.let { ("class_state_" + it).hashCode() } ?: item.id.hashCode()
     }
 
     private fun classify(item: NotificationDto): NotificationCategory {

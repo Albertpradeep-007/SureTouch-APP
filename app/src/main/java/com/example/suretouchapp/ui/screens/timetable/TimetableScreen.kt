@@ -123,11 +123,11 @@ fun TimetableScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val semanticColors = sureSemanticColors()
-    var now by remember { mutableStateOf(LocalDateTime.now()) }
+    var now by remember { mutableStateOf(com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()) }
 
     LaunchedEffect(Unit) {
         while (true) {
-            now = LocalDateTime.now()
+            now = com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()
             delay(15_000L)
         }
     }
@@ -138,7 +138,7 @@ fun TimetableScreen(
     }
 
     var selectedDate by remember {
-        val today = LocalDate.now()
+        val today = ClassSchedulePolicy.now().toLocalDate()
         val initial = if (today in currentWeekDays) today else currentWeekDays.first()
         mutableStateOf(initial)
     }
@@ -165,61 +165,47 @@ fun TimetableScreen(
     )
 
     val joinScope = rememberCoroutineScope()
-    fun openLink(link: String?) {
-        val session = attendance.firstOrNull {
-            it.meetingLink == link && TimetableSessionPolicy.resolveStatus(it) == TimetableClassStatus.ONGOING
-        }
+    fun openSession(sessionId: String?) {
+        val session = attendance.firstOrNull { it.id == sessionId }
         joinScope.launch { ClassJoinLauncher.join(context, tokenManager, session) }
     }
 
     LaunchedEffect(refreshTrigger) {
+        val accountSession = tokenManager.getSessionId()
         isLoading = attendance.isEmpty()
         loadError = null
         errorTitle = null
         try {
             val api = ApiClient.getService(tokenManager)
-            val response = api.getAttendance()
-            if (response.isSuccessful) {
-                val results = response.body()?.results.orEmpty()
-                if (results.isNotEmpty()) {
-                    attendance = results
-                } else {
-                    val stats = runCatching { api.getStudentStatistics() }.getOrNull()?.body()
-                    val statsSessions = stats?.upcomingSessions.orEmpty()
-                    if (statsSessions.isNotEmpty()) {
-                        attendance = statsSessions
-                    } else {
-                        attendance = results
-                    }
-                }
-                SureProEdNotificationManager.syncTimetableAndClasses(context, attendance)
+            val results = AttendanceRepository(tokenManager).load()
+            tokenManager.requireCurrentSession(accountSession)
+            val resolvedSessions = if (results.isNotEmpty()) {
+                results
+            } else {
+                val response = api.getStudentStatistics()
+                tokenManager.requireCurrentSession(accountSession)
+                response.takeIf { it.isSuccessful }?.body()?.upcomingSessions.orEmpty()
+            }
+            tokenManager.requireCurrentSession(accountSession)
+            attendance = resolvedSessions
+            SureProEdNotificationManager.syncTimetableAndClasses(context, resolvedSessions)
+            isConnected = true
+            hasLoadedOnce = true
+            isOffline = false
+            loadError = null
+        } catch (e: Exception) {
+            if (!tokenManager.isCurrentSession(accountSession)) return@LaunchedEffect
+            val stats = runCatching {
+                ApiClient.getService(tokenManager).getStudentStatistics()
+            }.getOrNull()
+            if (!tokenManager.isCurrentSession(accountSession)) return@LaunchedEffect
+            val statsSessions = stats?.takeIf { it.isSuccessful }?.body()?.upcomingSessions.orEmpty()
+            if (statsSessions.isNotEmpty()) {
+                attendance = statsSessions
+                SureProEdNotificationManager.syncTimetableAndClasses(context, statsSessions)
                 isConnected = true
                 hasLoadedOnce = true
                 isOffline = false
-                loadError = null
-            } else {
-                val stats = runCatching { api.getStudentStatistics() }.getOrNull()?.body()
-                val statsSessions = stats?.upcomingSessions.orEmpty()
-                if (statsSessions.isNotEmpty()) {
-                    attendance = statsSessions
-                    isConnected = true
-                    hasLoadedOnce = true
-                    loadError = null
-                } else {
-                    val errorInfo = NetworkUtils.getNetworkErrorInfo(context, null)
-                    isConnected = false
-                    isOffline = errorInfo.isOffline
-                    errorTitle = errorInfo.title
-                    loadError = errorInfo.message
-                }
-            }
-        } catch (e: Exception) {
-            val stats = runCatching { ApiClient.getService(tokenManager).getStudentStatistics() }.getOrNull()?.body()
-            val statsSessions = stats?.upcomingSessions.orEmpty()
-            if (statsSessions.isNotEmpty()) {
-                attendance = statsSessions
-                isConnected = true
-                hasLoadedOnce = true
                 loadError = null
             } else {
                 val errorInfo = NetworkUtils.getNetworkErrorInfo(context, e)
@@ -308,7 +294,7 @@ fun TimetableScreen(
 
     if (showDatePicker) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = (selectedHistoryDate ?: LocalDate.now())
+            initialSelectedDateMillis = (selectedHistoryDate ?: ClassSchedulePolicy.now().toLocalDate())
                 .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         )
         DatePickerDialog(
@@ -509,7 +495,7 @@ fun TimetableScreen(
 
                                     if (nextSessionStatus == TimetableClassStatus.ONGOING && !nextSession?.meetingLink.isNullOrBlank()) {
                                         Button(
-                                            onClick = { openLink(nextSession?.meetingLink) },
+                                            onClick = { openSession(nextSession?.id) },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
@@ -662,7 +648,7 @@ fun TimetableScreen(
                                     .fillMaxWidth()
                                     .clickable(enabled = isClickable) {
                                         if (slot.state == TimetableClassStatus.ONGOING) {
-                                            openLink(slot.meetingLink)
+                                            openSession(slot.id)
                                         } else {
                                             onNavigateToLiveClass()
                                         }
@@ -839,14 +825,14 @@ fun TimetableScreen(
                                             }
                                         }
 
-                                        if ((slot.state == TimetableClassStatus.ONGOING || slot.state == TimetableClassStatus.UPCOMING) && slot.hasMeetingLink) {
+                                        if (slot.state == TimetableClassStatus.ONGOING && slot.hasMeetingLink) {
                                             Spacer(Modifier.height(12.dp))
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 Button(
-                                                    onClick = { openLink(slot.meetingLink) },
+                                                    onClick = { openSession(slot.id) },
                                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
                                                     shape = RoundedCornerShape(8.dp),
                                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
@@ -871,6 +857,27 @@ fun TimetableScreen(
                                                         Spacer(Modifier.width(4.dp))
                                                         Text("Copy Code", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ColorDarkHeader)
                                                     }
+                                                }
+                                            }
+                                        } else if (slot.state == TimetableClassStatus.UPCOMING && slot.hasMeetingLink) {
+                                            Spacer(Modifier.height(10.dp))
+                                            Surface(
+                                                color = Color(0xFFFEF3C7),
+                                                shape = RoundedCornerShape(6.dp),
+                                                modifier = Modifier.fillMaxWidth().clickable { onNavigateToLiveClass() }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(Icons.Default.Lock, null, tint = Color(0xFFB45309), modifier = Modifier.size(13.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(
+                                                        "🔒 Meet link & Join button unlock 10m before class",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Color(0xFFB45309)
+                                                    )
                                                 }
                                             }
                                         }

@@ -2,6 +2,12 @@ package com.example.suretouchapp.ui.screens.mentor
 
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 import com.example.suretouchapp.ui.screens.trustee.generateAutoMeetLink
+import com.example.suretouchapp.data.repository.AccountPageLoader
+import com.example.suretouchapp.data.repository.AttendanceRepository
+import com.example.suretouchapp.data.repository.ClassJoinLauncher
+import com.example.suretouchapp.ui.components.rememberClassSessionTime
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.example.suretouchapp.data.repository.ClassSchedulePolicy
 import com.example.suretouchapp.data.repository.isCancelledSession
 import com.example.suretouchapp.data.repository.isCompletedSession
@@ -205,6 +211,8 @@ fun MentorDashboardScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val accountSession = remember(tokenManager) { tokenManager.getSessionId() }
+    val loadMutex = remember { Mutex() }
     var summary by remember { mutableStateOf(MentorSummary(name = tokenManager.getUserName(), email = tokenManager.getUserEmail())) }
     var isLoading by remember { mutableStateOf(true) }
     var isConnected by remember { mutableStateOf(true) }
@@ -254,12 +262,16 @@ fun MentorDashboardScreen(
         animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pulse_alpha"
     )
 
-    suspend fun loadData() {
+    suspend fun loadData() = loadMutex.withLock {
+        tokenManager.requireCurrentSession(accountSession)
         isLoading = true
         connectionError = null
         errorTitle = null
         try {
             val api = ApiClient.getService(tokenManager)
+            val pages = AccountPageLoader(tokenManager)
+            val identity = api.getCurrentUser().takeIf { it.isSuccessful }?.body()
+                ?: throw java.io.IOException("Unable to verify mentor identity")
             val usersRes = api.getUsers()
             if (!usersRes.isSuccessful) {
                 throw java.io.IOException("Unable to reach backend service (${usersRes.code()})")
@@ -269,25 +281,23 @@ fun MentorDashboardScreen(
                 throw java.io.IOException("Unable to retrieve verified mentor data from server.")
             }
 
-            val cohortsRes = api.getCohorts()
-            if (!cohortsRes.isSuccessful) {
-                throw java.io.IOException("Unable to fetch cohorts (${cohortsRes.code()})")
-            }
-            val allCohorts = cohortsRes.body()?.results.orEmpty()
+            val allCohorts = pages.load("cohorts", { it: CohortDto -> it.id }) { api.getCohorts(page = it) }
+            val mentorProfiles = pages.load("mentor profile", { it: MentorProfileDto -> it.id }) { api.getMentorProfiles(page = it) }
+            val mentorProfile = mentorProfiles.singleOrNull { it.user == identity.id }
 
             val payload = coroutineScope {
-                val assignments = async { api.getAssignments().body()?.results.orEmpty() }
-                val submissions = async { api.getSubmissions().body()?.results.orEmpty() }
-                val attendance = async { api.getAttendance().body()?.results.orEmpty() }
-                val notifications = async { api.getNotifications().body()?.results.orEmpty() }
-                val announcements = async { api.getAnnouncements().body()?.results.orEmpty() }
-                val students = async { api.getStudents().body()?.results.orEmpty() }
-                val courses = async { api.getCourses().body()?.results.orEmpty() }
-                val companies = async { api.getCompanies().body()?.results.orEmpty() }
-                val jobs = async { api.getJobReferences().body()?.results.orEmpty() }
-                val certificates = async { api.getCertificates().body()?.results.orEmpty() }
-                val interviews = async { api.getPreScreeningInterviews().body()?.results.orEmpty() }
-                val applications = async { api.getMyApplications().body()?.results.orEmpty() }
+                val assignments = async { pages.load("assignments", { it: AssignmentDto -> it.id }) { api.getAssignments(page = it) } }
+                val submissions = async { pages.load("submissions", { it: SubmissionDto -> it.id }) { api.getSubmissions(page = it) } }
+                val attendance = async { AttendanceRepository(tokenManager).load() }
+                val notifications = async { pages.load("notifications", { it: NotificationDto -> it.id }) { api.getNotifications(page = it) } }
+                val announcements = async { pages.load("announcements", { it: AnnouncementDto -> it.id }) { api.getAnnouncements(page = it) } }
+                val students = async { pages.load("students", { it: StudentProfileDto -> it.id }) { api.getStudents(page = it) } }
+                val courses = async { pages.load("courses", { it: CourseDto -> it.id }) { api.getCourses(page = it) } }
+                val companies = async { pages.load("companies", { it: CompanyDto -> it.id }) { api.getCompanies(page = it) } }
+                val jobs = async { pages.load("jobs", { it: JobReferenceDto -> it.id }) { api.getJobReferences(page = it) } }
+                val certificates = async { pages.load("certificates", { it: CertificateDto -> it.id }) { api.getCertificates(page = it) } }
+                val interviews = async { pages.load("interviews", { it: PreScreeningInterviewDto -> it.id }) { api.getPreScreeningInterviews(page = it) } }
+                val applications = async { pages.load("applications", { it: ApplicationDto -> it.id }) { api.getMyApplications(page = it) } }
                 listOf(assignments.await(), submissions.await(), attendance.await(), notifications.await(), students.await(), courses.await(), companies.await(), jobs.await(), certificates.await(), interviews.await(), applications.await(), announcements.await())
             }
             @Suppress("UNCHECKED_CAST") val allAssignments = payload[0] as List<AssignmentDto>
@@ -301,7 +311,7 @@ fun MentorDashboardScreen(
             @Suppress("UNCHECKED_CAST") val allCertificates = payload[8] as List<CertificateDto>
             @Suppress("UNCHECKED_CAST") val allInterviews = payload[9] as List<PreScreeningInterviewDto>
             @Suppress("UNCHECKED_CAST") val allApplications = payload[10] as List<ApplicationDto>
-            val myUserId = users.firstOrNull { it.email.equals(tokenManager.getUserEmail(), ignoreCase = true) }?.id
+            val myUserId = identity.id
             // Never fall back to every cohort: mentor access is strictly Admin-assignment scoped.
             val myCohorts = if (myUserId != null) allCohorts.filter { myUserId in it.mentors } else emptyList()
             val myCohortIds = myCohorts.map { it.id }.toSet()
@@ -328,6 +338,7 @@ fun MentorDashboardScreen(
                 interview.application.isNotBlank()
             }
             val pendingInterviewsCount = myInterviews.count { it.score.isNullOrBlank() || it.status == "SCHEDULED" || it.status == "PENDING" }
+            tokenManager.withCurrentSession(accountSession) {
             summary = MentorSummary(
                 name = tokenManager.getUserName(), email = tokenManager.getUserEmail(),
                 userId = myUserId,
@@ -340,12 +351,10 @@ fun MentorDashboardScreen(
                 allUsers = users
             )
             @Suppress("UNCHECKED_CAST") val announcements = payload[11] as List<com.example.suretouchapp.data.model.AnnouncementDto>
-            SureProEdNotificationManager.syncUnread(context, notifications)
+            SureProEdNotificationManager.syncUnread(context, notifications, completeSnapshot = true)
             SureProEdNotificationManager.syncAnnouncements(context, announcements)
             SureProEdNotificationManager.syncTimetableAndClasses(context, myAttendance)
             if (selectedCohortId !in myCohortIds) selectedCohortId = myCohorts.firstOrNull()?.id
-            val mentorProfileRes = runCatching { api.getMentorProfiles() }.getOrNull()
-            val mentorProfile = mentorProfileRes?.takeIf { it.isSuccessful }?.body()?.results?.firstOrNull()
             val serverLinkedinConnected = mentorProfile?.isLinkedinConnected == true || !mentorProfile?.linkedinUrl.isNullOrBlank() || tokenManager.getLinkedinUrl().isNotBlank()
             isLinkedinConnected = serverLinkedinConnected
             if (!serverLinkedinConnected) {
@@ -356,7 +365,14 @@ fun MentorDashboardScreen(
             isOffline = false
             connectionError = null
             errorTitle = null
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
+            // A logout or a new login can replace the session while this screen
+            // is loading. That response belongs to the old account, so discard it
+            // instead of surfacing an error or touching the replacement session.
+            if (!tokenManager.isCurrentSession(accountSession)) return@withLock
             val errorInfo = NetworkUtils.getNetworkErrorInfo(context, e)
             isConnected = false
             isOffline = errorInfo.isOffline
@@ -364,7 +380,7 @@ fun MentorDashboardScreen(
             connectionError = errorInfo.message
             summary = summary.copy(name = tokenManager.getUserName(), email = tokenManager.getUserEmail())
         } finally {
-            isLoading = false
+            if (tokenManager.isCurrentSession(accountSession)) isLoading = false
         }
     }
 
@@ -420,33 +436,22 @@ fun MentorDashboardScreen(
     )
     val drawerSummary = cohortSummary.copy(myCohorts = summary.myCohorts)
 
-    fun handleOpenMeeting(link: String) {
-        val clean = link.trim()
-        if (clean.isBlank()) {
-            Toast.makeText(context, "No meeting link provided", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val uri = if (clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true)) {
-            Uri.parse(clean)
-        } else {
-            Uri.parse("https://$clean")
-        }
-        try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-        } catch (e: Exception) {
-            Toast.makeText(context, "Unable to open meeting link: ${e.message}", Toast.LENGTH_SHORT).show()
+    fun handleOpenMeeting(session: AttendanceDto) {
+        scope.launch {
+            tokenManager.requireCurrentSession(accountSession)
+            ClassJoinLauncher.join(context, tokenManager, session)
         }
     }
 
     fun handleCreateSession(cohortId: String, title: String, date: String, startTime: String, endTime: String, meetingLink: String) {
         scope.launch {
             val api = ApiClient.getService(tokenManager)
-            val latestResponse = runCatching { api.getAttendance() }.getOrNull()
-            if (latestResponse?.isSuccessful != true) {
+            val latestResponse = runCatching { AttendanceRepository(tokenManager).load() }.getOrNull()
+            if (latestResponse == null) {
                 snackbarHostState.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
                 return@launch
             }
-            val latestSessions = latestResponse.body()?.results.orEmpty()
+            val latestSessions = latestResponse
             val conflict = ClassSchedulePolicy.findConflict(
                 latestSessions, cohortId, date, startTime, endTime
             )
@@ -479,12 +484,12 @@ fun MentorDashboardScreen(
             val session = summary.myAttendance.firstOrNull { it.id == sessionId }
                 ?: cohortAttendance.firstOrNull { it.id == sessionId }
             val api = ApiClient.getService(tokenManager)
-            val latestResponse = runCatching { api.getAttendance() }.getOrNull()
-            if (latestResponse?.isSuccessful != true) {
+            val latestResponse = runCatching { AttendanceRepository(tokenManager).load() }.getOrNull()
+            if (latestResponse == null) {
                 snackbarHostState.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
                 return@launch
             }
-            val latestSessions = latestResponse.body()?.results.orEmpty()
+            val latestSessions = latestResponse
             val conflict = session?.let {
                 ClassSchedulePolicy.findConflict(
                     latestSessions,
@@ -1157,7 +1162,7 @@ private fun MentorHomeContent(
     onCreateSession: () -> Unit = {},
     onRescheduleSession: (AttendanceDto) -> Unit = {},
     onCancelSession: (AttendanceDto) -> Unit = {},
-    onJoinMeet: (String) -> Unit = {}
+    onJoinMeet: (AttendanceDto) -> Unit = {}
 ) {
     if (isLoading) {
         Box(
@@ -1173,7 +1178,7 @@ private fun MentorHomeContent(
         return
     }
     val dateStr = remember { SimpleDateFormat("dd-MMM-yyyy", Locale.ENGLISH).format(Date()).uppercase() }
-    val apiDate = remember { SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(Date()) }
+    val apiDate = rememberClassSessionTime().toLocalDate().toString()
     val selectedCohort = summary.myCohorts.firstOrNull { it.id == selectedCohortId } ?: summary.myCohorts.firstOrNull()
     val cohortAssignments = summary.myAssignments.filter { selectedCohort == null || it.cohort == selectedCohort.id }
     val assignmentIds = cohortAssignments.map { it.id }.toSet()
@@ -1617,26 +1622,43 @@ private fun MentorQuickAccessSection(
             icon = { Icon(Icons.Default.Tune, null, tint = MC_Primary) },
             title = { Text("Customize quick access") },
             text = {
-                Column {
-                    allTiles.forEach { tile ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                    contentPadding = PaddingValues(vertical = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(allTiles, key = { it.title }) { tile ->
+                        val isVisible = tile.title in visibleTitles
+                        val canChange = !isVisible || visibleTitles.size > 3
                         Row(
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                visibleTitles = (if (tile.title in visibleTitles && visibleTitles.size > 3) visibleTitles - tile.title else visibleTitles + tile.title).also {
-                                    tokenManager?.saveQuickAccessTitles("MENTOR", it)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable(enabled = canChange) {
+                                    visibleTitles = if (isVisible) visibleTitles - tile.title else visibleTitles + tile.title
+                                    tokenManager?.saveQuickAccessTitles("MENTOR", visibleTitles)
                                 }
-                            }.padding(vertical = 2.dp),
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
-                                checked = tile.title in visibleTitles,
+                                checked = isVisible,
+                                enabled = canChange,
                                 onCheckedChange = { checked ->
-                                    visibleTitles = (if (checked) visibleTitles + tile.title else if (visibleTitles.size > 3) visibleTitles - tile.title else visibleTitles).also {
-                                        tokenManager?.saveQuickAccessTitles("MENTOR", it)
-                                    }
+                                    visibleTitles = if (checked) visibleTitles + tile.title else visibleTitles - tile.title
+                                    tokenManager?.saveQuickAccessTitles("MENTOR", visibleTitles)
                                 },
                                 colors = CheckboxDefaults.colors(checkedColor = MC_Primary)
                             )
-                            Text(tile.title, fontSize = 13.sp, color = MC_TextTitle)
+                            Text(
+                                text = tile.title,
+                                modifier = Modifier.weight(1f).padding(start = 8.dp),
+                                fontSize = 13.sp,
+                                color = MC_TextTitle,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -1674,14 +1696,15 @@ private fun MentorSessionCard(
     isReadOnly: Boolean,
     onReschedule: (AttendanceDto) -> Unit,
     onCancel: (AttendanceDto) -> Unit,
-    onJoinMeet: (String) -> Unit
+    onJoinMeet: (AttendanceDto) -> Unit
 ) {
     val (time, period) = displayTime(session.startTime)
     val completed = session.isCompletedSession()
     val isCancelled = session.isCancelledSession()
     val isRescheduled = session.classStatus.equals("RESCHEDULED", true)
     val semanticColors = sureSemanticColors()
-    val hasLink = !session.meetingLink.isNullOrBlank()
+    val now = rememberClassSessionTime()
+    val hasLink = ClassSchedulePolicy.canJoin(session, now)
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MC_Surface),
@@ -1854,7 +1877,7 @@ private fun MentorSessionCard(
                 ) {
                     if (hasLink) {
                         Button(
-                            onClick = { onJoinMeet(session.meetingLink.orEmpty()) },
+                            onClick = { onJoinMeet(session) },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D)),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             shape = RoundedCornerShape(10.dp),
@@ -1894,10 +1917,10 @@ private fun MentorSessionCard(
                         }
                     }
                 }
-            } else if (hasLink && !isCancelled) {
+            } else if (hasLink && !completed && !isCancelled) {
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { onJoinMeet(session.meetingLink.orEmpty()) }) {
+                    TextButton(onClick = { onJoinMeet(session) }) {
                         Icon(Icons.Default.Videocam, null, Modifier.size(14.dp), tint = MC_Primary)
                         Spacer(Modifier.width(4.dp))
                         Text("Open Meeting Link", fontSize = 11.sp, color = MC_Primary)
@@ -1918,7 +1941,7 @@ private fun MentorDashboardClassesSection(
     onCreateSession: () -> Unit,
     onRescheduleSession: (AttendanceDto) -> Unit,
     onCancelSession: (AttendanceDto) -> Unit,
-    onJoinMeet: (String) -> Unit
+    onJoinMeet: (AttendanceDto) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -2536,7 +2559,7 @@ private fun MentorScheduleTab(
     onCreateSessionRequest: () -> Unit,
     onRescheduleSessionRequest: (AttendanceDto) -> Unit,
     onCancelSessionRequest: (AttendanceDto) -> Unit,
-    onJoinMeet: (String) -> Unit
+    onJoinMeet: (AttendanceDto) -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {

@@ -2201,7 +2201,6 @@ private fun MentorProfileMainView(
                                 val isActive = isCohortActive(cohort)
                                 val cohortTitle = cohort.course.ifBlank { cohort.name.ifBlank { "Mentorship Module" } }
                                 val cohortCode = cohort.code.ifBlank { "ST-COHORT-${index + 1}" }
-                                val meeting = cohort.meetingLink
 
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
@@ -2307,38 +2306,9 @@ private fun MentorProfileMainView(
                                             )
                                         }
 
-                                        // Active Meeting Button OR Completed Milestone Pill
-                                        if (isActive && !meeting.isNullOrBlank()) {
-                                            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-                                            Spacer(Modifier.height(10.dp))
-                                            Surface(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable { runCatching { uriHandler.openUri(meeting) } },
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = PrimarySurePurple
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.VideoCall,
-                                                        contentDescription = null,
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                    Spacer(Modifier.width(6.dp))
-                                                    Text(
-                                                        text = "Join Live Mentorship Room",
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                }
-                                            }
-                                        } else if (!isActive) {
+                                        if (isActive) {
+                                            Text("Open Class Schedule to join. Links appear 15 minutes before class.", fontSize = 11.5.sp, color = CardMuted)
+                                        } else {
                                             Spacer(Modifier.height(8.dp))
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),

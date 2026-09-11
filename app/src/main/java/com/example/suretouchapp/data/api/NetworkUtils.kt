@@ -104,6 +104,23 @@ object NetworkUtils {
             }
         }.getOrNull()
     }
+
+    /**
+     * Extracts a descriptive error message from a Retrofit Response, or falls back to status codes.
+     */
+    fun parseResponseError(response: retrofit2.Response<*>?): String {
+        if (response == null) return "Network error. Please check your connection."
+        val rawBody = try { response.errorBody()?.string() } catch (e: Exception) { null }
+        val parsed = parseBackendErrorMessage(rawBody)
+        if (!parsed.isNullOrBlank()) return parsed
+        return when (response.code()) {
+            400 -> "Request rejected by server. Please ensure the document is a readable PDF or DOCX file."
+            401 -> "Session expired. Please log in again."
+            403 -> "You do not have permission to perform this action."
+            413 -> "Uploaded file is too large. Please upload a file under 10MB."
+            else -> "Server returned error ${response.code()}. Please try again later."
+        }
+    }
 }
 
 data class NetworkErrorInfo(

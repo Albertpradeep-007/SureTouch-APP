@@ -13,10 +13,11 @@ import retrofit2.Response
  * Adheres strictly to the user's authentic data and avoids cross-user data contamination.
  */
 class StudentProfileRepository(private val tokenManager: TokenManager) {
-    private val service get() = ApiClient.getService(tokenManager)
+    private val accountSession = tokenManager.getSessionId()
+    private val service get() = tokenManager.withCurrentSession(accountSession) { ApiClient.getService(tokenManager) }
 
     suspend fun load(): StudentProfileDto? {
-        val sessionId = tokenManager.getSessionId()
+        val sessionId = accountSession
         val email = tokenManager.getUserEmail().trim().lowercase()
 
         // 1. Fetch student profile directly via "me" endpoint
@@ -47,15 +48,7 @@ class StudentProfileRepository(private val tokenManager: TokenManager) {
             if (!photo.isNullOrBlank()) {
                 tokenManager.saveProfilePhotoUrl(photo)
             }
-            // Persist server resume URL if present, or clear stale previous account resume
-            val serverResumeUrl = matchedProfile.resumeUrl?.takeIf(String::isNotBlank)
-                ?: matchedProfile.resume?.takeIf(String::isNotBlank)
-            if (serverResumeUrl != null) {
-                val existingName = tokenManager.getResumeName().ifBlank { "Student_Resume_CV.pdf" }
-                tokenManager.saveResumeDetails(serverResumeUrl, existingName)
-            } else {
-                tokenManager.clearResumeDetails()
-            }
+            persistResume(matchedProfile)
 
             tokenManager.saveStudentProfileDetails(
                 phone = matchedProfile.phone ?: meUser?.phoneNumber ?: tokenManager.getPhone(),
@@ -122,6 +115,26 @@ class StudentProfileRepository(private val tokenManager: TokenManager) {
     suspend fun uploadPhoto(profileId: String, photo: MultipartBody.Part): Response<StudentProfileDto> =
         service.uploadStudentProfilePhoto(profileId, photo)
 
-    suspend fun uploadResume(profileId: String, resume: MultipartBody.Part): Response<StudentProfileDto> =
-        service.uploadStudentResume(profileId, resume)
+    fun persistResume(profile: StudentProfileDto) {
+        val url = profile.resumeUrl?.takeIf(String::isNotBlank) ?: profile.resume?.takeIf(String::isNotBlank)
+        if (url == null) { tokenManager.clearResumeDetails(); return }
+        val resolved = ApiClient.resolveServerUrl(url)
+        val name = profile.resumeName?.takeIf(String::isNotBlank)
+            ?: profile.resume?.substringAfterLast('/')?.substringBefore('?')?.takeIf(String::isNotBlank)
+            ?: "Resume"
+        // Save the remote URL, displayed filename, and removal of any stale local
+        // copy in one preference edit.  Clearing first used two asynchronous
+        // writes and could leave a replacement showing the older filename.
+        tokenManager.saveResumeDetails(resolved, name)
+    }
+
+    suspend fun uploadResume(profileId: String, resume: MultipartBody.Part): Response<StudentProfileDto> {
+        val session = accountSession
+        // Student uploads always target the authenticated profile, including older callers passing an ID.
+        val response = service.uploadStudentResume("me", resume)
+        tokenManager.withCurrentSession(session) {
+            response.takeIf { it.isSuccessful }?.body()?.let(::persistResume)
+        }
+        return response
+    }
 }

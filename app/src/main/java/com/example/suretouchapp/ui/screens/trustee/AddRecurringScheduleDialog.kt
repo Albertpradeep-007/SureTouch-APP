@@ -53,7 +53,7 @@ enum class ClassTypeOption(val value: String, val label: String) {
 }
 
 enum class LstBatchOption(val value: String?, val label: String) {
-    NONE(null, "---------"),
+    NONE(null, "---"),
     BATCH_1("BATCH_1", "Batch 1"),
     BATCH_2("BATCH_2", "Batch 2")
 }
@@ -257,9 +257,9 @@ fun AddRecurringScheduleDialog(
                                     selected = isSelected,
                                     onClick = {
                                         classType = option
-                                        if (option == ClassTypeOption.LST && selectedLstBatch == LstBatchOption.NONE) {
-                                            selectedLstBatch = LstBatchOption.BATCH_1
-                                        }
+                                        courseDropdownExpanded = false
+                                        cohortDropdownExpanded = false
+                                        lstBatchDropdownExpanded = false
                                     },
                                     label = { Text(option.label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                                     colors = FilterChipDefaults.filterChipColors(
@@ -379,10 +379,11 @@ fun AddRecurringScheduleDialog(
                         Spacer(modifier = Modifier.height(4.dp))
                         ExposedDropdownMenuBox(
                             expanded = lstBatchDropdownExpanded,
-                            onExpandedChange = { lstBatchDropdownExpanded = !lstBatchDropdownExpanded }
+                            onExpandedChange = { if (classType == ClassTypeOption.LST) lstBatchDropdownExpanded = !lstBatchDropdownExpanded }
                         ) {
                             OutlinedTextField(
-                                value = selectedLstBatch.label,
+                                value = if (classType == ClassTypeOption.LST) selectedLstBatch.label else LstBatchOption.NONE.label,
+                                enabled = classType == ClassTypeOption.LST,
                                 onValueChange = {},
                                 readOnly = true,
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = lstBatchDropdownExpanded) },
@@ -669,6 +670,14 @@ fun AddRecurringScheduleDialog(
                                 return@Button
                             }
 
+                            if (classType == ClassTypeOption.LST && selectedLstBatch == LstBatchOption.NONE) {
+                                errorMessage = "Select an LST batch."
+                                return@Button
+                            }
+                            if (selectedCourse != null && selectedCohort?.course != null && selectedCohort?.course != selectedCourse?.id) {
+                                errorMessage = "Select a cohort belonging to the selected course."
+                                return@Button
+                            }
                             isSubmitting = true
                             errorMessage = null
 
@@ -729,6 +738,7 @@ fun AddRecurringScheduleDialog(
                                 }
                                 val sessionPayload = mutableMapOf<String, Any?>(
                                     "title" to sessionTitle,
+                                    "class_type" to classType.value,
                                     "class_date" to nextRunDate,
                                     "start_time" to startTime.take(5),
                                     "end_time" to endTime.take(5),

@@ -11,10 +11,11 @@ import retrofit2.Response
 
 /** Keeps volunteer profile reads and writes bound to the authenticated backend user. */
 class VolunteerRepository(private val tokenManager: TokenManager) {
-    private val service get() = ApiClient.getService(tokenManager)
+    private val accountSession = tokenManager.getSessionId()
+    private val service get() = tokenManager.withCurrentSession(accountSession) { ApiClient.getService(tokenManager) }
 
     suspend fun loadProfile(): VolunteerProfileDto {
-        val session = tokenManager.getSessionId()
+        val session = accountSession
         val identity = service.getCurrentUser().takeIf { it.isSuccessful }?.body()
             ?: throw IOException("Unable to verify account identity")
         val response = service.getVolunteerProfiles()

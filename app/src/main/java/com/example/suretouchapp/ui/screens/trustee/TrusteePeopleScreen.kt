@@ -24,6 +24,8 @@ import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.StudentProfileDto
 import com.example.suretouchapp.data.model.UserResponse
+import com.example.suretouchapp.data.repository.AccountPageLoader
+import com.example.suretouchapp.data.model.CohortDto
 import com.example.suretouchapp.data.repository.VolunteerRepository
 import com.example.suretouchapp.ui.theme.SureFormDefaults
 import com.example.suretouchapp.ui.theme.sureSemanticColors
@@ -41,6 +43,7 @@ private data class AssignedPerson(
 fun TrusteePeopleScreen(
     tokenManager: TokenManager,
     initialFilter: String = "ALL",
+    mentorsOnly: Boolean = false,
     onBack: () -> Unit
 ) {
     var people by remember { mutableStateOf<List<AssignedPerson>>(emptyList()) }
@@ -59,14 +62,10 @@ fun TrusteePeopleScreen(
             val api = ApiClient.getService(tokenManager)
             val profile = VolunteerRepository(tokenManager).loadProfile()
             val assignedIds = profile.assignedCohorts.map { it.id }.filter(String::isNotBlank).toSet()
-            val cohortsResponse = api.getCohorts()
-            val usersResponse = api.getUsers()
-            val studentsResponse = api.getStudents()
-            if (!cohortsResponse.isSuccessful) throw IOException("Cohorts request failed (${cohortsResponse.code()})")
-            if (!usersResponse.isSuccessful) throw IOException("People request failed (${usersResponse.code()})")
-            if (!studentsResponse.isSuccessful) throw IOException("Students request failed (${studentsResponse.code()})")
-
-            val cohorts = cohortsResponse.body()?.results.orEmpty().filter { it.id in assignedIds }
+            val pages = AccountPageLoader(tokenManager)
+            val cohorts = pages.load("cohorts", { it: CohortDto -> it.id }) { api.getCohorts(page = it) }.filter { it.id in assignedIds }
+            val users = pages.load("people", { it: UserResponse -> it.id.orEmpty() }) { api.getUsers(role = if (mentorsOnly) "MENTOR" else null, page = it) }
+            val students = if (mentorsOnly) emptyList() else pages.load("students", { it: StudentProfileDto -> it.id }) { api.getStudents(page = it) }
             val codeById = profile.assignedCohorts.associate { it.id to it.code } + cohorts.associate { it.id to (it.code ?: it.name) }
             
             val mentorUserIds = mutableSetOf<String>()
@@ -85,7 +84,7 @@ fun TrusteePeopleScreen(
                 }
             }
 
-            val assignedStudents: List<StudentProfileDto> = studentsResponse.body()?.results.orEmpty().filter { it.cohortId in assignedIds }
+            val assignedStudents: List<StudentProfileDto> = students.filter { it.cohortId in assignedIds }
             assignedStudents.forEach { student ->
                 student.userId?.let { userId ->
                     memberCohorts.getOrPut(userId) { mutableSetOf() }.add(codeById[student.cohortId].orEmpty())
@@ -93,7 +92,7 @@ fun TrusteePeopleScreen(
             }
             val studentIds = assignedStudents.mapNotNull { it.userId }.toSet()
 
-            people = usersResponse.body()?.results.orEmpty().filter { it.id in memberCohorts.keys }.map { user ->
+            people = users.filter { it.id in memberCohorts.keys }.map { user ->
                 val roleType = when {
                     user.id in mentorUserIds || user.role.equals("MENTOR", true) || user.role.equals("INSTRUCTOR", true) -> "MENTOR"
                     user.id in volunteerUserIds || user.role.equals("VOLUNTEER", true) || user.role.equals("VOLUNTEER_TRUSTEE", true) -> "VOLUNTEER"
@@ -125,6 +124,7 @@ fun TrusteePeopleScreen(
 
     val filteredPeople = remember(people, selectedFilter, searchQuery) {
         people.filter { person ->
+            if (mentorsOnly && person.roleType != "MENTOR") return@filter false
             val matchesFilter = when (selectedFilter) {
                 "MENTORS" -> person.roleType == "MENTOR"
                 "VOLUNTEERS" -> person.roleType == "VOLUNTEER"

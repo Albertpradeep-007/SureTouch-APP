@@ -68,8 +68,17 @@ fun LiveClassScreen(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    var liveState by remember { mutableStateOf<LiveClassUiState>(LiveClassUiState.NoClassScheduled) }
+    val accountSession = remember { tokenManager.getSessionId() }
+    var sessions by remember { mutableStateOf<List<AttendanceDto>>(emptyList()) }
+    var selectedSessionId by remember { mutableStateOf<String?>(null) }
+    var now by remember { mutableStateOf(com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()) }
+    var refreshError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    val orderedSessions = LiveClassSelector.orderedSessions(sessions, now)
+    val selectedSession = sessions.firstOrNull { it.id == selectedSessionId && com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(it, now) != com.example.suretouchapp.data.repository.TimetableClassStatus.ENDED }
+    val liveState = LiveClassSelector.resolveLiveClassState(
+        selectedSession?.let(::listOf) ?: orderedSessions, now = now
+    )
 
     val activeSession: AttendanceDto? = when (val s = liveState) {
         is LiveClassUiState.Ongoing -> s.session
@@ -86,33 +95,33 @@ fun LiveClassScreen(
     }
 
     suspend fun refreshLiveState() {
-        val response = runCatching { ApiClient.getService(tokenManager).getAttendance() }.getOrNull()
-        if (response?.isSuccessful == true) {
-            val list = response.body()?.results.orEmpty()
-            SureProEdNotificationManager.syncTimetableAndClasses(context, list)
-            val cohort = tokenManager.getCohortCode().takeIf(String::isNotBlank)
-            liveState = LiveClassSelector.resolveLiveClassState(
-                sessions = list,
-                allowedCohorts = cohort?.let(::setOf).orEmpty(),
-                now = LocalDateTime.now()
-            )
-        } else {
-            liveState = LiveClassUiState.NoClassScheduled
-        }
-        isLoading = false
+        try {
+            val list = com.example.suretouchapp.data.repository.AttendanceRepository(tokenManager).load()
+            tokenManager.withCurrentSession(accountSession) {
+                sessions = list
+                if (list.none { it.id == selectedSessionId }) selectedSessionId = null
+                SureProEdNotificationManager.syncTimetableAndClasses(context, list)
+                refreshError = null
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (tokenManager.isCurrentSession(accountSession)) refreshError = "Unable to refresh classes. Please retry before joining."
+        } finally { isLoading = false }
     }
 
-    LaunchedEffect(Unit) {
-        refreshLiveState()
+    LaunchedEffect(accountSession) {
         while (true) {
-            delay(20_000L)
             refreshLiveState()
+            delay(20_000L)
         }
     }
-
-    var isAgreed by remember { mutableStateOf(false) }
-    var showGuidelinesDialog by remember { mutableStateOf(false) }
-    var dialogCheckboxChecked by remember { mutableStateOf(false) }
+    LaunchedEffect(accountSession) {
+        while (true) { now = com.example.suretouchapp.data.repository.ClassSchedulePolicy.now(); delay(1_000L) }
+    }
+    var isAgreed by remember(activeSession?.id) { mutableStateOf(false) }
+    var showGuidelinesDialog by remember(activeSession?.id) { mutableStateOf(false) }
+    var dialogCheckboxChecked by remember(activeSession?.id) { mutableStateOf(false) }
 
     // Pulsing animation for LIVE NOW / STARTING SOON indicator
     val infiniteTransition = rememberInfiniteTransition(label = "LivePulseTransition")
@@ -166,6 +175,28 @@ fun LiveClassScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                item {
+                    refreshError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    val detailDate = activeSession?.let { com.example.suretouchapp.data.repository.parseSessionLocalDate(it.date) }
+                    val choices = orderedSessions.filter {
+                        val date = com.example.suretouchapp.data.repository.parseSessionLocalDate(it.date)
+                        date == now.toLocalDate() || date == detailDate
+                    }.filter {
+                        com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(it, now) != com.example.suretouchapp.data.repository.TimetableClassStatus.ENDED
+                    }
+                    if (choices.size > 1) {
+                        Text("Choose a class (${choices.size})", fontWeight = FontWeight.Bold)
+                        choices.forEach { session ->
+                            val status = com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(session, now)
+                            FilterChip(
+                                selected = session.id == activeSession?.id,
+                                onClick = { selectedSessionId = session.id },
+                                label = { Text("${session.sessionTitle ?: session.cohortCode ?: "Class"} | ${session.date} | ${session.startTime.orEmpty()} - ${session.endTime.orEmpty()} | ${status.name.replace('_', ' ')}") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
                 // HERO CARD
                 item {
                     Card(
@@ -360,6 +391,31 @@ fun LiveClassScreen(
                                         color = Color.White
                                     )
                                 }
+                            } else if (liveState is LiveClassUiState.AwaitingUpcoming) {
+                                Button(
+                                    onClick = {},
+                                    enabled = false,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                ) {
+                                    Icon(Icons.Default.Lock, null, modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Join Opens 10 Mins Before Class", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = onNavigateToTimetable,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                                ) {
+                                    Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("View Complete Timetable", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
                             } else {
                                 OutlinedButton(
                                     onClick = onNavigateToTimetable,
@@ -369,6 +425,81 @@ fun LiveClassScreen(
                                     Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text("View Complete Timetable", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // PROTECTED MEET LINK CARD (when class is scheduled more than 10 mins away)
+                if (liveState is LiveClassUiState.AwaitingUpcoming && activeSession != null) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, ColorBorderHairline),
+                            elevation = CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = null,
+                                            tint = Color(0xFFD97706),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Google Meet Link Protected",
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorTextDark
+                                        )
+                                    }
+
+                                    Surface(
+                                        color = Color(0xFFFEF3C7),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "🔒 Unlocks 10m Prior",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFB45309),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = "To protect session integrity and prevent link misuse, the official Google Meet link, meeting code, and Join button will automatically activate 15 minutes before class starts.",
+                                            fontSize = 12.sp,
+                                            color = ColorTextSub,
+                                            lineHeight = 17.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        val startFormatted = formatClassTime(activeSession.startTime)
+                                        Text(
+                                            text = "📅 Scheduled: ${activeSession.date} at ${if (startFormatted != "--:--") startFormatted else activeSession.startTime ?: "Scheduled Time"}",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = ColorPrimaryPurple
+                                        )
+                                    }
                                 }
                             }
                         }

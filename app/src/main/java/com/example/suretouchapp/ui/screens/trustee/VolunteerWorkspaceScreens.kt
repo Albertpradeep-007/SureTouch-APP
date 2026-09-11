@@ -29,6 +29,10 @@ import androidx.compose.ui.unit.sp
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.*
+import com.example.suretouchapp.data.repository.AccountPageLoader
+import com.example.suretouchapp.data.repository.AttendanceRepository
+import com.example.suretouchapp.data.repository.ClassJoinLauncher
+import com.example.suretouchapp.ui.components.rememberClassSessionTime
 import com.example.suretouchapp.data.repository.VolunteerRepository
 import com.example.suretouchapp.data.repository.ClassSchedulePolicy
 import com.example.suretouchapp.data.repository.isCancelledSession
@@ -84,9 +88,8 @@ private data class VolunteerScope(
 
 private suspend fun loadVolunteerScope(tokenManager: TokenManager): VolunteerScope {
     val profile = VolunteerRepository(tokenManager).loadProfile()
-    val response = ApiClient.getService(tokenManager).getCohorts()
-    if (!response.isSuccessful) throw IOException("Cohorts request failed (${response.code()})")
-    val allCohorts = response.body()?.results.orEmpty()
+    val api = ApiClient.getService(tokenManager)
+    val allCohorts = AccountPageLoader(tokenManager).load("cohorts", { it: CohortDto -> it.id }) { api.getCohorts(page = it) }
     val assignedIds = profile.assignedCohorts.map { it.id }.filter(String::isNotBlank).toSet()
     val expanded = allCohorts.filter { it.id in assignedIds }
     val expandedIds = expanded.map { it.id }.toSet()
@@ -200,7 +203,7 @@ fun VolunteerProgrammesScreen(tokenManager: TokenManager, onBack: () -> Unit, on
                             MetricTile(data!!.cohorts.size.toString(), "Assigned cohorts", WorkspacePurple, Modifier.weight(1f))
                             val activeCohortCount = data!!.cohorts.count {
                                 it.status?.uppercase() in setOf("ACTIVE", "TRAINING", "ONGOING", "IN_PROGRESS") ||
-                                    (!it.endDate.isNullOrBlank() && it.endDate >= "2026")
+                                    (it.status.isNullOrBlank() && !it.endDate.isNullOrBlank() && it.endDate >= ClassSchedulePolicy.now().toLocalDate().toString())
                             }
                             MetricTile(activeCohortCount.toString(), "Active", WorkspaceTeal, Modifier.weight(1f))
                         }
@@ -227,11 +230,7 @@ fun VolunteerProgrammesScreen(tokenManager: TokenManager, onBack: () -> Unit, on
                                     Button(onClick = onOpenSchedule, colors = ButtonDefaults.buttonColors(containerColor = WorkspacePurple)) {
                                         Icon(Icons.Default.Event, null, Modifier.size(17.dp)); Spacer(Modifier.width(6.dp)); Text("Schedule")
                                     }
-                                    cohort.meetingLink?.takeIf(String::isNotBlank)?.let { link ->
-                                        OutlinedButton(onClick = { runCatching { uriHandler.openUri(link) } }) {
-                                            Icon(Icons.Default.Link, null, Modifier.size(17.dp)); Spacer(Modifier.width(6.dp)); Text("Meeting")
-                                        }
-                                    }
+
                                 }
                             }
                         }
@@ -246,6 +245,8 @@ fun VolunteerProgrammesScreen(tokenManager: TokenManager, onBack: () -> Unit, on
 @Composable
 fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
     val api = remember(tokenManager) { ApiClient.getService(tokenManager) }
+    val accountSession = remember(tokenManager) { tokenManager.getSessionId() }
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var scopeData by remember { mutableStateOf<VolunteerScope?>(null) }
@@ -263,10 +264,10 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
         error = null
         try {
             val assigned = loadVolunteerScope(tokenManager)
-            val response = api.getAttendance()
-            if (!response.isSuccessful) throw IOException("Class schedule request failed (${response.code()})")
+            val response = AttendanceRepository(tokenManager).load()
+            tokenManager.requireCurrentSession(accountSession)
             scopeData = assigned
-            sessions = response.body()?.results.orEmpty().filter {
+            sessions = response.filter {
                 it.cohort in assigned.cohortIds || it.cohortCode in assigned.cohortCodes
             }.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
         } catch (failure: Exception) {
@@ -300,6 +301,7 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 else -> items(sessions, key = { it.id }) { session ->
                     SessionCard(
                         session = session,
+                        onJoin = { coroutineScope.launch { ClassJoinLauncher.join(context, tokenManager, session) } },
                         onEdit = { editing = session; showEditor = true },
                         onReschedule = { rescheduling = session },
                         onCancel = { cancelling = session }
@@ -317,12 +319,12 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
             onDismiss = { showEditor = false }
         ) { cohortId, title, date, start, end, link, notes, conducted ->
             coroutineScope.launch {
-                val latestResponse = runCatching { api.getAttendance() }.getOrNull()
-                if (latestResponse?.isSuccessful != true) {
+                val latestResponse = runCatching { AttendanceRepository(tokenManager).load() }.getOrNull()
+                if (latestResponse == null) {
                     snackbar.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
                     return@launch
                 }
-                val latestSessions = latestResponse.body()?.results.orEmpty()
+                val latestSessions = latestResponse
                 val remoteConflict = ClassSchedulePolicy.findConflict(
                     sessions = latestSessions,
                     cohortId = cohortId,
@@ -366,12 +368,12 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
             onDismiss = { rescheduling = null },
             onReschedule = { newDate, newStart, newEnd, newLink ->
                 coroutineScope.launch {
-                    val latestResponse = runCatching { api.getAttendance() }.getOrNull()
-                    if (latestResponse?.isSuccessful != true) {
+                    val latestResponse = runCatching { AttendanceRepository(tokenManager).load() }.getOrNull()
+                    if (latestResponse == null) {
                         snackbar.showSnackbar("Could not verify the latest timetable. Refresh and try again.")
                         return@launch
                     }
-                    val latestSessions = latestResponse.body()?.results.orEmpty()
+                    val latestSessions = latestResponse
                     val remoteConflict = ClassSchedulePolicy.findConflict(
                         sessions = latestSessions,
                         cohortId = session.cohort ?: session.cohortCode.orEmpty(),
@@ -451,10 +453,12 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
 @Composable
 private fun SessionCard(
     session: AttendanceDto,
+    onJoin: () -> Unit,
     onEdit: () -> Unit,
     onReschedule: () -> Unit,
     onCancel: () -> Unit
 ) {
+    val now = rememberClassSessionTime()
     val semanticColors = sureSemanticColors()
     val completed = session.isCompletedSession()
     val isCancelled = session.isCancelledSession()
@@ -504,6 +508,14 @@ private fun SessionCard(
                 }
                 Surface(color = badgeBg, shape = RoundedCornerShape(8.dp)) {
                     Text(badgeText, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = badgeColor, modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                }
+            }
+
+            if (ClassSchedulePolicy.canJoin(session, now)) {
+                TextButton(onClick = onJoin) {
+                    Icon(Icons.Default.Videocam, null, Modifier.size(15.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Join class")
                 }
             }
 

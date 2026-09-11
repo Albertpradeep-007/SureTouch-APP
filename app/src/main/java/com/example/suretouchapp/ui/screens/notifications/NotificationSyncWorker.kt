@@ -10,8 +10,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
+import com.example.suretouchapp.data.repository.AttendanceRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -30,18 +30,16 @@ class NotificationSyncWorker(
 
         try {
             SureProEdNotificationManager.createChannels(context)
-            val api = ApiClient.getService(tokenManager)
-
             runCatching { MobilePushRegistration.register(context, tokenManager, accountSession) }
 
             val list = com.example.suretouchapp.data.repository.NotificationRepository(tokenManager).load()
             tokenManager.withCurrentSession(accountSession) {
                 SureProEdNotificationManager.syncUnread(context, list, completeSnapshot = true)
             }
-            val attendance = api.getAttendance(pageSize = 500)
-            if (attendance.isSuccessful) {
+            val attendance = runCatching { AttendanceRepository(tokenManager).load() }.getOrNull()
+            if (attendance != null) {
                 tokenManager.withCurrentSession(accountSession) {
-                    SureProEdNotificationManager.syncTimetableAndClasses(context, attendance.body()?.results.orEmpty())
+                    SureProEdNotificationManager.syncTimetableAndClasses(context, attendance)
                 }
             }
 

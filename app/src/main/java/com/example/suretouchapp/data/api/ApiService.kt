@@ -10,6 +10,9 @@ typealias ApiBody = Map<String, @JvmSuppressWildcards Any?>
 
 /** Retrofit surface synchronized with the supplied SURE ProEd OpenAPI document. */
 interface ApiService {
+    @GET
+    @retrofit2.http.Streaming
+    suspend fun downloadDocument(@Url url: String): Response<okhttp3.ResponseBody>
     @POST("attendance/{id}/portal-join/")
     suspend fun recordPortalJoin(@Path("id") id: String): Response<okhttp3.ResponseBody>
 
@@ -34,7 +37,9 @@ interface ApiService {
     @GET("users/")
     suspend fun getUsers(
         @Query("role") role: String? = null,
-        @Query("search") search: String? = null
+        @Query("search") search: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 100
     ): Response<PaginatedResponse<UserResponse>>
     @POST("users/") suspend fun register(@Body request: RegisterRequest): Response<UserResponse>
     @GET("users/{id}/") suspend fun getUserById(@Path("id") id: String): Response<UserResponse>
@@ -42,7 +47,7 @@ interface ApiService {
     @PATCH("users/{id}/") suspend fun patchUser(@Path("id") id: String, @Body body: ApiBody): Response<UserResponse>
     @DELETE("users/{id}/") suspend fun deleteUser(@Path("id") id: String): Response<Unit>
 
-    @GET("students/") suspend fun getStudents(): Response<PaginatedResponse<StudentProfileDto>>
+    @GET("students/") suspend fun getStudents(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<StudentProfileDto>>
     @POST("students/") suspend fun createStudentProfile(@Body body: ApiBody): Response<StudentProfileDto>
     @GET("students/{id}/") suspend fun getStudentProfileById(@Path("id") id: String): Response<StudentProfileDto>
     @PUT("students/{id}/") suspend fun replaceStudentProfile(@Path("id") id: String, @Body body: ApiBody): Response<StudentProfileDto>
@@ -60,14 +65,14 @@ interface ApiService {
         @Part resume: MultipartBody.Part
     ): Response<StudentProfileDto>
     @DELETE("students/{id}/") suspend fun deleteStudentProfile(@Path("id") id: String): Response<Unit>
-    @GET("courses/") suspend fun getCourses(): Response<PaginatedResponse<CourseDto>>
+    @GET("courses/") suspend fun getCourses(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<CourseDto>>
     @POST("courses/") suspend fun createCourse(@Body body: ApiBody): Response<CourseDto>
     @GET("courses/{id}/") suspend fun getCourseById(@Path("id") id: String): Response<CourseDto>
     @PUT("courses/{id}/") suspend fun replaceCourse(@Path("id") id: String, @Body body: ApiBody): Response<CourseDto>
     @PATCH("courses/{id}/") suspend fun patchCourse(@Path("id") id: String, @Body body: ApiBody): Response<CourseDto>
     @DELETE("courses/{id}/") suspend fun deleteCourse(@Path("id") id: String): Response<Unit>
 
-    @GET("applications/") suspend fun getMyApplications(): Response<PaginatedResponse<ApplicationDto>>
+    @GET("applications/") suspend fun getMyApplications(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<ApplicationDto>>
     @GET("applications/course-selection/") suspend fun getCourseSelection(): Response<CourseSelectionDto>
     @POST("applications/") suspend fun applyForCourse(@Body request: ApplicationCreateRequest): Response<ApplicationDto>
     @GET("applications/{id}/") suspend fun getApplication(@Path("id") id: String): Response<ApplicationDto>
@@ -87,7 +92,7 @@ interface ApiService {
         @Body body: ApiBody = emptyMap()
     ): Response<DiscontinueCourseResponseDto>
 
-    @GET("cohorts/") suspend fun getCohorts(): Response<PaginatedResponse<CohortDto>>
+    @GET("cohorts/") suspend fun getCohorts(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<CohortDto>>
     @POST("cohorts/") suspend fun createCohort(@Body body: ApiBody): Response<CohortDto>
     @GET("cohorts/{id}/") suspend fun getCohort(@Path("id") id: String): Response<CohortDto>
     @PUT("cohorts/{id}/") suspend fun replaceCohort(@Path("id") id: String, @Body body: ApiBody): Response<CohortDto>
@@ -128,14 +133,14 @@ interface ApiService {
     @GET("attendance/alerts/low/") suspend fun getLowAttendanceAlerts(): Response<List<ApiBody>>
     @GET("attendance/chat_history/") suspend fun getAttendanceChatHistory(@Query("warning_id") warningId: String): Response<List<PermissionRequestMessageDto>>
 
-    @GET("assignments/") suspend fun getAssignments(): Response<PaginatedResponse<AssignmentDto>>
+    @GET("assignments/") suspend fun getAssignments(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<AssignmentDto>>
     @POST("assignments/") suspend fun createAssignment(@Body body: ApiBody): Response<AssignmentDto>
     @GET("assignments/{id}/") suspend fun getAssignment(@Path("id") id: String): Response<AssignmentDto>
     @PUT("assignments/{id}/") suspend fun replaceAssignment(@Path("id") id: String, @Body body: ApiBody): Response<AssignmentDto>
     @PATCH("assignments/{id}/") suspend fun patchAssignment(@Path("id") id: String, @Body body: ApiBody): Response<AssignmentDto>
     @DELETE("assignments/{id}/") suspend fun deleteAssignment(@Path("id") id: String): Response<Unit>
 
-    @GET("submissions/") suspend fun getSubmissions(): Response<PaginatedResponse<SubmissionDto>>
+    @GET("submissions/") suspend fun getSubmissions(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<SubmissionDto>>
     @POST("submissions/") suspend fun submitAssignment(@Body request: AssignmentSubmissionRequest): Response<SubmissionDto>
     @GET("submissions/{id}/") suspend fun getSubmission(@Path("id") id: String): Response<SubmissionDto>
     @PUT("submissions/{id}/") suspend fun replaceSubmission(@Path("id") id: String, @Body body: ApiBody): Response<SubmissionDto>
@@ -149,7 +154,7 @@ interface ApiService {
     @GET("pre-screenings/{id}/") suspend fun getPreScreening(@Path("id") id: String): Response<PreScreeningDto>
 
     @GET("pre-screening-interviews/")
-    suspend fun getPreScreeningInterviews(): Response<PaginatedResponse<PreScreeningInterviewDto>>
+    suspend fun getPreScreeningInterviews(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<PreScreeningInterviewDto>>
     @POST("pre-screening-interviews/")
     suspend fun createPreScreeningInterview(@Body body: ApiBody): Response<PreScreeningInterviewDto>
     @GET("pre-screening-interviews/{id}/")
@@ -167,7 +172,7 @@ interface ApiService {
 
     // Published module-test marks only; no attempts or answer payloads exist in Android.
     @GET("module-test-submissions/") suspend fun getModuleTestResults(): Response<PaginatedResponse<ModuleTestResultDto>>
-    @GET("certificates/") suspend fun getCertificates(): Response<PaginatedResponse<CertificateDto>>
+    @GET("certificates/") suspend fun getCertificates(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<CertificateDto>>
     @POST("certificates/") suspend fun createCertificate(@Body body: ApiBody): Response<CertificateDto>
     @GET("certificates/{id}/") suspend fun getCertificate(@Path("id") id: String): Response<CertificateDto>
     @PUT("certificates/{id}/") suspend fun replaceCertificate(@Path("id") id: String, @Body body: ApiBody): Response<CertificateDto>
@@ -175,7 +180,7 @@ interface ApiService {
     @DELETE("certificates/{id}/") suspend fun deleteCertificate(@Path("id") id: String): Response<Unit>
     @GET("certificates/verify/") suspend fun verifyCertificate(@Query("verification_code") code: String): Response<CertificateDto>
 
-    @GET("companies/") suspend fun getCompanies(): Response<PaginatedResponse<CompanyDto>>
+    @GET("companies/") suspend fun getCompanies(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<CompanyDto>>
     @POST("companies/") suspend fun createCompany(@Body body: ApiBody): Response<CompanyDto>
     @GET("companies/{id}/") suspend fun getCompany(@Path("id") id: String): Response<CompanyDto>
     @PUT("companies/{id}/") suspend fun replaceCompany(@Path("id") id: String, @Body body: ApiBody): Response<CompanyDto>
@@ -184,7 +189,7 @@ interface ApiService {
 
     // Mentor job-reference deployment extension. The backend distributes published
     // openings only to students in the supplied cohort after authorization checks.
-    @GET("job-references/") suspend fun getJobReferences(): Response<PaginatedResponse<JobReferenceDto>>
+    @GET("job-references/") suspend fun getJobReferences(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<JobReferenceDto>>
     @POST("job-references/") suspend fun createJobReference(@Body body: ApiBody): Response<JobReferenceDto>
     @PATCH("job-references/{id}/") suspend fun patchJobReference(@Path("id") id: String, @Body body: ApiBody): Response<JobReferenceDto>
 
@@ -199,7 +204,7 @@ interface ApiService {
     @GET("community-activities/") suspend fun getCommunityActivities(): Response<PaginatedResponse<CommunityActivityDto>>
     @POST("community-activities/") suspend fun createCommunityActivity(@Body body: ApiBody): Response<CommunityActivityDto>
     @POST("community-activities/{id}/verify/") suspend fun verifyCommunityActivity(@Path("id") id: String, @Body body: ApiBody): Response<CommunityActivityDto>
-    @GET("announcements/") suspend fun getAnnouncements(): Response<PaginatedResponse<AnnouncementDto>>
+    @GET("announcements/") suspend fun getAnnouncements(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<AnnouncementDto>>
     @POST("announcements/") suspend fun createAnnouncement(@Body body: ApiBody): Response<AnnouncementDto>
     @Multipart
     @POST("announcements/")
@@ -214,7 +219,7 @@ interface ApiService {
         @Part attachment: MultipartBody.Part? = null
     ): Response<AnnouncementDto>
     @DELETE("announcements/{id}/") suspend fun deleteAnnouncement(@Path("id") id: String): Response<Unit>
-    @GET("requests/") suspend fun getUserRequests(): Response<PaginatedResponse<UserRequestDto>>
+    @GET("requests/") suspend fun getUserRequests(@Query("scope") scope: String? = null, @Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<UserRequestDto>>
     @Multipart
     @POST("requests/")
     suspend fun createUserRequest(
@@ -233,7 +238,7 @@ interface ApiService {
     @POST("auth/github/disconnect/") suspend fun disconnectGitHub(): Response<GitHubConnectResponse>
 
     @GET("volunteers/mentor-profiles/")
-    suspend fun getMentorProfiles(): Response<PaginatedResponse<MentorProfileDto>>
+    suspend fun getMentorProfiles(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<MentorProfileDto>>
     @PATCH("volunteers/mentor-profiles/{id}/")
     suspend fun updateMentorProfile(@Path("id") id: String, @Body body: ApiBody): Response<MentorProfileDto>
 
@@ -251,14 +256,14 @@ interface ApiService {
     suspend fun createJobPosting(@Body body: ApiBody): Response<JobPostingDto>
 
     @GET("volunteers/tasks/")
-    suspend fun getVolunteerTasks(): Response<PaginatedResponse<VolunteerTaskDto>>
+    suspend fun getVolunteerTasks(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<VolunteerTaskDto>>
     @POST("volunteers/tasks/")
     suspend fun createVolunteerTask(@Body body: ApiBody): Response<VolunteerTaskDto>
     @PATCH("volunteers/tasks/{id}/")
     suspend fun patchVolunteerTask(@Path("id") id: String, @Body body: ApiBody): Response<VolunteerTaskDto>
 
     @GET("volunteers/profiles/")
-    suspend fun getVolunteerProfiles(): Response<PaginatedResponse<VolunteerProfileDto>>
+    suspend fun getVolunteerProfiles(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<VolunteerProfileDto>>
     @GET("volunteers/profiles/{id}/")
     suspend fun getVolunteerProfile(@Path("id") id: String): Response<VolunteerProfileDto>
     @PATCH("volunteers/profiles/{id}/")

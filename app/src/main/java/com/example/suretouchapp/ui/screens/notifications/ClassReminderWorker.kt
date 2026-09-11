@@ -5,6 +5,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
+import com.example.suretouchapp.data.repository.ClassSchedulePolicy
 import com.example.suretouchapp.data.repository.isCancelledSession
 
 /** Alarm extras are hints only: never display cached account or class content. */
@@ -21,7 +22,8 @@ class ClassReminderWorker(context: Context, params: WorkerParameters) : Coroutin
             } else {
                 val session = response.body() ?: return Result.success()
                 val start = SureProEdNotificationManager.parseClassStartTimeMillis(session.date, session.startTime)
-                if (!session.isCancelledSession() && start != null && start - System.currentTimeMillis() in 0..600_000L) {
+                val joinWindowMillis = ClassSchedulePolicy.EARLY_JOIN_MINUTES * 60 * 1000L
+                if (!session.isCancelledSession() && start != null && start - System.currentTimeMillis() in 0..joinWindowMillis) {
                     tokens.withCurrentSession(account) {
                         SureProEdNotificationManager.showUpcomingClassReminder(applicationContext, id,
                             session.sessionTitle ?: "Live Class", session.startTime ?: "Soon", session.meetingLink)

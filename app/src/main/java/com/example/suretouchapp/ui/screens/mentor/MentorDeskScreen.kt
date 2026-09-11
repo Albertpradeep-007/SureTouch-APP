@@ -29,6 +29,7 @@ import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.NotificationDto
 import com.example.suretouchapp.data.repository.DashboardRepository
 import com.example.suretouchapp.data.repository.DashboardSnapshot
+import com.example.suretouchapp.data.repository.NotificationRepository
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.theme.SureFormDefaults
 import kotlinx.coroutines.launch
@@ -59,12 +60,21 @@ fun MentorDeskScreen(tokenManager: TokenManager, onBack: () -> Unit) {
 
     LaunchedEffect(refreshKey) {
         isLoading = true
-        snapshot = runCatching { repository.load(force = true) }.getOrElse { snapshot }
-        mentorMessages = runCatching {
-            ApiClient.getService(tokenManager).getNotifications().body()?.results.orEmpty().filter {
+        val accountSession = tokenManager.getSessionId()
+        val loadedSnapshot = runCatching { repository.load(force = true) }.getOrNull()
+        if (!tokenManager.isCurrentSession(accountSession)) return@LaunchedEffect
+        if (loadedSnapshot != null) {
+            tokenManager.withCurrentSession(accountSession) { snapshot = loadedSnapshot }
+        }
+        val loadedMessages = runCatching {
+            NotificationRepository(tokenManager).load().filter {
                 "mentor" in "${it.title} ${it.message}".lowercase()
             }
-        }.getOrDefault(emptyList())
+        }.getOrNull()
+        if (!tokenManager.isCurrentSession(accountSession)) return@LaunchedEffect
+        if (loadedMessages != null) {
+            tokenManager.withCurrentSession(accountSession) { mentorMessages = loadedMessages }
+        }
         isLoading = false
     }
 

@@ -709,20 +709,7 @@ fun VolunteerTrusteeProfessionalProfileScreen(
                                                         Spacer(Modifier.height(2.dp))
                                                         Text(cohort.course, fontSize = 11.5.sp, color = TextMuted)
                                                     }
-                                                    cohort.meetingLink?.takeIf(String::isNotBlank)?.let { link ->
-                                                        Spacer(Modifier.height(8.dp))
-                                                        OutlinedButton(
-                                                            onClick = { uriHandler.openUri(link) },
-                                                            modifier = Modifier.fillMaxWidth().height(36.dp),
-                                                            shape = RoundedCornerShape(8.dp),
-                                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
-                                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))
-                                                        ) {
-                                                            Icon(Icons.Default.VideoCall, null, modifier = Modifier.size(16.dp))
-                                                            Spacer(Modifier.width(6.dp))
-                                                            Text("Join Live Class / Meet", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                                        }
-                                                    }
+                                                    Text("Open Class Schedule to join. Links appear 15 minutes before class.", fontSize = 11.5.sp, color = TextMuted)
                                                 }
                                             }
                                         }

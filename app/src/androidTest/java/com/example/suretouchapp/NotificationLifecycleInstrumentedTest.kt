@@ -11,6 +11,8 @@ import org.junit.Before
 import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.time.LocalDate
+import java.time.ZoneId
 
 @RunWith(AndroidJUnit4::class)
 class NotificationLifecycleInstrumentedTest {
@@ -19,6 +21,8 @@ class NotificationLifecycleInstrumentedTest {
     private val tokens = TokenManager(context)
     @Before fun setup() {
         tokens.saveToken("test-a", "refresh-a")
+        system.cancelAll()
+        context.getSharedPreferences("sure_proed_notification_delivery", 0).edit().clear().commit()
         val command = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
             "pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS"
         )
@@ -80,5 +84,57 @@ class NotificationLifecycleInstrumentedTest {
         Alerts.showClassCancelledNotification(context, session)
         assertCount(1)
         awaitTitle("Cancelled")
+    }
+    @Test fun serverClassUpdateReplacesTheExistingScheduledAlert() {
+        val tomorrow = LocalDate.now(ZoneId.of("Asia/Kolkata")).plusDays(1).toString()
+        val original = com.example.suretouchapp.data.model.AttendanceDto(
+            id = "class-update", sessionTitle = "Original class", date = tomorrow,
+            startTime = "10:00", endTime = "11:00", updatedAt = "2026-09-11T10:00:00Z"
+        )
+        val updated = original.copy(
+            sessionTitle = "Updated class", notes = "Room changed",
+            updatedAt = "2026-09-11T10:01:00Z"
+        )
+
+        Alerts.syncTimetableAndClasses(context, listOf(original))
+        Alerts.syncTimetableAndClasses(context, listOf(updated))
+
+        assertCount(1)
+        awaitTitle("Updated class")
+    }
+
+    @Test fun unchangedClassPollDoesNotRefreshAndClassTimeUsesOneTrayEntry() {
+        val date = LocalDate.now(ZoneId.of("Asia/Kolkata")).plusDays(1).toString()
+        val serverNotification = NotificationDto(
+            id = "class-notification-poll",
+            title = "Class scheduled",
+            message = "A class has been scheduled.",
+            createdAt = "2026-09-11T10:00:00Z",
+            actionUrl = "/attendance/class-poll/",
+        )
+        val session = com.example.suretouchapp.data.model.AttendanceDto(
+            id = "class-poll",
+            sessionTitle = "VLSI design",
+            date = date,
+            startTime = "18:30",
+            endTime = "19:30",
+            updatedAt = "2026-09-11T10:00:00Z",
+        )
+
+        Alerts.syncUnread(context, listOf(serverNotification), completeSnapshot = true)
+        assertCount(1)
+        val firstServerPostTime = system.activeNotifications.single().postTime
+        android.os.SystemClock.sleep(100)
+        Alerts.syncUnread(context, listOf(serverNotification), completeSnapshot = true)
+        assertEquals(firstServerPostTime, system.activeNotifications.single().postTime)
+
+        Alerts.syncTimetableAndClasses(context, listOf(session))
+        assertCount(1)
+        val classAlert = system.activeNotifications.single()
+        assertTrue(classAlert.notification.extras.getString("android.text")!!.contains("at 18:30"))
+        val firstClassPostTime = classAlert.postTime
+        android.os.SystemClock.sleep(100)
+        Alerts.syncTimetableAndClasses(context, listOf(session))
+        assertEquals(firstClassPostTime, system.activeNotifications.single().postTime)
     }
 }

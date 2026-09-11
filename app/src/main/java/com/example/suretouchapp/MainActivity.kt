@@ -431,6 +431,7 @@ fun AppNavigation(
             TrusteePeopleScreen(
                 tokenManager = tokenManager,
                 initialFilter = "MENTORS",
+                mentorsOnly = true,
                 onBack = { navController.popBackStack() }
             )
         }

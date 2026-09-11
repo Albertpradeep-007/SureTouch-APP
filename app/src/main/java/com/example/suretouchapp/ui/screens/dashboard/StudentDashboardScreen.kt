@@ -52,6 +52,8 @@ import com.example.suretouchapp.data.repository.DashboardRepository
 import com.example.suretouchapp.data.repository.DashboardSnapshot
 import com.example.suretouchapp.data.repository.ModuleGrade
 import com.example.suretouchapp.data.repository.StudentProfileRepository
+import com.example.suretouchapp.data.repository.AttendanceRepository
+import com.example.suretouchapp.data.repository.NotificationRepository
 import com.example.suretouchapp.ui.components.BackendConnectionGate
 import com.example.suretouchapp.ui.components.BackendSyncedDashboard
 import androidx.compose.foundation.pager.HorizontalPager
@@ -297,61 +299,30 @@ fun StudentDashboardScreen(
     }
     LaunchedEffect(tokenManager) {
         delay(2500L) // Yield network priority to initial dashboard load
-        while (true) {
-            val personalized = runCatching {
-                ApiClient.getService(tokenManager).getNotifications()
-                    .takeIf { it.isSuccessful }
-                    ?.body()
-                    ?.results
-                    .orEmpty()
-            }.getOrDefault(emptyList())
-            val unread = personalized.count { !it.isRead }
-            dashboardSnapshot = dashboardSnapshot.copy(unreadNotificationCount = unread)
-            SureProEdNotificationManager.syncUnread(context, personalized)
-
-            val announcements = runCatching {
-                ApiClient.getService(tokenManager).getAnnouncements()
-                    .takeIf { it.isSuccessful }
-                    ?.body()
-                    ?.results
-                    .orEmpty()
-            }.getOrDefault(emptyList())
-            if (announcements.isNotEmpty()) {
-                SureProEdNotificationManager.syncAnnouncements(context, announcements)
+        val accountSession = tokenManager.getSessionId()
+        val personalized = runCatching {
+            NotificationRepository(tokenManager).load()
+        }.getOrNull()
+        if (!tokenManager.isCurrentSession(accountSession)) return@LaunchedEffect
+        if (personalized != null) {
+            tokenManager.withCurrentSession(accountSession) {
+                dashboardSnapshot = dashboardSnapshot.copy(
+                    unreadNotificationCount = personalized.count { !it.isRead }
+                )
+                // This is the full authoritative feed, so deletion and an
+                // updated notification remove their old device-tray state.
+                SureProEdNotificationManager.syncUnread(context, personalized, completeSnapshot = true)
             }
+        }
 
-            val sessions = runCatching {
-                ApiClient.getService(tokenManager).getAttendance()
-                    .takeIf { it.isSuccessful }
-                    ?.body()
-                    ?.results
-                    .orEmpty()
-            }.getOrDefault(emptyList())
-            if (sessions.isNotEmpty()) {
+        val sessions = runCatching {
+            AttendanceRepository(tokenManager).load()
+        }.getOrNull()
+        if (!tokenManager.isCurrentSession(accountSession)) return@LaunchedEffect
+        if (sessions != null) {
+            tokenManager.withCurrentSession(accountSession) {
                 SureProEdNotificationManager.syncTimetableAndClasses(context, sessions)
             }
-
-            val assignments = runCatching {
-                ApiClient.getService(tokenManager).getAssignments()
-                    .takeIf { it.isSuccessful }
-                    ?.body()
-                    ?.results
-                    .orEmpty()
-            }.getOrDefault(emptyList())
-            if (assignments.isNotEmpty()) {
-                SureProEdNotificationManager.syncAssignments(context, assignments)
-            }
-
-            val submissions = runCatching {
-                ApiClient.getService(tokenManager).getSubmissions()
-                    .takeIf { it.isSuccessful }
-                    ?.body()
-                    ?.results
-                    .orEmpty()
-            }.getOrDefault(emptyList())
-            SureProEdNotificationManager.syncSubmissionsAndGrades(context, submissions, assignments)
-
-            delay(30_000L)
         }
     }
     // Suppress auto-popup notification if student is already active or in a cohort
@@ -1399,10 +1370,10 @@ fun CleanTimetableDashboardView(
         // TODAY'S TIMETABLE HERO CAROUSEL (SWIPEABLE MULTI-CLASS PAGER)
         // =========================================================================
         item {
-            var dashboardClock by remember { mutableStateOf(LocalDateTime.now()) }
+            var dashboardClock by remember { mutableStateOf(com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()) }
             LaunchedEffect(Unit) {
                 while (true) {
-                    dashboardClock = LocalDateTime.now()
+                    dashboardClock = com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()
                     delay(30_000L)
                 }
             }
