@@ -1,6 +1,7 @@
 package com.example.suretouchapp
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
@@ -44,8 +45,9 @@ class ClassAndResumeInstrumentedTest {
             compose.setContent { LiveClassScreen(tokens, {}) }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Second class", substring = true).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Second class", substring = true).performClick()
-            compose.onNodeWithText("Second class").assertExists()
-            compose.onNodeWithText("Choose a class (2)").assertExists()
+            compose.onAllNodesWithText("Second class").assertCountEquals(2)
+            compose.onNodeWithText("Select Class Session").assertExists()
+            compose.onNodeWithText("2 Classes").assertExists()
         } finally {
             tokens.clearUserSessionAndProfile()
             ApiClient.testServiceFactory = null

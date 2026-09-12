@@ -41,6 +41,46 @@ Android 13 and newer request `POST_NOTIFICATIONS` from the in-app Account Notifi
 
 For reliable delivery while the app is fully closed, production should publish the same notification payload through Firebase Cloud Messaging and use the server notification ID as the idempotency key. The current client also synchronizes unread `GET /api/notifications/` records whenever an authenticated app session starts or the notification screen refreshes.
 
+Time-sensitive class pushes must be FCM **data messages** so Android invokes
+`SureProEdMessagingService` in both foreground and background. A complete payload
+is rendered synchronously before any API request:
+
+```json
+{
+  "type": "CLASS_STARTING_SOON",
+  "notification_id": "8712",
+  "account_session": "<registered session UUID>",
+  "class_id": "125",
+  "class_title": "VLSI",
+  "scheduled_at": "2026-09-12T22:20:00+05:30",
+  "sent_at": "2026-09-12T22:15:00+05:30"
+}
+```
+
+The supported event types are `CLASS_STARTING_SOON` and `CLASS_STARTED`. The
+server should send the first at `T - 5 minutes` with Android FCM priority `HIGH`
+and a seven-minute TTL, then send the second at `T` with priority `HIGH` and a
+short TTL. The client derives the visible state from `scheduled_at` and its
+actual `onMessageReceived()` time:
+
+- before `T`: “Class starts at …”;
+- `T` through `T + 2 minutes`: “Class is live now”;
+- after `T + 2 minutes`: “Class started at …”, including received time and how late it arrived.
+
+The client stores the last 200 timing records in the private
+`sure_proed_push_delivery_metrics` preferences with server-sent, device-received,
+notification-displayed, transport-latency, and schedule-lateness timestamps.
+It also queues an authenticated `POST /api/notifications/push/delivery/`
+acknowledgement after display. The backend accepts an acknowledgement only when
+the notification, registered account session, authenticated user, and class
+lifecycle key all match, and exposes the resulting `MobilePushDelivery` rows in
+the Django admin for per-student latency investigation. Local timing history is
+cleared whenever the account session changes.
+Incomplete or unrelated payloads retain the existing account-isolated,
+authenticated API-fetch path. The authoritative fetch after a direct class push
+reconciles read/deleted state without immediately replacing the timing-rich tray
+entry or producing a duplicate alert.
+
 Recommended server behavior:
 
 - Redis-cache the summary by `student_id` for 15–30 seconds.

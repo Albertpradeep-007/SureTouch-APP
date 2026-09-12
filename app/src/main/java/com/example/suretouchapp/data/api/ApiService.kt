@@ -194,6 +194,7 @@ interface ApiService {
     @PATCH("job-references/{id}/") suspend fun patchJobReference(@Path("id") id: String, @Body body: ApiBody): Response<JobReferenceDto>
 
     @POST("notifications/push/mobile/") suspend fun registerMobilePush(@Body body: ApiBody): Response<ApiBody>
+    @POST("notifications/push/delivery/") suspend fun recordMobilePushDelivery(@Body body: ApiBody): Response<ApiBody>
     @GET("notifications/{id}/") suspend fun getNotification(@Path("id") id: String): Response<NotificationDto>
     @GET("notifications/") suspend fun getNotifications(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<NotificationDto>>
     @DELETE("notifications/{id}/") suspend fun deleteNotification(@Path("id") id: String): Response<Unit>

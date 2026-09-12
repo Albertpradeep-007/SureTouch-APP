@@ -91,22 +91,52 @@ fun LiveClassScreen(
     val googleMeetUrl = when (val s = liveState) {
         is LiveClassUiState.Ongoing -> s.session.meetingLink.orEmpty()
         is LiveClassUiState.StartingSoon -> s.session.meetingLink.orEmpty()
-        else -> ""
+        is LiveClassUiState.AwaitingUpcoming -> s.nextSession.meetingLink.orEmpty()
+        else -> activeSession?.meetingLink.orEmpty()
     }
 
     suspend fun refreshLiveState() {
         try {
-            val list = com.example.suretouchapp.data.repository.AttendanceRepository(tokenManager).load()
+            val api = ApiClient.getService(tokenManager)
+            val list = runCatching {
+                com.example.suretouchapp.data.repository.AttendanceRepository(tokenManager).load()
+            }.getOrDefault(emptyList())
+
+            val resolvedSessions = if (list.isNotEmpty()) {
+                list
+            } else {
+                val stats = runCatching { api.getStudentStatistics() }.getOrNull()
+                stats?.takeIf { it.isSuccessful }?.body()?.upcomingSessions.orEmpty()
+            }
+
             tokenManager.withCurrentSession(accountSession) {
-                sessions = list
-                if (list.none { it.id == selectedSessionId }) selectedSessionId = null
-                SureProEdNotificationManager.syncTimetableAndClasses(context, list)
+                sessions = resolvedSessions
+                if (resolvedSessions.none { it.id == selectedSessionId }) {
+                    selectedSessionId = resolvedSessions.firstOrNull {
+                        val status = com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(it, now)
+                        status == com.example.suretouchapp.data.repository.TimetableClassStatus.ONGOING ||
+                            status == com.example.suretouchapp.data.repository.TimetableClassStatus.UPCOMING
+                    }?.id
+                }
+                SureProEdNotificationManager.syncTimetableAndClasses(context, resolvedSessions)
                 refreshError = null
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            if (tokenManager.isCurrentSession(accountSession)) refreshError = "Unable to refresh classes. Please retry before joining."
+            if (tokenManager.isCurrentSession(accountSession)) {
+                val fallback = runCatching {
+                    ApiClient.getService(tokenManager).getStudentStatistics().takeIf { it.isSuccessful }?.body()?.upcomingSessions.orEmpty()
+                }.getOrDefault(emptyList())
+                if (fallback.isNotEmpty()) {
+                    tokenManager.withCurrentSession(accountSession) {
+                        sessions = fallback
+                        refreshError = null
+                    }
+                } else {
+                    refreshError = "Unable to refresh classes. Please retry before joining."
+                }
+            }
         } finally { isLoading = false }
     }
 
@@ -119,9 +149,9 @@ fun LiveClassScreen(
     LaunchedEffect(accountSession) {
         while (true) { now = com.example.suretouchapp.data.repository.ClassSchedulePolicy.now(); delay(1_000L) }
     }
-    var isAgreed by remember(activeSession?.id) { mutableStateOf(false) }
+    var isAgreed by remember(accountSession) { mutableStateOf(tokenManager.isLiveClassGuidelinesAgreed()) }
     var showGuidelinesDialog by remember(activeSession?.id) { mutableStateOf(false) }
-    var dialogCheckboxChecked by remember(activeSession?.id) { mutableStateOf(false) }
+    var dialogCheckboxChecked by remember(activeSession?.id) { mutableStateOf(tokenManager.isLiveClassGuidelinesAgreed()) }
 
     // Pulsing animation for LIVE NOW / STARTING SOON indicator
     val infiniteTransition = rememberInfiniteTransition(label = "LivePulseTransition")
@@ -176,24 +206,234 @@ fun LiveClassScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    refreshError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    val detailDate = activeSession?.let { com.example.suretouchapp.data.repository.parseSessionLocalDate(it.date) }
-                    val choices = orderedSessions.filter {
-                        val date = com.example.suretouchapp.data.repository.parseSessionLocalDate(it.date)
-                        date == now.toLocalDate() || date == detailDate
-                    }.filter {
-                        com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(it, now) != com.example.suretouchapp.data.repository.TimetableClassStatus.ENDED
-                    }
-                    if (choices.size > 1) {
-                        Text("Choose a class (${choices.size})", fontWeight = FontWeight.Bold)
-                        choices.forEach { session ->
-                            val status = com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(session, now)
-                            FilterChip(
-                                selected = session.id == activeSession?.id,
-                                onClick = { selectedSessionId = session.id },
-                                label = { Text("${session.sessionTitle ?: session.cohortCode ?: "Class"} | ${session.date} | ${session.startTime.orEmpty()} - ${session.endTime.orEmpty()} | ${status.name.replace('_', ' ')}") },
-                                modifier = Modifier.fillMaxWidth()
+                    refreshError?.let {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        ) {
+                            Text(
+                                text = it,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                             )
+                        }
+                    }
+
+                    val availableChoices = orderedSessions.filter {
+                        val status = com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(it, now)
+                        status != com.example.suretouchapp.data.repository.TimetableClassStatus.ENDED &&
+                            status != com.example.suretouchapp.data.repository.TimetableClassStatus.CANCELLED
+                    }
+
+                    if (availableChoices.size > 1) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, ColorBorderHairline),
+                            elevation = CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.School,
+                                            contentDescription = null,
+                                            tint = ColorPrimaryPurple,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Select Class Session",
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorTextDark
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = ColorPrimaryPurple.copy(alpha = 0.12f)
+                                    ) {
+                                        Text(
+                                            text = "${availableChoices.size} Classes",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorPrimaryPurple,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    availableChoices.forEach { session ->
+                                        val isSelected = session.id == activeSession?.id
+                                        val sessionStatus = com.example.suretouchapp.data.repository.TimetableSessionPolicy.resolveStatus(session, now)
+                                        val startFormatted = formatClassTime(session.startTime)
+                                        val endFormatted = formatClassTime(session.endTime)
+                                        val timeText = if (startFormatted != "--:--" && endFormatted != "--:--") {
+                                            "$startFormatted - $endFormatted"
+                                        } else {
+                                            listOfNotNull(session.startTime, session.endTime).joinToString(" - ")
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) {
+                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                            },
+                                            border = BorderStroke(
+                                                width = if (isSelected) 1.5.dp else 1.dp,
+                                                color = if (isSelected) ColorPrimaryPurple else ColorBorderHairline
+                                            ),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable { selectedSessionId = session.id }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(20.dp)
+                                                        .clip(CircleShape)
+                                                        .border(
+                                                            width = 2.dp,
+                                                            color = if (isSelected) ColorPrimaryPurple else ColorTextSub.copy(alpha = 0.5f),
+                                                            shape = CircleShape
+                                                        )
+                                                        .background(if (isSelected) ColorPrimaryPurple else Color.Transparent),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (isSelected) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Check,
+                                                            contentDescription = "Selected",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(13.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.width(12.dp))
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = session.sessionTitle ?: session.courseName ?: "Live Class",
+                                                            fontSize = 13.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = ColorTextDark,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f, fill = false)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = when (sessionStatus) {
+                                                                com.example.suretouchapp.data.repository.TimetableClassStatus.ONGOING -> MaterialTheme.colorScheme.errorContainer
+                                                                com.example.suretouchapp.data.repository.TimetableClassStatus.UPCOMING -> Color(0xFFFEF3C7)
+                                                                else -> MaterialTheme.colorScheme.primaryContainer
+                                                            }
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                if (sessionStatus == com.example.suretouchapp.data.repository.TimetableClassStatus.ONGOING) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(6.dp)
+                                                                            .graphicsLayer { alpha = alphaPulse }
+                                                                            .clip(CircleShape)
+                                                                            .background(ColorLiveRed)
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                                }
+                                                                Text(
+                                                                    text = when (sessionStatus) {
+                                                                        com.example.suretouchapp.data.repository.TimetableClassStatus.ONGOING -> "LIVE"
+                                                                        com.example.suretouchapp.data.repository.TimetableClassStatus.UPCOMING -> "SOON"
+                                                                        else -> "UPCOMING"
+                                                                    },
+                                                                    fontSize = 9.5.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = when (sessionStatus) {
+                                                                        com.example.suretouchapp.data.repository.TimetableClassStatus.ONGOING -> ColorLiveRed
+                                                                        com.example.suretouchapp.data.repository.TimetableClassStatus.UPCOMING -> ColorAmberLive
+                                                                        else -> MaterialTheme.colorScheme.primary
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Spacer(modifier = Modifier.height(3.dp))
+
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Schedule,
+                                                                contentDescription = null,
+                                                                tint = ColorTextSub,
+                                                                modifier = Modifier.size(13.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(3.dp))
+                                                            Text(
+                                                                text = timeText,
+                                                                fontSize = 11.5.sp,
+                                                                color = ColorTextSub,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                        }
+
+                                                        if (!session.conductedByName.isNullOrBlank()) {
+                                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Person,
+                                                                    contentDescription = null,
+                                                                    tint = ColorTextSub,
+                                                                    modifier = Modifier.size(13.dp)
+                                                                )
+                                                                Spacer(modifier = Modifier.width(3.dp))
+                                                                Text(
+                                                                    text = session.conductedByName,
+                                                                    fontSize = 11.5.sp,
+                                                                    color = ColorTextSub,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -361,7 +601,8 @@ fun LiveClassScreen(
                             Spacer(modifier = Modifier.height(18.dp))
 
                             // Action button
-                            if (googleMeetUrl.isNotBlank()) {
+                            val effectiveMeetUrl = (googleMeetUrl.ifBlank { activeSession?.meetingLink.orEmpty() }).trim()
+                            if (effectiveMeetUrl.isNotBlank()) {
                                 Button(
                                     onClick = {
                                         if (isAgreed) {
@@ -385,36 +626,15 @@ fun LiveClassScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = if (liveState is LiveClassUiState.StartingSoon) "Join Class Early →" else "Join Live Class →",
+                                        text = when (liveState) {
+                                            is LiveClassUiState.Ongoing -> "Join Live Class →"
+                                            is LiveClassUiState.StartingSoon -> "Join Class Early →"
+                                            else -> "Join Google Meet →"
+                                        },
                                         fontSize = 14.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )
-                                }
-                            } else if (liveState is LiveClassUiState.AwaitingUpcoming) {
-                                Button(
-                                    onClick = {},
-                                    enabled = false,
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                ) {
-                                    Icon(Icons.Default.Lock, null, modifier = Modifier.size(17.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Join Opens 10 Mins Before Class", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedButton(
-                                    onClick = onNavigateToTimetable,
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.fillMaxWidth().height(44.dp)
-                                ) {
-                                    Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(17.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("View Complete Timetable", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 }
                             } else {
                                 OutlinedButton(
@@ -431,83 +651,8 @@ fun LiveClassScreen(
                     }
                 }
 
-                // PROTECTED MEET LINK CARD (when class is scheduled more than 10 mins away)
-                if (liveState is LiveClassUiState.AwaitingUpcoming && activeSession != null) {
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(1.dp, ColorBorderHairline),
-                            elevation = CardDefaults.cardElevation(2.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Lock,
-                                            contentDescription = null,
-                                            tint = Color(0xFFD97706),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "Google Meet Link Protected",
-                                            fontSize = 13.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ColorTextDark
-                                        )
-                                    }
-
-                                    Surface(
-                                        color = Color(0xFFFEF3C7),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "🔒 Unlocks 10m Prior",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFB45309),
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(
-                                            text = "To protect session integrity and prevent link misuse, the official Google Meet link, meeting code, and Join button will automatically activate 15 minutes before class starts.",
-                                            fontSize = 12.sp,
-                                            color = ColorTextSub,
-                                            lineHeight = 17.sp
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        val startFormatted = formatClassTime(activeSession.startTime)
-                                        Text(
-                                            text = "📅 Scheduled: ${activeSession.date} at ${if (startFormatted != "--:--") startFormatted else activeSession.startTime ?: "Scheduled Time"}",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = ColorPrimaryPurple
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // MEET LINK & LAPTOP CODE CARD (only for active / starting soon classes, NOT cancelled)
-                val effectiveMeetUrl = googleMeetUrl.trim()
+                // MEET LINK & LAPTOP CODE CARD
+                val effectiveMeetUrl = (googleMeetUrl.ifBlank { activeSession?.meetingLink.orEmpty() }).trim()
                 if (effectiveMeetUrl.isNotBlank()) {
                     item {
                         val meetCode = remember(effectiveMeetUrl) {
@@ -537,7 +682,7 @@ fun LiveClassScreen(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "Google Meet Link & Code",
-                                            fontSize = 13.sp,
+                                            fontSize = 13.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = ColorTextDark
                                         )
@@ -612,6 +757,54 @@ fun LiveClassScreen(
                                     }
                                 }
 
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            if (isAgreed) {
+                                                launchGoogleMeet()
+                                            } else {
+                                                dialogCheckboxChecked = false
+                                                showGuidelinesDialog = true
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ColorPrimaryPurple),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f).height(38.dp)
+                                    ) {
+                                        Icon(Icons.Default.VideoCall, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Open Meet", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val uri = ClassJoinLauncher.normalizeMeetingUri(effectiveMeetUrl)
+                                            if (uri != null) {
+                                                val browserIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                                                    addCategory(Intent.CATEGORY_BROWSABLE)
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                runCatching { context.startActivity(browserIntent) }
+                                                    .onFailure {
+                                                        clipboardManager.setText(AnnotatedString(effectiveMeetUrl))
+                                                        Toast.makeText(context, "Link copied: $effectiveMeetUrl", Toast.LENGTH_SHORT).show()
+                                                    }
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f).height(38.dp)
+                                    ) {
+                                        Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(16.dp), tint = ColorPrimaryPurple)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("In Browser", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ColorPrimaryPurple)
+                                    }
+                                }
+
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Surface(
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -624,6 +817,78 @@ fun LiveClassScreen(
                                         color = ColorTextSub,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                                     )
+                                }
+                            }
+                        }
+                    }
+                } else if (activeSession != null) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, ColorBorderHairline),
+                            elevation = CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = Color(0xFFD97706),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Meeting Link Pending",
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorTextDark
+                                        )
+                                    }
+
+                                    Surface(
+                                        color = Color(0xFFFEF3C7),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Scheduled",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFB45309),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = "The trainer will publish the Google Meet link shortly before the session starts. Please refresh or check back closer to class time.",
+                                            fontSize = 12.sp,
+                                            color = ColorTextSub,
+                                            lineHeight = 17.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        val startFormatted = formatClassTime(activeSession.startTime)
+                                        Text(
+                                            text = "📅 Scheduled: ${activeSession.date} at ${if (startFormatted != "--:--") startFormatted else activeSession.startTime ?: "Scheduled Time"}",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = ColorPrimaryPurple
+                                        )
+                                    }
                                 }
                             }
                         }

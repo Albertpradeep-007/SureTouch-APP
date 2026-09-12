@@ -1175,6 +1175,13 @@ fun CleanTimetableDashboardView(
     tokenManager: TokenManager? = null
 ) {
     var showCustomizeSheet by rememberSaveable { mutableStateOf(false) }
+    var dashboardClock by remember { mutableStateOf(com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            dashboardClock = com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()
+            kotlinx.coroutines.delay(30_000L)
+        }
+    }
     val completedGrades = dashboardSnapshot.grades.filter { it.marks != null }
     val hasPreScreenResult = dashboardSnapshot.hasPublishedScreeningResult()
     val gradeAverage = completedGrades.mapNotNull { it.percentage }
@@ -1202,6 +1209,33 @@ fun CleanTimetableDashboardView(
         completedGrades.isEmpty() -> "No scores yet"
         gradeAverage != null -> "${completedGrades.size} tests • $gradeAverage%"
         else -> "Module test results"
+    }
+
+    val activeOrNextLiveSession = remember(dashboardSnapshot.sessions, dashboardClock) {
+        val mapped = dashboardSnapshot.sessions.map { session ->
+            val state = getSessionState(
+                session.rawDate ?: session.date,
+                session.rawStartTime ?: session.startTime,
+                session.rawEndTime ?: session.endTime,
+                session.classStatus,
+                dashboardClock
+            )
+            Pair(session, state)
+        }.filterNot { it.second == SessionState.COMPLETED || it.second == SessionState.CANCELLED }
+
+        mapped.firstOrNull { it.second == SessionState.LIVE_NOW }
+            ?: mapped.firstOrNull { it.second == SessionState.UPCOMING }
+    }
+
+    val liveClassSubtitle = when {
+        activeOrNextLiveSession?.second == SessionState.LIVE_NOW -> "Live Now • Join"
+        activeOrNextLiveSession?.second == SessionState.UPCOMING -> {
+            val session = activeOrNextLiveSession.first
+            val cleanStart = session.startTime.takeIf { it != "--:--" && it.isNotBlank() }
+            if (cleanStart != null) "Today • $cleanStart" else "Class scheduled"
+        }
+        dashboardSnapshot.cohortCode == null -> "Cohort required"
+        else -> "No class scheduled"
     }
 
     // Clean 3x3 Grid Modules
@@ -1282,7 +1316,7 @@ fun CleanTimetableDashboardView(
         ),
         CleanPortalTile(
             title = "Live Class",
-            subtitle = dashboardSnapshot.sessions.firstOrNull()?.let { "Next • ${it.startTime}" } ?: "No class scheduled",
+            subtitle = liveClassSubtitle,
             icon = Icons.Default.LiveTv,
             iconTint = ColorRedIcon,
             iconBg = ColorRedIconBg,
@@ -1370,13 +1404,6 @@ fun CleanTimetableDashboardView(
         // TODAY'S TIMETABLE HERO CAROUSEL (SWIPEABLE MULTI-CLASS PAGER)
         // =========================================================================
         item {
-            var dashboardClock by remember { mutableStateOf(com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()) }
-            LaunchedEffect(Unit) {
-                while (true) {
-                    dashboardClock = com.example.suretouchapp.data.repository.ClassSchedulePolicy.now()
-                    delay(30_000L)
-                }
-            }
             val dashboardDate = remember {
                 SimpleDateFormat("dd-MMM-yyyy", Locale.US).format(java.util.Date()).uppercase(Locale.US)
             }

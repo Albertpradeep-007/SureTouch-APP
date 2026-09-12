@@ -19,6 +19,7 @@ class TokenManager internal constructor(
             context.cacheDir.listFiles()?.filter { it.name.startsWith("view_resume_") || it.name.startsWith("temp_resume_") }?.forEach { it.delete() }
             androidx.core.app.NotificationManagerCompat.from(context).cancelAll()
             context.getSharedPreferences("sure_proed_notification_delivery", Context.MODE_PRIVATE).edit().clear().apply()
+            context.getSharedPreferences("sure_proed_push_delivery_metrics", Context.MODE_PRIVATE).edit().clear().apply()
             context.getSharedPreferences("sure_proed_push_registration", Context.MODE_PRIVATE).edit().clear().apply()
         }
     )
@@ -177,6 +178,12 @@ class TokenManager internal constructor(
     fun shouldShowWelcome(): Boolean = prefs.getBoolean("new_account_welcome", false)
 
     fun needsCourseSelection(): Boolean = prefs.getBoolean("needs_course_selection", false)
+
+    fun isLiveClassGuidelinesAgreed(): Boolean = prefs.getBoolean("live_class_guidelines_agreed", false)
+
+    fun saveLiveClassGuidelinesAgreed(agreed: Boolean) {
+        prefs.edit().putBoolean("live_class_guidelines_agreed", agreed).apply()
+    }
 
     fun getReadNoticeIds(): Set<String> = prefs.getStringSet("read_notice_ids", emptySet()) ?: emptySet()
 

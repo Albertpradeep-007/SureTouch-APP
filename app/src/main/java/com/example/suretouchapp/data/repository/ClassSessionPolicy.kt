@@ -150,9 +150,11 @@ object ClassSchedulePolicy {
     val timeZone: java.time.ZoneId = java.time.ZoneId.of("Asia/Kolkata")
     fun now(): LocalDateTime = LocalDateTime.now(timeZone)
 
-    fun canJoin(session: AttendanceDto, now: LocalDateTime = now()): Boolean =
-        !session.meetingLink.isNullOrBlank() &&
-            TimetableSessionPolicy.resolveStatus(session, now) == TimetableClassStatus.ONGOING
+    fun canJoin(session: AttendanceDto, now: LocalDateTime = now()): Boolean {
+        if (session.meetingLink.isNullOrBlank()) return false
+        val status = TimetableSessionPolicy.resolveStatus(session, now)
+        return status != TimetableClassStatus.ENDED && status != TimetableClassStatus.CANCELLED
+    }
 
     fun parseLocalTime(value: String?): LocalTime? {
         val trimmed = value?.trim()?.takeIf(String::isNotBlank) ?: return null

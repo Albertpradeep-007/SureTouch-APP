@@ -30,6 +30,7 @@ import com.example.suretouchapp.data.repository.latestNotifications
 import com.example.suretouchapp.data.repository.notificationVersion
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -51,7 +52,11 @@ object SureProEdNotificationManager {
     private const val KEY_15M_REMINDER_IDS = "reminder_15m_class_ids"
     private const val KEY_DELIVERED_CANCELLED_IDS = "delivered_cancelled_ids"
     private const val KEY_DELIVERED_RESCHEDULED_IDS = "delivered_rescheduled_ids"
+    private const val KEY_DIRECT_CLASS_PUSH_IDS = "direct_class_push_ids"
+    private const val KEY_DIRECT_CLASS_EVENT_KEYS = "direct_class_event_keys"
     private const val KEY_TRAY_ID_PREFIX = "tray_id_"
+    private const val PUSH_METRICS_PREFS_NAME = "sure_proed_push_delivery_metrics"
+    private const val KEY_PUSH_METRICS = "records"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -330,6 +335,7 @@ object SureProEdNotificationManager {
     private fun syncCurrentUnread(context: Context, notifications: List<NotificationDto>, completeSnapshot: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val delivered = prefs.getStringSet(KEY_DELIVERED_IDS, emptySet()).orEmpty().toMutableSet()
+        val directClassPushes = prefs.getStringSet(KEY_DIRECT_CLASS_PUSH_IDS, emptySet()).orEmpty().toMutableSet()
         val latest = latestNotifications(notifications)
         val editor = prefs.edit()
         val toDismiss = mutableSetOf<String>()
@@ -341,6 +347,7 @@ object SureProEdNotificationManager {
                 editor.remove("version_$id")
                 editor.putBoolean("deleted_$id", true)
                 delivered.remove(id)
+                directClassPushes.remove(id)
             }
         }
         latest.forEach { item ->
@@ -351,19 +358,21 @@ object SureProEdNotificationManager {
                 java.time.Instant.parse(version) < java.time.Instant.parse(previous)
             }.getOrDefault(false)
             if (!older) {
+                val wasShownDirectly = directClassPushes.remove(item.id)
                 if (completeSnapshot) editor.remove("deleted_${item.id}")
                 if (item.isRead) toDismiss += item.id
-                else if (canPost(context) && (item.id !in delivered || previous != version)) {
+                else if (!wasShownDirectly && canPost(context) && (item.id !in delivered || previous != version)) {
                     toShow += item
                     editor.putInt(KEY_TRAY_ID_PREFIX + item.id, trayNotificationId(item))
                 }
-                if (item.isRead || canPost(context)) {
+                if (item.isRead || canPost(context) || wasShownDirectly) {
                     delivered += item.id
                     editor.putString("version_${item.id}", version)
                 }
             }
         }
         editor.putStringSet(KEY_DELIVERED_IDS, delivered)
+        editor.putStringSet(KEY_DIRECT_CLASS_PUSH_IDS, directClassPushes)
         // Persist the delivery version before releasing the process-wide lock.
         // This prevents the dashboard, WorkManager and FCM from replaying the
         // same unchanged notification when their refreshes overlap.
@@ -655,6 +664,116 @@ object SureProEdNotificationManager {
         builder.addAction(R.drawable.ic_sureproed_notification, "Open class", pendingIntent)
 
         showClassState(context, sessionId, builder.build())
+    }
+
+    /**
+     * Renders a complete live-class FCM data payload synchronously. This method
+     * deliberately performs no network request so onMessageReceived() can post
+     * the time-sensitive alert inside Firebase's short execution window.
+     */
+    @Synchronized
+    fun showLiveClassPush(
+        context: Context,
+        payload: LiveClassPushPayload,
+        receivedAt: Instant
+    ): LiveClassPushDisplayResult {
+        val presentation = LiveClassPushPolicy.present(payload, receivedAt, ClassSchedulePolicy.timeZone)
+        if (!canPost(context)) return LiveClassPushDisplayResult(presentation, displayedAt = null, duplicate = false)
+        createChannels(context)
+        val eventKey = "${payload.notificationId}:${payload.type.name}"
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (eventKey in prefs.getStringSet(KEY_DIRECT_CLASS_EVENT_KEYS, emptySet()).orEmpty()) {
+            return LiveClassPushDisplayResult(presentation, displayedAt = null, duplicate = true)
+        }
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("open_live_class", true)
+            putExtra("class_id", payload.classId)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            ("live_push_" + payload.classId).hashCode(),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val largeLogo = BitmapFactory.decodeResource(context.resources, R.drawable.sure_trust_official_logo)
+        val builder = NotificationCompat.Builder(context, CHANNEL_CLASS_REMINDERS)
+            .setSmallIcon(R.drawable.ic_sureproed_notification)
+            .setLargeIcon(largeLogo)
+            .setColor(0xFFDC2626.toInt())
+            .setContentTitle(presentation.title)
+            .setContentText(presentation.body.substringBefore('\n'))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(presentation.body))
+            .setSubText("SURE ProEd • Live Class Alert")
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            // The optional T event should alert after the T-5 reminder, while a
+            // duplicate delivery of either event is suppressed by eventKey.
+            .setOnlyAlertOnce(false)
+            .setWhen(receivedAt.toEpochMilli())
+            .setShowWhen(true)
+            .setSound(defaultSoundUri)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setVibrate(longArrayOf(0, 300, 200, 300))
+            .setGroup(GROUP_STUDENT_UPDATES)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        val action = if (presentation.state == LiveClassPushState.UPCOMING) "Open class" else "Join now"
+        builder.addAction(R.drawable.ic_sureproed_notification, action, pendingIntent)
+
+        val trayId = ("class_state_" + payload.classId).hashCode()
+        notifyIfAllowed(context, trayId, builder.build())
+        val displayedAt = Instant.now()
+        rememberDirectClassPush(context, payload.notificationId, trayId, eventKey)
+        recordPushMetric(context, payload, presentation, receivedAt, displayedAt)
+        return LiveClassPushDisplayResult(presentation, displayedAt, duplicate = false)
+    }
+
+    private fun rememberDirectClassPush(context: Context, notificationId: String, trayId: Int, eventKey: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val delivered = prefs.getStringSet(KEY_DELIVERED_IDS, emptySet()).orEmpty().toMutableSet()
+        val direct = prefs.getStringSet(KEY_DIRECT_CLASS_PUSH_IDS, emptySet()).orEmpty().toMutableSet()
+        val events = prefs.getStringSet(KEY_DIRECT_CLASS_EVENT_KEYS, emptySet()).orEmpty().toMutableSet()
+        delivered += notificationId
+        direct += notificationId
+        events += eventKey
+        prefs.edit()
+            .putStringSet(KEY_DELIVERED_IDS, delivered.toList().takeLast(500).toSet())
+            .putStringSet(KEY_DIRECT_CLASS_PUSH_IDS, direct.toList().takeLast(200).toSet())
+            .putStringSet(KEY_DIRECT_CLASS_EVENT_KEYS, events.toList().takeLast(200).toSet())
+            .putInt(KEY_TRAY_ID_PREFIX + notificationId, trayId)
+            .commit()
+    }
+
+    private fun recordPushMetric(
+        context: Context,
+        payload: LiveClassPushPayload,
+        presentation: LiveClassPushPresentation,
+        receivedAt: Instant,
+        displayedAt: Instant
+    ) {
+        val prefs = context.getSharedPreferences(PUSH_METRICS_PREFS_NAME, Context.MODE_PRIVATE)
+        val existing = runCatching {
+            org.json.JSONArray(prefs.getString(KEY_PUSH_METRICS, "[]"))
+        }.getOrElse { org.json.JSONArray() }
+        val retained = org.json.JSONArray()
+        val first = (existing.length() - 199).coerceAtLeast(0)
+        for (index in first until existing.length()) retained.put(existing.opt(index))
+        retained.put(
+            org.json.JSONObject()
+                .put("notification_id", payload.notificationId)
+                .put("class_id", payload.classId)
+                .put("event_type", payload.type.name)
+                .put("scheduled_at", payload.scheduledAt.toString())
+                .put("sent_at", payload.sentAt.toString())
+                .put("device_received_at", receivedAt.toString())
+                .put("notification_displayed_at", displayedAt.toString())
+                .put("transport_latency_ms", presentation.transportLatency.toMillis())
+                .put("schedule_lateness_ms", presentation.scheduleLateness.toMillis())
+        )
+        prefs.edit().putString(KEY_PUSH_METRICS, retained.toString()).apply()
     }
 
     private fun showClassState(context: Context, id: String, notification: android.app.Notification) {

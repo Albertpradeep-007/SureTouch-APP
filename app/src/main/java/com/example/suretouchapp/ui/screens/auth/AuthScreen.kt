@@ -241,7 +241,7 @@ fun AuthScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "SURE ProEd Touch",
+                        text = "SUREProEd",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.primary,
@@ -1397,7 +1397,7 @@ fun AuthScreen(
                         text = if (updateState is UpdateState.UpdateAvailable) {
                             "⚠️ Installed: v${AppUpdateManager.currentVersionName} • Latest: v${(updateState as UpdateState.UpdateAvailable).info.versionName}"
                         } else {
-                            "SURE ProEd Touch v${AppUpdateManager.currentVersionName} • Latest version"
+                            "SUREProEd v${AppUpdateManager.currentVersionName} • Latest version"
                         },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,

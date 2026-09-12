@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.NotificationDto
+import com.example.suretouchapp.ui.screens.notifications.LiveClassPushPayload
 import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager as Alerts
 import org.junit.Assert.*
 import org.junit.Before
@@ -12,6 +13,7 @@ import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.LocalDate
+import java.time.Instant
 import java.time.ZoneId
 
 @RunWith(AndroidJUnit4::class)
@@ -136,5 +138,48 @@ class NotificationLifecycleInstrumentedTest {
         android.os.SystemClock.sleep(100)
         Alerts.syncTimetableAndClasses(context, listOf(session))
         assertEquals(firstClassPostTime, system.activeNotifications.single().postTime)
+    }
+
+    @Test fun completeClassPushDisplaysLateTimingBeforeNetworkReconciliation() {
+        val payload = LiveClassPushPayload.parse(
+            mapOf(
+                "type" to "CLASS_STARTED",
+                "notification_id" to "live-notification-1",
+                "account_session" to tokens.getSessionId(),
+                "class_id" to "live-class-1",
+                "class_title" to "VLSI",
+                "scheduled_at" to "2026-09-12T22:20:00+05:30",
+                "sent_at" to "2026-09-12T22:15:00+05:30"
+            )
+        )!!
+        val firstDisplay = Alerts.showLiveClassPush(context, payload, Instant.parse("2026-09-12T16:54:00Z"))
+        assertCount(1)
+        awaitTitle("VLSI Class Started")
+        assertNotNull(firstDisplay.displayedAt)
+        assertTrue(
+            system.activeNotifications.single().notification.extras
+                .getCharSequence("android.bigText").toString().contains("4 min late")
+        )
+        val firstPostTime = system.activeNotifications.single().postTime
+        val duplicate = Alerts.showLiveClassPush(context, payload, Instant.parse("2026-09-12T16:54:01Z"))
+        assertTrue(duplicate.duplicate)
+        assertEquals(firstPostTime, system.activeNotifications.single().postTime)
+
+        // The required authenticated fetch must reconcile state without replacing
+        // the timing-rich notification or sounding a second alert.
+        Alerts.syncUnread(
+            context,
+            listOf(
+                NotificationDto(
+                    id = payload.notificationId,
+                    title = "Class scheduled",
+                    message = "The class has been scheduled.",
+                    createdAt = "2026-09-12T16:40:00Z",
+                    actionUrl = "/attendance/${payload.classId}/"
+                )
+            )
+        )
+        awaitTitle("VLSI Class Started")
+        assertCount(1)
     }
 }
