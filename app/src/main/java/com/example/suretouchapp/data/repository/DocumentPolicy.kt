@@ -8,7 +8,8 @@ object DocumentPolicy {
     const val MAX_RESUME_BYTES = 5 * 1024 * 1024
     fun trustedUrl(value: String): Boolean = runCatching {
         val uri = URI(value)
-        uri.scheme == "https" && uri.host.equals("sureproed.com", true) &&
+        val host = uri.host?.lowercase().orEmpty()
+        uri.scheme == "https" && (host == "api.sureproed.com" || host == "sureproed.com") &&
             (uri.port == -1 || uri.port == 443) && uri.rawUserInfo == null &&
             (uri.path.startsWith("/api/") || uri.path.startsWith("/media/"))
     }.getOrDefault(false)

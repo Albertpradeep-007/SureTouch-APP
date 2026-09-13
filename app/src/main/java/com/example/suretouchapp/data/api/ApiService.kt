@@ -302,6 +302,9 @@ interface ApiService {
 
     @GET("app/version-check/")
     suspend fun checkAppVersion(): Response<AppVersionInfoDto>
+
+    @GET("health/")
+    suspend fun getHealth(): Response<ApiBody>
 }
 
 /**

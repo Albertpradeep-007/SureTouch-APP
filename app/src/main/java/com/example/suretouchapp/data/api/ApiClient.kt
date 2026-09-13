@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
     // Production SURE ProEd backend domain
-    private const val BASE_URL = "https://sureproed.com/api/"
+    private const val BASE_URL = "https://api.sureproed.com/api/"
 
     @Volatile private var apiService: ApiService? = null
     private var apiSessionId: String? = null
@@ -29,12 +29,12 @@ object ApiClient {
     fun resolveServerUrl(value: String): String {
         val trimmed = value.trim()
         return when {
-            trimmed.contains("106.51.129.34:8000") -> trimmed.replace("http://106.51.129.34:8000", "https://sureproed.com")
-            trimmed.contains("10.0.2.2:8000") -> trimmed.replace("http://10.0.2.2:8000", "https://sureproed.com")
-            trimmed.contains("127.0.0.1:8000") -> trimmed.replace("http://127.0.0.1:8000", "https://sureproed.com")
+            trimmed.contains("106.51.129.34:8000") -> trimmed.replace("http://106.51.129.34:8000", "https://api.sureproed.com")
+            trimmed.contains("10.0.2.2:8000") -> trimmed.replace("http://10.0.2.2:8000", "https://api.sureproed.com")
+            trimmed.contains("127.0.0.1:8000") -> trimmed.replace("http://127.0.0.1:8000", "https://api.sureproed.com")
             trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
-            trimmed.startsWith("/") -> "https://sureproed.com$trimmed"
-            trimmed.startsWith("media/") -> "https://sureproed.com/$trimmed"
+            trimmed.startsWith("/") -> "https://api.sureproed.com$trimmed"
+            trimmed.startsWith("media/") -> "https://api.sureproed.com/$trimmed"
             else -> URI(BASE_URL).resolve(trimmed).toString()
         }
     }

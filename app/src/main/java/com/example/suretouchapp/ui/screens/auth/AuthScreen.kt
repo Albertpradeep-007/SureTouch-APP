@@ -1473,7 +1473,7 @@ fun AuthScreen(
                         onClick = {
                             showAdminRedirectDialog = false
                             try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://sureproed.com/secure-admin/"))
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.sureproed.com/secure-admin/"))
                                 context.startActivity(intent)
                             } catch (_: Exception) {}
                         }

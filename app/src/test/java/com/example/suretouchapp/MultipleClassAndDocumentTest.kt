@@ -36,8 +36,9 @@ class MultipleClassAndDocumentTest {
         assertTrue(LiveClassSelector.resolveLiveClassState(listOf(cancelled), now = now) is LiveClassUiState.Cancelled)
     }
     @Test fun documentTokensOnlyGoToExactHttpsBackendOrigin() {
+        assertTrue(DocumentPolicy.trustedUrl("https://api.sureproed.com/api/students/me/download-resume/?v=1"))
         assertTrue(DocumentPolicy.trustedUrl("https://sureproed.com/api/students/me/download-resume/?v=1"))
-        for (url in listOf("https://sureproed.com.attacker.test/a", "https://attacker.test/sureproed.com", "http://sureproed.com/media/x", "https://sureproed.com:444/media/x", "file:///resume.pdf", "https://u@sureproed.com/media/x")) {
+        for (url in listOf("https://sureproed.com.attacker.test/a", "https://attacker.test/sureproed.com", "http://sureproed.com/media/x", "https://sureproed.com:444/media/x", "file:///resume.pdf", "https://u@sureproed.com/media/x", "https://api.sureproed.com.attacker.test/x")) {
             assertFalse(url, DocumentPolicy.trustedUrl(url))
         }
     }
