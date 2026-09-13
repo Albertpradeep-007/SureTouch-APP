@@ -9,7 +9,7 @@ object DocumentPolicy {
     fun trustedUrl(value: String): Boolean = runCatching {
         val uri = URI(value)
         val host = uri.host?.lowercase().orEmpty()
-        uri.scheme == "https" && (host == "api.sureproed.com" || host == "sureproed.com") &&
+        uri.scheme == "https" && host == "api.sureproed.com" &&
             (uri.port == -1 || uri.port == 443) && uri.rawUserInfo == null &&
             (uri.path.startsWith("/api/") || uri.path.startsWith("/media/"))
     }.getOrDefault(false)

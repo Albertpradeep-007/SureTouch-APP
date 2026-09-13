@@ -88,13 +88,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="sureproed.com" />
-                <data android:scheme="http" android:host="sureproed.com" />
                 <data android:scheme="https" android:host="api.sureproed.com" />
-                <data android:scheme="http" android:host="api.sureproed.com" />
-                <data android:scheme="http" android:host="106.51.129.34" android:port="8000" />
-                <data android:scheme="http" android:host="106.51.129.34" />
-                <data android:scheme="https" android:host="106.51.129.34" />
-                <data android:scheme="http" android:host="suretrust.com" />
                 <data android:scheme="https" android:host="suretrust.com" />
             </intent-filter>
         </activity>

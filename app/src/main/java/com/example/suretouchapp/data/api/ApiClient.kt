@@ -19,7 +19,13 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
     // Production SURE ProEd backend domain
+    private const val API_ORIGIN = "https://api.sureproed.com"
     private const val BASE_URL = "https://api.sureproed.com/api/"
+    private val RETIRED_BACKEND_HOSTS = setOf(
+        "106.51.129.34",
+        "10.0.2.2",
+        "127.0.0.1"
+    )
 
     @Volatile private var apiService: ApiService? = null
     private var apiSessionId: String? = null
@@ -28,14 +34,34 @@ object ApiClient {
 
     fun resolveServerUrl(value: String): String {
         val trimmed = value.trim()
-        return when {
-            trimmed.contains("106.51.129.34:8000") -> trimmed.replace("http://106.51.129.34:8000", "https://api.sureproed.com")
-            trimmed.contains("10.0.2.2:8000") -> trimmed.replace("http://10.0.2.2:8000", "https://api.sureproed.com")
-            trimmed.contains("127.0.0.1:8000") -> trimmed.replace("http://127.0.0.1:8000", "https://api.sureproed.com")
-            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
-            trimmed.startsWith("/") -> "https://api.sureproed.com$trimmed"
-            trimmed.startsWith("media/") -> "https://api.sureproed.com/$trimmed"
-            else -> URI(BASE_URL).resolve(trimmed).toString()
+        if (trimmed.isEmpty()) return trimmed
+
+        val candidate = runCatching {
+            when {
+                trimmed.startsWith("/") -> URI(API_ORIGIN).resolve(trimmed).toString()
+                trimmed.startsWith("media/") -> "$API_ORIGIN/$trimmed"
+                else -> URI(BASE_URL).resolve(trimmed).toString()
+            }
+        }.getOrElse { return trimmed }
+
+        val uri = runCatching { URI(candidate) }.getOrElse { return candidate }
+        val host = uri.host?.lowercase() ?: return candidate
+        val path = uri.path.orEmpty()
+        val isBackendPath = path == "/api" || path.startsWith("/api/") ||
+            path == "/media" || path.startsWith("/media/")
+        val needsCanonicalOrigin = when {
+            host in RETIRED_BACKEND_HOSTS -> true
+            host == "sureproed.com" || host == "www.sureproed.com" -> isBackendPath
+            host == "api.sureproed.com" -> uri.scheme != "https" || (uri.port != -1 && uri.port != 443)
+            else -> false
+        }
+        if (!needsCanonicalOrigin) return candidate
+
+        return buildString {
+            append(API_ORIGIN)
+            append(uri.rawPath?.takeIf(String::isNotEmpty) ?: "/")
+            uri.rawQuery?.let { append('?').append(it) }
+            uri.rawFragment?.let { append('#').append(it) }
         }
     }
 

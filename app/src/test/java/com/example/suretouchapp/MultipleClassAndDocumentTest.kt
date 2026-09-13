@@ -1,6 +1,7 @@
 package com.example.suretouchapp
 
 import com.example.suretouchapp.data.model.AttendanceDto
+import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.repository.*
 import java.time.LocalDateTime
 import org.junit.Assert.*
@@ -37,7 +38,7 @@ class MultipleClassAndDocumentTest {
     }
     @Test fun documentTokensOnlyGoToExactHttpsBackendOrigin() {
         assertTrue(DocumentPolicy.trustedUrl("https://api.sureproed.com/api/students/me/download-resume/?v=1"))
-        assertTrue(DocumentPolicy.trustedUrl("https://sureproed.com/api/students/me/download-resume/?v=1"))
+        assertTrue(DocumentPolicy.trustedUrl(ApiClient.resolveServerUrl("https://sureproed.com/api/students/me/download-resume/?v=1")))
         for (url in listOf("https://sureproed.com.attacker.test/a", "https://attacker.test/sureproed.com", "http://sureproed.com/media/x", "https://sureproed.com:444/media/x", "file:///resume.pdf", "https://u@sureproed.com/media/x", "https://api.sureproed.com.attacker.test/x")) {
             assertFalse(url, DocumentPolicy.trustedUrl(url))
         }
