@@ -57,4 +57,32 @@ class ApiClientUrlTest {
             "content://media/external/images/1"
         ).forEach { url -> assertEquals(url, ApiClient.resolveServerUrl(url)) }
     }
+
+    @Test
+    fun publicPathsAreCorrectlyIdentified() {
+        listOf(
+            "/api/auth/token/",
+            "/api/auth/token/refresh/",
+            "/api/users/forgot_password_request/",
+            "/api/users/forgot_password_confirm/",
+            "/api/users/setup_password/",
+            "/api/users/setup-password/",
+            "/api/auth/send-verification-otp/",
+            "/api/auth/verify-email-otp/",
+            "/api/app/version-check/",
+            "/api/app-releases/"
+        ).forEach { path ->
+            org.junit.Assert.assertTrue("Expected public path for $path", ApiClient.isPublicPath(path))
+        }
+
+        listOf(
+            "/api/students/me/",
+            "/api/users/me/",
+            "/api/applications/",
+            "/api/courses/",
+            "/api/attendance/"
+        ).forEach { path ->
+            org.junit.Assert.assertFalse("Expected non-public path for $path", ApiClient.isPublicPath(path))
+        }
+    }
 }

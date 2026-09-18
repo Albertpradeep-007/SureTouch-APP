@@ -342,7 +342,7 @@ internal fun ForgotPasswordSheet(
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         colors = SureFormDefaults.outlinedTextFieldColors(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(

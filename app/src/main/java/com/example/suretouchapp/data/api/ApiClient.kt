@@ -75,6 +75,18 @@ object ApiClient {
             }
     }
 
+    internal fun isPublicPath(encodedPath: String): Boolean {
+        return encodedPath.contains("/auth/token/") ||
+            encodedPath.contains("forgot_password") ||
+            encodedPath.contains("setup_password") ||
+            encodedPath.contains("setup-password") ||
+            encodedPath.contains("/auth/send-verification-otp/") ||
+            encodedPath.contains("/auth/verify-email-otp/") ||
+            encodedPath.contains("/auth/send-email-otp/") ||
+            encodedPath.contains("version-check") ||
+            encodedPath.contains("app-releases")
+    }
+
     internal fun createService(tokenManager: TokenManager, sessionId: String, baseUrl: String = BASE_URL): ApiService {
             val logging = HttpLoggingInterceptor().apply {
                 // BODY logging materially slows large list responses and may expose student data.
@@ -83,9 +95,12 @@ object ApiClient {
 
             val authInterceptor = Interceptor { chain ->
                 val request = tokenManager.withCurrentSession(sessionId) {
+                    val path = chain.request().url.encodedPath
                     chain.request().newBuilder().apply {
-                        tokenManager.getAccessToken()?.takeIf { it.isNotBlank() && !chain.request().url.encodedPath.contains("/auth/token/") }?.let {
-                            header("Authorization", "Bearer $it")
+                        if (!isPublicPath(path)) {
+                            tokenManager.getAccessToken()?.takeIf { it.isNotBlank() }?.let {
+                                header("Authorization", "Bearer $it")
+                            }
                         }
                         header("Accept", "application/json")
                     }.build()
@@ -107,7 +122,8 @@ object ApiClient {
                 .addInterceptor(authInterceptor)
                 .addInterceptor(logging)
                 .authenticator { _, response ->
-                    if (response.retryCount() >= 2 || response.request.url.encodedPath.contains("/auth/token/")) {
+                    val path = response.request.url.encodedPath
+                    if (response.retryCount() >= 2 || isPublicPath(path)) {
                         return@authenticator null
                     }
                     synchronized(refreshLock) {
