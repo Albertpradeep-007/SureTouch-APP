@@ -1,6 +1,6 @@
-# SURE ProEd v1.1.14 release validation
+# SURE ProEd v1.1.15-beta.1 release validation
 
-Version code 24; version name `1.1.14`. Android branch: `main`. Backend branch: `Pradeep-Backend-v1`.
+Version code 24; version name `1.1.15-beta.1`. Android branch: `main`. Backend branch: `Pradeep-Backend-v1`.
 
 ## Included changes
 
@@ -20,6 +20,6 @@ Version code 24; version name `1.1.14`. Android branch: `main`. Backend branch: 
 
 ## Artifact
 
-- File: `SURE_ProEd_v1.1.14_release.apk`
+- File: `SURE_ProEd_v1.1.15-beta.1_release.apk`
 - Size: 17,339,977 bytes
-- SHA-256: `c0628d8a482bd9f8859ff1f7313998796a7c2b10ea3a92e97fd6ee0d17f182b2`
+- SHA-256: `b3e398ac7bf9cf2639e0a337a416f9f1721ffbf65e54bb5c908f1d3a71685acb`
