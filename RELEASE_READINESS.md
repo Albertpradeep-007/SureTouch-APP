@@ -4,6 +4,11 @@ Version code 25; version name `1.1.15-beta.2`. Android branch: `main`. Backend b
 
 ## Included changes
 
+- Fixed "Forgot Password" unauthenticated request failure:
+  - In `ApiClient.kt`, added `isPublicPath()` and ensured public authentication/recovery endpoints (`users/forgot_password_request/`, `users/forgot_password_confirm/`, `auth/token/`, OTP verification, and version checks) do NOT attach stale or expired `Authorization: Bearer` tokens.
+  - Excluded public endpoints from OkHttp `authenticator` to prevent token refresh loops on 401s.
+  - In Django backend `accounts/views.py`, added `authentication_classes=[]` to `@action(permission_classes=[AllowAny])` on `forgot_password_request` and `forgot_password_confirm` to prevent DRF JWT authentication failure when an unauthenticated caller sends a stale header.
+  - Updated OTP input `keyboardOptions` to `KeyboardType.Number` for standard numeric keyboard behavior across Android devices.
 - Fixed Forgot Password modal bottom sheet in Light Mode:
   - Applied `SureFormDefaults.outlinedTextFieldColors()` ensuring dark high-contrast readable text (`onSurface`) and background (`surface`) in light mode without washed-out/invisible inputs.
   - Added leading icons (`Icons.Default.Email`, `Icons.Default.Pin`, `Icons.Default.Lock`), rounded input corners (`14.dp`), and themed buttons.
@@ -28,4 +33,4 @@ Version code 25; version name `1.1.15-beta.2`. Android branch: `main`. Backend b
 
 - File: `SURE_ProEd_v1.1.15-beta.2_release.apk`
 - Size: 17,339,993 bytes
-- SHA-256: `b784f7dd9bcc63d3dd47a395222ca88e1df75b634a93c8cd1227ec72f2224bf9`
+- SHA-256: `a4b04b3c4d09fd84640e4a95f9af754b5a6e79252a992ba28b23199650c7d3ae`
