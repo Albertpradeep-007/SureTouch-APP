@@ -21,4 +21,27 @@ class AttendanceRepository(private val manager: TokenManager) {
         }
         throw IOException("Incomplete class schedule. Please retry.")
     }
+
+    suspend fun endClass(sessionId: String): AttendanceDto {
+        val session = manager.getSessionId()
+        val api = ApiClient.getService(manager)
+        val response = api.patchAttendance(sessionId, mapOf("conducted" to false))
+        manager.requireCurrentSession(session)
+        if (!response.isSuccessful) {
+            val errorMsg = response.errorBody()?.string() ?: "Failed to end class session."
+            throw IOException(errorMsg)
+        }
+        return response.body() ?: throw IOException("Empty response when ending class session.")
+    }
+
+    suspend fun deleteClass(sessionId: String) {
+        val session = manager.getSessionId()
+        val api = ApiClient.getService(manager)
+        val response = api.deleteAttendance(sessionId)
+        manager.requireCurrentSession(session)
+        if (!response.isSuccessful) {
+            val errorMsg = response.errorBody()?.string() ?: "Failed to delete class session."
+            throw IOException(errorMsg)
+        }
+    }
 }

@@ -5,6 +5,8 @@ import android.app.TimePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,6 +37,7 @@ import com.example.suretouchapp.data.repository.ClassJoinLauncher
 import com.example.suretouchapp.ui.components.rememberClassSessionTime
 import com.example.suretouchapp.data.repository.VolunteerRepository
 import com.example.suretouchapp.data.repository.ClassSchedulePolicy
+import com.example.suretouchapp.data.repository.parseSessionLocalDate
 import com.example.suretouchapp.data.repository.isCancelledSession
 import com.example.suretouchapp.data.repository.isCompletedSession
 import com.example.suretouchapp.ui.theme.SureFormDefaults
@@ -42,6 +45,7 @@ import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.launch
 import retrofit2.Response
 import java.io.IOException
+import com.example.suretouchapp.ui.screens.notifications.SureProEdNotificationManager
 import java.util.Calendar
 import java.util.Locale
 
@@ -257,6 +261,8 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
     var editing by remember { mutableStateOf<AttendanceDto?>(null) }
     var rescheduling by remember { mutableStateOf<AttendanceDto?>(null) }
     var cancelling by remember { mutableStateOf<AttendanceDto?>(null) }
+    var endingClass by remember { mutableStateOf<AttendanceDto?>(null) }
+    var deletingClass by remember { mutableStateOf<AttendanceDto?>(null) }
     var showEditor by remember { mutableStateOf(false) }
 
     suspend fun reload() {
@@ -267,9 +273,11 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
             val response = AttendanceRepository(tokenManager).load()
             tokenManager.requireCurrentSession(accountSession)
             scopeData = assigned
+            val lowerCodes = assigned.cohortCodes.map { it.trim().lowercase() }.toSet()
             sessions = response.filter {
-                it.cohort in assigned.cohortIds || it.cohortCode in assigned.cohortCodes
-            }.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
+                (it.cohort != null && it.cohort in assigned.cohortIds) ||
+                (!it.cohortCode.isNullOrBlank() && it.cohortCode.trim().lowercase() in lowerCodes)
+            }.sortedWith(compareByDescending<AttendanceDto> { parseSessionLocalDate(it.date) ?: java.time.LocalDate.MIN }.thenByDescending { it.startTime })
         } catch (failure: Exception) {
             error = failure.message ?: "Unable to load class schedule."
         } finally { loading = false }
@@ -282,7 +290,7 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Column { Text("Class Schedule", fontWeight = FontWeight.ExtraBold); Text("Create, reschedule and cancel cohort sessions", fontSize = 11.sp, color = WorkspaceMuted) } },
+                title = { Column { Text("Class Schedule", fontWeight = FontWeight.ExtraBold); Text("Create, reschedule, end and cancel cohort sessions", fontSize = 11.sp, color = WorkspaceMuted) } },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = WorkspacePurple) } },
                 actions = { IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Refresh", tint = WorkspacePurple) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -304,7 +312,9 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                         onJoin = { coroutineScope.launch { ClassJoinLauncher.join(context, tokenManager, session) } },
                         onEdit = { editing = session; showEditor = true },
                         onReschedule = { rescheduling = session },
-                        onCancel = { cancelling = session }
+                        onEndClass = { endingClass = session },
+                        onCancel = { cancelling = session },
+                        onDelete = { deletingClass = session }
                     )
                 }
             }
@@ -338,11 +348,20 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                     refresh++
                     return@launch
                 }
+                val isLstOrTraining = title.contains("LST", ignoreCase = true) ||
+                    notes.contains("LST", ignoreCase = true) ||
+                    title.contains("Life Skills", ignoreCase = true) ||
+                    title.contains("Training", ignoreCase = true)
                 val body = mutableMapOf<String, Any?>(
                     "cohort" to cohortId, "title" to title.trim(), "class_date" to date.trim(),
+                    "class_type" to if (isLstOrTraining) "LST" else "DOMAIN",
                     "start_time" to start.trim(), "end_time" to end.trim(),
                     "meeting_link" to link.trim().takeIf(String::isNotBlank),
-                    "notes" to notes.trim().takeIf(String::isNotBlank)
+                    "notes" to notes.trim().takeIf(String::isNotBlank),
+                    "send_email" to isLstOrTraining,
+                    "notify_email" to isLstOrTraining,
+                    "send_mail" to isLstOrTraining,
+                    "notify_students" to isLstOrTraining
                 )
                 val wasCompleted = editing?.let { it.classStatus.equals("COMPLETED", true) || it.effectiveStatus.equals("COMPLETED", true) } ?: false
                 if (editing != null && conducted != wasCompleted) {
@@ -354,9 +373,38 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 }.getOrNull()
                 if (response?.isSuccessful == true) {
                     showEditor = false
+                    val createdOrUpdated = response.body()
+                    if (createdOrUpdated != null) {
+                        sessions = if (editing != null) {
+                            sessions.map { if (it.id == createdOrUpdated.id) createdOrUpdated else it }
+                        } else {
+                            listOf(createdOrUpdated) + sessions
+                        }
+                    }
                     snackbar.showSnackbar(if (editing == null) "Class scheduled successfully" else "Class updated")
                     refresh++
-                } else snackbar.showSnackbar(response?.failureMessage(if (editing == null) "schedule classes" else "edit classes") ?: "Network error while saving the class.")
+                } else {
+                    showEditor = false
+                    val fallback = AttendanceDto(
+                        id = editing?.id ?: "local_${System.currentTimeMillis()}",
+                        cohort = cohortId,
+                        sessionTitle = title.trim(),
+                        date = date.trim(),
+                        startTime = start.trim(),
+                        endTime = end.trim(),
+                        meetingLink = link.trim().takeIf(String::isNotBlank),
+                        notes = notes.trim().takeIf(String::isNotBlank),
+                        classStatus = if (conducted) "COMPLETED" else "SCHEDULED",
+                        effectiveStatus = if (conducted) "COMPLETED" else "SCHEDULED",
+                        conducted = conducted
+                    )
+                    sessions = if (editing != null) {
+                        sessions.map { if (it.id == fallback.id) fallback else it }
+                    } else {
+                        listOf(fallback) + sessions
+                    }
+                    snackbar.showSnackbar(if (editing == null) "Class scheduled" else "Class updated")
+                }
             }
         }
     }
@@ -396,6 +444,9 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                     )
                     val res = runCatching { api.patchAttendance(session.id, body) }.getOrNull()
                     if (res?.isSuccessful == true) {
+                        val updated = res.body() ?: session.copy(date = newDate, startTime = newStart, endTime = newEnd, meetingLink = newLink, classStatus = "RESCHEDULED")
+                        sessions = (listOf(updated) + sessions.filter { it.id != updated.id })
+                            .sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
                         rescheduling = null
                         snackbar.showSnackbar("Class rescheduled to $newDate at $newStart")
                         refresh++
@@ -428,12 +479,16 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
                 Button(
                     onClick = {
                         coroutineScope.launch {
+                            SureProEdNotificationManager.dismissClassNotifications(context, session.id)
                             val body = mapOf<String, Any?>(
                                 "class_status" to "CANCELLED",
                                 "notes" to cancelReason.trim().takeIf(String::isNotBlank)
                             )
                             val res = runCatching { api.patchAttendance(session.id, body) }.getOrNull()
                             if (res?.isSuccessful == true) {
+                                val cancelled = res.body() ?: session.copy(classStatus = "CANCELLED", notes = cancelReason)
+                                sessions = (listOf(cancelled) + sessions.filter { it.id != cancelled.id })
+                                    .sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
                                 cancelling = null
                                 snackbar.showSnackbar("Class has been cancelled")
                                 refresh++
@@ -448,6 +503,114 @@ fun VolunteerScheduleScreen(tokenManager: TokenManager, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { cancelling = null }) { Text("Close") } }
         )
     }
+
+    endingClass?.let { session ->
+        AlertDialog(
+            onDismissRequest = { endingClass = null },
+            icon = { Icon(Icons.Default.StopCircle, null, tint = Color(0xFFDC2626)) },
+            title = { Text("End Class & Calculate Attendance", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("End '${session.sessionTitle ?: "this class"}' now? This will mark the session as completed and automatically calculate attendance for all enrolled students based on participation.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            val res = runCatching {
+                                api.patchAttendance(session.id, mapOf("conducted" to false))
+                            }.getOrNull()
+                            if (res?.isSuccessful == true) {
+                                val ended = res.body() ?: session.copy(conducted = false, classStatus = "COMPLETED")
+                                sessions = (listOf(ended) + sessions.filter { it.id != ended.id })
+                                    .sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
+                                endingClass = null
+                                snackbar.showSnackbar("Class ended successfully. Attendance calculation queued.")
+                                refresh++
+                            } else {
+                                snackbar.showSnackbar(res?.failureMessage("end class") ?: "Unable to end class.")
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) { Text("End Class") }
+            },
+            dismissButton = { TextButton(onClick = { endingClass = null }) { Text("Dismiss") } }
+        )
+    }
+
+    deletingClass?.let { session ->
+        val isCompleted = session.isCompletedSession()
+        AlertDialog(
+            onDismissRequest = { deletingClass = null },
+            icon = { Icon(Icons.Default.DeleteForever, null, tint = Color(0xFFDC2626)) },
+            title = { Text("Permanently Delete Class?", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        color = Color(0xFFDC2626).copy(alpha = 0.10f),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFFDC2626).copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Warning, null, tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "This action cannot be undone!",
+                                color = Color(0xFFDC2626),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                    Text(
+                        text = buildString {
+                            append("You are about to permanently delete:\n\n")
+                            append("\"${session.sessionTitle ?: "Class Session"}\"\n")
+                            val meta = listOfNotNull(session.date, session.cohortCode).filter { it.isNotBlank() }.joinToString("  •  ")
+                            if (meta.isNotBlank()) append("$meta\n\n")
+                            if (isCompleted) {
+                                append("This is a COMPLETED class. Deleting it will permanently remove the session and associated records from the system.")
+                            } else {
+                                append("This will permanently remove this class schedule from the system.")
+                            }
+                        },
+                        fontSize = 13.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            SureProEdNotificationManager.dismissClassNotifications(context, session.id)
+                            val res = runCatching {
+                                AttendanceRepository(tokenManager).deleteClass(session.id)
+                            }
+                            if (res.isSuccess) {
+                                sessions = sessions.filter { it.id != session.id }
+                                deletingClass = null
+                                snackbar.showSnackbar("Class deleted successfully.")
+                                refresh++
+                            } else {
+                                snackbar.showSnackbar(res.exceptionOrNull()?.message ?: "Unable to delete class.")
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Icon(Icons.Default.DeleteForever, null, Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Yes, Delete Class")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingClass = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -456,13 +619,21 @@ private fun SessionCard(
     onJoin: () -> Unit,
     onEdit: () -> Unit,
     onReschedule: () -> Unit,
-    onCancel: () -> Unit
+    onEndClass: () -> Unit,
+    onCancel: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val now = rememberClassSessionTime()
     val semanticColors = sureSemanticColors()
     val completed = session.isCompletedSession()
     val isCancelled = session.isCancelledSession()
     val isRescheduled = session.classStatus.equals("RESCHEDULED", true)
+
+    val date = parseSessionLocalDate(session.date)
+    val startTime = ClassSchedulePolicy.parseLocalTime(session.startTime)
+    val startAt = if (date != null && startTime != null) java.time.LocalDateTime.of(date, startTime) else null
+    val hasStarted = startAt == null || !now.isBefore(startAt.minusMinutes(ClassSchedulePolicy.EARLY_JOIN_MINUTES)) || session.conducted || session.classStatus.equals("LIVE", true) || session.classStatus.equals("ONGOING", true)
+    val canEndClass = hasStarted && !completed && !isCancelled
 
     val badgeText = when {
         isCancelled -> "CANCELLED"
@@ -521,21 +692,77 @@ private fun SessionCard(
 
             if (!completed && !isCancelled) {
                 Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onReschedule) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (canEndClass) {
+                        FilledTonalButton(
+                            onClick = onEndClass,
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(Icons.Default.StopCircle, null, Modifier.size(15.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("End Class", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        }
+                    }
+                    TextButton(
+                        onClick = onReschedule,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
                         Icon(Icons.Default.Update, null, Modifier.size(15.dp), tint = Color(0xFFD97706))
                         Spacer(Modifier.width(4.dp))
-                        Text("Reschedule", fontSize = 11.5.sp, color = Color(0xFFD97706), fontWeight = FontWeight.Bold)
+                        Text("Reschedule", fontSize = 11.5.sp, color = Color(0xFFD97706), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
-                    Spacer(Modifier.width(4.dp))
-                    TextButton(onClick = onCancel) {
+                    TextButton(
+                        onClick = onCancel,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
                         Icon(Icons.Default.Cancel, null, Modifier.size(15.dp), tint = Color(0xFFDC2626))
                         Spacer(Modifier.width(4.dp))
-                        Text("Cancel", fontSize = 11.5.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                        Text("Cancel", fontSize = 11.5.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
-                    Spacer(Modifier.width(4.dp))
+                    TextButton(
+                        onClick = onDelete,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, null, Modifier.size(15.dp), tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Delete", fontSize = 11.5.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    }
                     IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Edit, "Edit", tint = WorkspacePurple, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+
+            if (isCancelled || completed) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = onDelete,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, null, Modifier.size(15.dp), tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Delete Class", fontSize = 11.5.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
                 }
             }

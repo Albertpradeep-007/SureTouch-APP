@@ -189,19 +189,19 @@ fun PublishAnnouncementDialog(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFFFEE2E2),
-                            border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.ErrorOutline, null, tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = errorMessage!!,
                                     fontSize = 12.5.sp,
-                                    color = Color(0xFFB91C1C),
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -509,20 +509,27 @@ fun PublishAnnouncementDialog(
 
                     // Created By badge
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFF1F5F9),
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                        border = BorderStroke(1.dp, BorderColor),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.AccountCircle, null, tint = SubText, modifier = Modifier.size(18.dp))
+                            Icon(
+                                Icons.Default.AccountCircle,
+                                contentDescription = null,
+                                tint = PurplePrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "Publishing as: ${tokenManager.getUserName().ifBlank { tokenManager.getUserEmail() }} (${tokenManager.getUserRole()})",
-                                fontSize = 11.5.sp,
-                                color = SubText
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = DarkText.copy(alpha = 0.9f)
                             )
                         }
                     }

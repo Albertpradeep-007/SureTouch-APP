@@ -29,6 +29,14 @@ class AccountSessionRepository(
                     .ifBlank { user.email.substringBefore("@") }
                 tokenManager.saveUserInfo(name, user.email)
                 tokenManager.saveUserRole(user.role)
+                val explicitPerms = (user.permissions.orEmpty() + user.userPermissions.orEmpty()).toMutableList()
+                if (user.preventUnsuspend == true || user.preventStudentUnsuspend == true || user.canUnsuspendPerm == false) {
+                    explicitPerms.add("prevent_unsuspend")
+                }
+                val allPerms = explicitPerms.distinct()
+                if (allPerms.isNotEmpty()) {
+                    tokenManager.saveUserPermissions(allPerms)
+                }
                 user.phoneNumber?.let(tokenManager::savePhone)
                 user.gender?.let(tokenManager::saveGender)
                 user.dateOfBirth?.let(tokenManager::saveDob)

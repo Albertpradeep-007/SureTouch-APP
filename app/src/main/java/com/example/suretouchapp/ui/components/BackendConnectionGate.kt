@@ -67,9 +67,9 @@ fun BackendConnectionGate(
         LocalHasBackendGate provides true
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Clean Top Connectivity Banner (Only shown when a connection failure has occurred and not actively loading)
+            // Clean Top Connectivity Banner (Only shown when there is no data and a connection failure has occurred)
             AnimatedVisibility(
-                visible = !isConnected && !isLoading && (isOffline || !errorMessage.isNullOrBlank()),
+                visible = !isConnected && !isLoading && !hasData && (!errorMessage.isNullOrBlank() || isOffline),
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {

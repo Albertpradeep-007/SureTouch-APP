@@ -72,7 +72,21 @@ interface ApiService {
     @PATCH("courses/{id}/") suspend fun patchCourse(@Path("id") id: String, @Body body: ApiBody): Response<CourseDto>
     @DELETE("courses/{id}/") suspend fun deleteCourse(@Path("id") id: String): Response<Unit>
 
-    @GET("applications/") suspend fun getMyApplications(@Query("page") page: Int = 1, @Query("page_size") pageSize: Int = 100): Response<PaginatedResponse<ApplicationDto>>
+    @GET("applications/") suspend fun getMyApplications(
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 100,
+        @Query("assigned_cohort") assignedCohort: String? = null,
+        @Query("status") status: String? = null
+    ): Response<PaginatedResponse<ApplicationDto>>
+    @GET suspend fun getApplicationsByUrl(@Url url: String): Response<PaginatedResponse<ApplicationDto>>
+    @POST("applications/{id}/unsuspend/") suspend fun unsuspendApplication(
+        @Path("id") id: String,
+        @Body body: ApiBody = mapOf("reason" to "Unsuspended by volunteer")
+    ): Response<ApiBody>
+    @POST("applications/{id}/suspend/") suspend fun suspendApplication(
+        @Path("id") id: String,
+        @Body body: ApiBody = mapOf("reason" to "Suspended by mentor")
+    ): Response<ApiBody>
     @GET("applications/course-selection/") suspend fun getCourseSelection(): Response<CourseSelectionDto>
     @POST("applications/") suspend fun applyForCourse(@Body request: ApplicationCreateRequest): Response<ApplicationDto>
     @GET("applications/{id}/") suspend fun getApplication(@Path("id") id: String): Response<ApplicationDto>
@@ -344,6 +358,57 @@ suspend fun ApiService.fetchAllAttendancePages(
         page++
         val pageResponse = runCatching {
             getAttendanceByUrl(nextUrl)
+        }.getOrNull()
+
+        if (pageResponse != null && pageResponse.isSuccessful) {
+            val body = pageResponse.body()
+            if (body != null) {
+                allItems.addAll(body.results)
+                nextUrl = body.next
+            } else {
+                break
+            }
+        } else {
+            break
+        }
+    }
+
+    return allItems
+}
+
+/**
+ * Helper to fetch applications across all paginated pages from Django.
+ */
+suspend fun ApiService.fetchAllApplications(
+    cohortId: String? = null,
+    status: String? = null,
+    pageSize: Int = 500
+): List<ApplicationDto> {
+    val allItems = mutableListOf<ApplicationDto>()
+    var nextUrl: String? = null
+    var page = 1
+
+    val firstResponse = runCatching {
+        getMyApplications(
+            page = 1,
+            pageSize = pageSize,
+            assignedCohort = cohortId,
+            status = status
+        )
+    }.getOrNull()
+
+    if (firstResponse != null && firstResponse.isSuccessful) {
+        val body = firstResponse.body()
+        if (body != null) {
+            allItems.addAll(body.results)
+            nextUrl = body.next
+        }
+    }
+
+    while (!nextUrl.isNullOrBlank() && page < 20) {
+        page++
+        val pageResponse = runCatching {
+            getApplicationsByUrl(nextUrl)
         }.getOrNull()
 
         if (pageResponse != null && pageResponse.isSuccessful) {

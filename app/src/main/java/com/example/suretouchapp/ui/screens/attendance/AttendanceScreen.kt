@@ -25,7 +25,9 @@ import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.NetworkUtils
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.api.fetchAllAttendancePages
+import com.example.suretouchapp.data.api.fetchAllApplications
 import com.example.suretouchapp.data.model.AbsenceWarningDto
+import com.example.suretouchapp.data.model.ApplicationDto
 import com.example.suretouchapp.data.model.AttendanceDto
 import com.example.suretouchapp.data.model.CohortDto
 import com.example.suretouchapp.data.model.StudentProfileDto
@@ -85,7 +87,11 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
     var records by remember { mutableStateOf<List<AttendanceDto>>(emptyList()) }
     var allStudents by remember { mutableStateOf<List<StudentProfileDto>>(emptyList()) }
     var allCohorts by remember { mutableStateOf<List<CohortDto>>(emptyList()) }
+    var allApplications by remember { mutableStateOf<List<ApplicationDto>>(emptyList()) }
     var selectedSession by remember { mutableStateOf<AttendanceDto?>(null) }
+    var studentToUnsuspend by remember { mutableStateOf<Pair<StudentProfileDto, ApplicationDto>?>(null) }
+    var showUnsuspendAllDialog by remember { mutableStateOf(false) }
+    var isUnsuspending by remember { mutableStateOf(false) }
     var warnings by remember { mutableStateOf<List<AbsenceWarningDto>>(emptyList()) }
     var selectedWarningForApology by remember { mutableStateOf<AbsenceWarningDto?>(null) }
     var apologyInputText by remember { mutableStateOf("") }
@@ -132,16 +138,22 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
             val studentsRes: retrofit2.Response<com.example.suretouchapp.data.model.PaginatedResponse<StudentProfileDto>>
             val cohortsRes: retrofit2.Response<com.example.suretouchapp.data.model.PaginatedResponse<CohortDto>>
             val warningsRes: retrofit2.Response<List<AbsenceWarningDto>>?
+            val applicationsList: List<ApplicationDto>
 
             coroutineScope {
                 val a = async { api.fetchAllAttendancePages() }
                 val s = async { api.getStudents() }
                 val c = async { api.getCohorts() }
                 val w = async { if (isStudent) runCatching { api.getAbsenceWarnings() }.getOrNull() else null }
+                val app = async {
+                    if (!isStudent) runCatching { api.fetchAllApplications() }.getOrDefault(emptyList())
+                    else emptyList()
+                }
                 attendanceRecords = a.await()
                 studentsRes = s.await()
                 cohortsRes = c.await()
                 warningsRes = w.await()
+                applicationsList = app.await()
             }
 
             records = attendanceRecords.filter { record ->
@@ -149,6 +161,7 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
             }.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime })
             allStudents = studentsRes.body()?.results.orEmpty()
             allCohorts = cohortsRes.body()?.results.orEmpty()
+            allApplications = applicationsList
             warnings = warningsRes?.takeIf { it.isSuccessful }?.body().orEmpty().filter { !it.resolved }
             authoritativePercentage = if (isStudent) {
                 runCatching { StudentStatisticsRepository(tokenManager).load()?.attendancePercentage }.getOrNull()
@@ -166,6 +179,56 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
             connectionError = errorInfo.message
         } finally {
             isLoading = false
+        }
+    }
+
+    fun unsuspendStudent(app: ApplicationDto, studentName: String) {
+        if (!tokenManager.canUnsuspendStudent()) {
+            scope.launch { snackbarHostState.showSnackbar("You do not have permission to unsuspend students.") }
+            return
+        }
+        scope.launch {
+            isUnsuspending = true
+            val res = runCatching {
+                ApiClient.getService(tokenManager).unsuspendApplication(
+                    app.id,
+                    mapOf("reason" to "Unsuspended by volunteer from attendance roster")
+                )
+            }.getOrNull()
+            isUnsuspending = false
+            studentToUnsuspend = null
+            if (res?.isSuccessful == true) {
+                snackbarHostState.showSnackbar("$studentName has been unsuspended and restored to cohort phase")
+                loadAttendance()
+            } else {
+                val err = res?.errorBody()?.string() ?: "Failed to unsuspend student."
+                snackbarHostState.showSnackbar(if (err.contains("detail", true)) "Unable to unsuspend student." else "Unable to unsuspend: $err")
+            }
+        }
+    }
+
+    fun unsuspendBatchStudents(apps: List<ApplicationDto>, sessionDate: String) {
+        if (!tokenManager.canUnsuspendStudent()) {
+            scope.launch { snackbarHostState.showSnackbar("You do not have permission to unsuspend students.") }
+            return
+        }
+        scope.launch {
+            isUnsuspending = true
+            var successCount = 0
+            val api = ApiClient.getService(tokenManager)
+            for (app in apps) {
+                val res = runCatching {
+                    api.unsuspendApplication(
+                        app.id,
+                        mapOf("reason" to "Batch unsuspended by volunteer for session on $sessionDate")
+                    )
+                }.getOrNull()
+                if (res?.isSuccessful == true) successCount++
+            }
+            isUnsuspending = false
+            showUnsuspendAllDialog = false
+            snackbarHostState.showSnackbar("Successfully unsuspended $successCount of ${apps.size} student(s)")
+            loadAttendance()
         }
     }
 
@@ -678,6 +741,13 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                     (cohortCode.isNotBlank() && it.cohortCode.equals(cohortCode, true))
             }
         }
+        val suspendedApplicationsInSession = remember(cohortStudents, allApplications) {
+            val studentIds = cohortStudents.flatMap { listOfNotNull(it.id, it.userId) }.toSet()
+            allApplications.filter { app ->
+                (app.student in studentIds || (app.assignedCohort != null && app.assignedCohort == session.cohort)) &&
+                    app.status.equals("SUSPENDED", ignoreCase = true)
+            }
+        }
         var searchStudent by remember { mutableStateOf("") }
         val attendeeIdSet = remember(session) { session.attendees.toSet() }
 
@@ -749,12 +819,53 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                         colors = SureFormDefaults.outlinedTextFieldColors()
                     )
 
+                    if (suspendedApplicationsInSession.isNotEmpty() && tokenManager.canUnsuspendStudent()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "${suspendedApplicationsInSession.size} student(s) suspended",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    Text(
+                                        "Restore students back to active cohort phase",
+                                        fontSize = 10.sp,
+                                        color = AttendanceMuted
+                                    )
+                                }
+                                Button(
+                                    onClick = { showUnsuspendAllDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                                ) {
+                                    Icon(Icons.Default.LockOpen, null, modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Unsuspend All (${suspendedApplicationsInSession.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
                     if (cohortStudents.isEmpty()) {
                         Text("No students are mapped to this cohort in the records.", fontSize = 12.sp, color = AttendanceMuted, modifier = Modifier.padding(8.dp))
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f, fill = false)) {
                             items(filteredCohortStudents, key = { it.id }) { student ->
                                 val isPresent = student.id in attendeeIdSet || student.userId in attendeeIdSet
+                                val studentApp = allApplications.firstOrNull { it.student == student.id || it.student == student.userId }
+                                val isSuspended = studentApp?.status.equals("SUSPENDED", ignoreCase = true)
                                 Surface(
                                     color = MaterialTheme.colorScheme.surfaceVariant,
                                     shape = RoundedCornerShape(10.dp),
@@ -788,6 +899,22 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                                                     )
                                                 }
+                                                if (isSuspended) {
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = Color(0xFFDC2626).copy(alpha = 0.12f),
+                                                        border = BorderStroke(1.dp, Color(0xFFDC2626).copy(alpha = 0.35f))
+                                                    ) {
+                                                        Text(
+                                                            text = "SUSPENDED",
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFFDC2626),
+                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
                                                 val email = student.user?.email ?: student.userEmail ?: student.email
                                                 if (!email.isNullOrBlank()) {
                                                     Spacer(Modifier.width(6.dp))
@@ -795,17 +922,35 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
                                                 }
                                             }
                                         }
-                                        Surface(
-                                            color = if (isPresent) semanticColors.successContainer else MaterialTheme.colorScheme.errorContainer,
-                                            shape = RoundedCornerShape(6.dp)
-                                        ) {
-                                            Text(
-                                                if (isPresent) "PRESENT" else "ABSENT",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isPresent) semanticColors.success else MaterialTheme.colorScheme.error,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                            )
+                                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Surface(
+                                                color = if (isPresent) semanticColors.successContainer else MaterialTheme.colorScheme.errorContainer,
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    if (isPresent) "PRESENT" else "ABSENT",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isPresent) semanticColors.success else MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                            if (isSuspended && studentApp != null && tokenManager.canUnsuspendStudent()) {
+                                                FilledTonalButton(
+                                                    onClick = { studentToUnsuspend = Pair(student, studentApp) },
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                                        containerColor = Color(0xFFDCFCE7),
+                                                        contentColor = Color(0xFF16A34A)
+                                                    ),
+                                                    modifier = Modifier.height(26.dp)
+                                                ) {
+                                                    Icon(Icons.Default.LockOpen, null, modifier = Modifier.size(11.dp))
+                                                    Spacer(Modifier.width(3.dp))
+                                                    Text("Unsuspend", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -816,6 +961,83 @@ fun AttendanceScreen(tokenManager: TokenManager, onNavigateBack: () -> Unit) {
             },
             confirmButton = { TextButton(onClick = { selectedSession = null }) { Text("Close") } }
         )
+    }
+
+    studentToUnsuspend?.let { (student, app) ->
+        val name = resolveStudentName(student)
+        AlertDialog(
+            onDismissRequest = { if (!isUnsuspending) studentToUnsuspend = null },
+            icon = { Icon(Icons.Default.LockOpen, null, tint = Color(0xFF16A34A)) },
+            title = { Text("Unsuspend Student", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Are you sure you want to unsuspend $name?")
+                    Text(
+                        "Their application will automatically be restored to the current cohort phase according to backend policy.",
+                        fontSize = 12.sp,
+                        color = AttendanceMuted
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { unsuspendStudent(app, name) },
+                    enabled = !isUnsuspending,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                ) {
+                    Text(if (isUnsuspending) "Unsuspending..." else "Unsuspend")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { studentToUnsuspend = null }, enabled = !isUnsuspending) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showUnsuspendAllDialog) {
+        selectedSession?.let { session ->
+            val cohortObj = allCohorts.firstOrNull { it.id == session.cohort || it.code == session.cohortCode }
+            val cohortCode = cohortObj?.code ?: session.cohortCode.orEmpty()
+            val cohortStudents = allStudents.filter {
+                it.cohortId == session.cohort || (cohortCode.isNotBlank() && it.cohortCode.equals(cohortCode, true))
+            }
+            val studentIds = cohortStudents.flatMap { listOfNotNull(it.id, it.userId) }.toSet()
+            val suspendedApps = allApplications.filter { app ->
+                (app.student in studentIds || (app.assignedCohort != null && app.assignedCohort == session.cohort)) &&
+                    app.status.equals("SUSPENDED", ignoreCase = true)
+            }
+            AlertDialog(
+                onDismissRequest = { if (!isUnsuspending) showUnsuspendAllDialog = false },
+                icon = { Icon(Icons.Default.LockOpen, null, tint = Color(0xFF16A34A)) },
+                title = { Text("Unsuspend All Students", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Are you sure you want to unsuspend all ${suspendedApps.size} suspended student(s) for this class?")
+                        Text(
+                            "Each student's application will automatically be restored to the active cohort phase.",
+                            fontSize = 12.sp,
+                            color = AttendanceMuted
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { unsuspendBatchStudents(suspendedApps, session.date) },
+                        enabled = !isUnsuspending,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                    ) {
+                        Text(if (isUnsuspending) "Unsuspending..." else "Confirm Unsuspend All")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showUnsuspendAllDialog = false }, enabled = !isUnsuspending) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
 }
 

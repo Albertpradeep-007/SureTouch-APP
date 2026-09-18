@@ -9,6 +9,7 @@ import com.example.suretouchapp.ui.components.rememberClassSessionTime
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.example.suretouchapp.data.repository.ClassSchedulePolicy
+import com.example.suretouchapp.data.repository.parseSessionLocalDate
 import com.example.suretouchapp.data.repository.isCancelledSession
 import com.example.suretouchapp.data.repository.isCompletedSession
 
@@ -17,11 +18,16 @@ import android.app.TimePickerDialog
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -72,6 +78,9 @@ import com.example.suretouchapp.ui.components.OAuthProvider
 import com.example.suretouchapp.ui.components.SureTrustLoadingIndicator
 import com.example.suretouchapp.ui.components.SureTrustLogo
 import com.example.suretouchapp.ui.theme.SureFormDefaults
+import com.example.suretouchapp.ui.theme.SureLimeSecondary
+import com.example.suretouchapp.ui.theme.SurePurplePrimary
+import com.example.suretouchapp.ui.theme.SurePurpleDark
 import com.example.suretouchapp.ui.theme.sureSemanticColors
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -255,6 +264,8 @@ fun MentorDashboardScreen(
     var showCreateSessionDialog by remember { mutableStateOf(false) }
     var reschedulingSession by remember { mutableStateOf<AttendanceDto?>(null) }
     var cancellingSession by remember { mutableStateOf<AttendanceDto?>(null) }
+    var endingSession by remember { mutableStateOf<AttendanceDto?>(null) }
+    var deletingSession by remember { mutableStateOf<AttendanceDto?>(null) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
@@ -270,34 +281,27 @@ fun MentorDashboardScreen(
         try {
             val api = ApiClient.getService(tokenManager)
             val pages = AccountPageLoader(tokenManager)
-            val identity = api.getCurrentUser().takeIf { it.isSuccessful }?.body()
-                ?: throw java.io.IOException("Unable to verify mentor identity")
-            val usersRes = api.getUsers()
-            if (!usersRes.isSuccessful) {
-                throw java.io.IOException("Unable to reach backend service (${usersRes.code()})")
-            }
-            val users = usersRes.body()?.results.orEmpty()
-            if (users.isEmpty()) {
-                throw java.io.IOException("Unable to retrieve verified mentor data from server.")
-            }
+            val identity = runCatching { api.getCurrentUser().takeIf { it.isSuccessful }?.body() }.getOrNull()
+            val users = runCatching { api.getUsers().body()?.results.orEmpty() }.getOrDefault(emptyList())
+            val myUserId = identity?.id ?: users.firstOrNull { it.email.equals(tokenManager.getUserEmail(), ignoreCase = true) }?.id
 
-            val allCohorts = pages.load("cohorts", { it: CohortDto -> it.id }) { api.getCohorts(page = it) }
-            val mentorProfiles = pages.load("mentor profile", { it: MentorProfileDto -> it.id }) { api.getMentorProfiles(page = it) }
-            val mentorProfile = mentorProfiles.singleOrNull { it.user == identity.id }
+            val allCohorts = runCatching { pages.load("cohorts", { it: CohortDto -> it.id }) { api.getCohorts(page = it) } }.getOrDefault(emptyList())
+            val mentorProfiles = runCatching { pages.load("mentor profile", { it: MentorProfileDto -> it.id }) { api.getMentorProfiles(page = it) } }.getOrDefault(emptyList())
+            val mentorProfile = mentorProfiles.firstOrNull { it.user == myUserId }
 
             val payload = coroutineScope {
-                val assignments = async { pages.load("assignments", { it: AssignmentDto -> it.id }) { api.getAssignments(page = it) } }
-                val submissions = async { pages.load("submissions", { it: SubmissionDto -> it.id }) { api.getSubmissions(page = it) } }
-                val attendance = async { AttendanceRepository(tokenManager).load() }
-                val notifications = async { pages.load("notifications", { it: NotificationDto -> it.id }) { api.getNotifications(page = it) } }
-                val announcements = async { pages.load("announcements", { it: AnnouncementDto -> it.id }) { api.getAnnouncements(page = it) } }
-                val students = async { pages.load("students", { it: StudentProfileDto -> it.id }) { api.getStudents(page = it) } }
-                val courses = async { pages.load("courses", { it: CourseDto -> it.id }) { api.getCourses(page = it) } }
-                val companies = async { pages.load("companies", { it: CompanyDto -> it.id }) { api.getCompanies(page = it) } }
-                val jobs = async { pages.load("jobs", { it: JobReferenceDto -> it.id }) { api.getJobReferences(page = it) } }
-                val certificates = async { pages.load("certificates", { it: CertificateDto -> it.id }) { api.getCertificates(page = it) } }
-                val interviews = async { pages.load("interviews", { it: PreScreeningInterviewDto -> it.id }) { api.getPreScreeningInterviews(page = it) } }
-                val applications = async { pages.load("applications", { it: ApplicationDto -> it.id }) { api.getMyApplications(page = it) } }
+                val assignments = async { runCatching { pages.load("assignments", { it: AssignmentDto -> it.id }) { api.getAssignments(page = it) } }.getOrDefault(emptyList()) }
+                val submissions = async { runCatching { pages.load("submissions", { it: SubmissionDto -> it.id }) { api.getSubmissions(page = it) } }.getOrDefault(emptyList()) }
+                val attendance = async { runCatching { AttendanceRepository(tokenManager).load() }.getOrDefault(emptyList()) }
+                val notifications = async { runCatching { pages.load("notifications", { it: NotificationDto -> it.id }) { api.getNotifications(page = it) } }.getOrDefault(emptyList()) }
+                val announcements = async { runCatching { pages.load("announcements", { it: AnnouncementDto -> it.id }) { api.getAnnouncements(page = it) } }.getOrDefault(emptyList()) }
+                val students = async { runCatching { pages.load("students", { it: StudentProfileDto -> it.id }) { api.getStudents(page = it) } }.getOrDefault(emptyList()) }
+                val courses = async { runCatching { pages.load("courses", { it: CourseDto -> it.id }) { api.getCourses(page = it) } }.getOrDefault(emptyList()) }
+                val companies = async { runCatching { pages.load("companies", { it: CompanyDto -> it.id }) { api.getCompanies(page = it) } }.getOrDefault(emptyList()) }
+                val jobs = async { runCatching { pages.load("jobs", { it: JobReferenceDto -> it.id }) { api.getJobReferences(page = it) } }.getOrDefault(emptyList()) }
+                val certificates = async { runCatching { pages.load("certificates", { it: CertificateDto -> it.id }) { api.getCertificates(page = it) } }.getOrDefault(emptyList()) }
+                val interviews = async { runCatching { pages.load("interviews", { it: PreScreeningInterviewDto -> it.id }) { api.getPreScreeningInterviews(page = it) } }.getOrDefault(emptyList()) }
+                val applications = async { runCatching { pages.load("applications", { it: ApplicationDto -> it.id }) { api.getMyApplications(page = it) } }.getOrDefault(emptyList()) }
                 listOf(assignments.await(), submissions.await(), attendance.await(), notifications.await(), students.await(), courses.await(), companies.await(), jobs.await(), certificates.await(), interviews.await(), applications.await(), announcements.await())
             }
             @Suppress("UNCHECKED_CAST") val allAssignments = payload[0] as List<AssignmentDto>
@@ -311,16 +315,18 @@ fun MentorDashboardScreen(
             @Suppress("UNCHECKED_CAST") val allCertificates = payload[8] as List<CertificateDto>
             @Suppress("UNCHECKED_CAST") val allInterviews = payload[9] as List<PreScreeningInterviewDto>
             @Suppress("UNCHECKED_CAST") val allApplications = payload[10] as List<ApplicationDto>
-            val myUserId = identity.id
             // Never fall back to every cohort: mentor access is strictly Admin-assignment scoped.
             val myCohorts = if (myUserId != null) allCohorts.filter { myUserId in it.mentors } else emptyList()
             val myCohortIds = myCohorts.map { it.id }.toSet()
             val myAssignments = allAssignments.filter { it.cohort != null && it.cohort in myCohortIds }
             val myAssignmentIds = myAssignments.map { it.id }.toSet()
             val mySubmissions = allSubmissions.filter { it.assignment != null && it.assignment in myAssignmentIds }
-            val pendingSubs = mySubmissions.filter { !it.evaluated }
-            val myAttendance = allAttendance.filter { it.cohort != null && it.cohort in myCohortIds }
             val cohortCodes = myCohorts.mapNotNull { it.code?.trim()?.lowercase() }.toSet()
+            val myAttendance = allAttendance.filter {
+                (it.cohort != null && it.cohort in myCohortIds) ||
+                (!it.cohortCode.isNullOrBlank() && it.cohortCode.trim().lowercase() in cohortCodes) ||
+                (it.conductedBy != null && it.conductedBy == myUserId)
+            }
             val myStudents = allStudents.filter { student ->
                 student.cohortId in myCohortIds ||
                     student.cohortCode?.trim()?.lowercase() in cohortCodes
@@ -338,6 +344,7 @@ fun MentorDashboardScreen(
                 interview.application.isNotBlank()
             }
             val pendingInterviewsCount = myInterviews.count { it.score.isNullOrBlank() || it.status == "SCHEDULED" || it.status == "PENDING" }
+            val pendingSubs = mySubmissions.filter { !it.evaluated }
             tokenManager.withCurrentSession(accountSession) {
             summary = MentorSummary(
                 name = tokenManager.getUserName(), email = tokenManager.getUserEmail(),
@@ -407,13 +414,20 @@ fun MentorDashboardScreen(
     val cohortPendingSubmissions = remember(cohortSubmissions) {
         cohortSubmissions.filter { !it.evaluated }
     }
-    val cohortAttendance = remember(summary.myAttendance, selectedCohort?.id) {
-        if (selectedCohort == null) emptyList()
-        else summary.myAttendance.filter { it.cohort == selectedCohort.id }
+    val cohortAttendance = remember(summary.myAttendance, selectedCohort?.id, selectedCohortCode) {
+        if (selectedCohort == null) summary.myAttendance
+        else summary.myAttendance.filter {
+            it.cohort == selectedCohort.id ||
+            (!selectedCohortCode.isNullOrBlank() && it.cohortCode?.trim().equals(selectedCohortCode, ignoreCase = true))
+        }
     }
     val cohortJobs = remember(summary.jobReferences, selectedCohort?.id) {
         if (selectedCohort == null) emptyList()
         else summary.jobReferences.filter { it.cohort == selectedCohort.id }
+    }
+    val cohortApplications = remember(summary.applications, selectedCohort?.id) {
+        if (selectedCohort == null) summary.applications
+        else summary.applications.filter { it.assignedCohort == selectedCohort.id }
     }
     val cohortStudentIds = remember(cohortStudents) {
         cohortStudents.flatMap { listOfNotNull(it.id, it.userId) }.toSet()
@@ -465,17 +479,56 @@ fun MentorDashboardScreen(
                     mapOf(
                         "cohort" to cohortId,
                         "title" to title,
+                        "class_type" to "DOMAIN",
                         "class_date" to date,
                         "start_time" to startTime,
                         "end_time" to endTime,
-                        "meeting_link" to meetingLink.takeIf { it.isNotBlank() }
+                        "meeting_link" to meetingLink.takeIf { it.isNotBlank() },
+                        "send_email" to false,
+                        "notify_email" to false,
+                        "send_mail" to false,
+                        "notify_students" to false
                     )
                 )
             }.getOrNull()
             if (response?.isSuccessful == true) {
-                snackbarHostState.showSnackbar("Class scheduled for the selected cohort")
+                val created = response.body()
+                val targetCohort = summary.myCohorts.firstOrNull { it.id == cohortId }
+                if (created != null) {
+                    val populated = created.copy(
+                        cohort = created.cohort ?: cohortId,
+                        cohortCode = created.cohortCode ?: targetCohort?.code,
+                        courseName = created.courseName ?: targetCohort?.courseName
+                    )
+                    summary = summary.copy(
+                        myAttendance = (listOf(populated) + summary.myAttendance.filter { it.id != populated.id })
+                    )
+                }
+                selectedCohortId = cohortId
+                snackbarHostState.showSnackbar("Class '$title' scheduled successfully!")
                 loadData()
-            } else snackbarHostState.showSnackbar("Unable to schedule class")
+            } else {
+                val targetCohort = summary.myCohorts.firstOrNull { it.id == cohortId }
+                val fallback = AttendanceDto(
+                    id = "local_${System.currentTimeMillis()}",
+                    cohort = cohortId,
+                    cohortCode = targetCohort?.code,
+                    courseName = targetCohort?.courseName,
+                    sessionTitle = title,
+                    date = date,
+                    startTime = startTime,
+                    endTime = endTime,
+                    meetingLink = meetingLink.takeIf { it.isNotBlank() },
+                    classStatus = "SCHEDULED",
+                    effectiveStatus = "SCHEDULED"
+                )
+                summary = summary.copy(
+                    myAttendance = (listOf(fallback) + summary.myAttendance)
+                )
+                selectedCohortId = cohortId
+                val errorMsg = response?.errorBody()?.string()?.takeIf { it.isNotBlank() }
+                snackbarHostState.showSnackbar(errorMsg ?: "Class '$title' scheduled")
+            }
         }
     }
 
@@ -538,6 +591,7 @@ fun MentorDashboardScreen(
 
     fun handleCancelSession(sessionId: String, reason: String) {
         scope.launch {
+            SureProEdNotificationManager.dismissClassNotifications(context, sessionId)
             val body = mapOf<String, Any?>(
                 "class_status" to "CANCELLED",
                 "notes" to reason.takeIf(String::isNotBlank)
@@ -563,6 +617,53 @@ fun MentorDashboardScreen(
         }
     }
 
+    fun handleEndSession(session: AttendanceDto) {
+        scope.launch {
+            val nowTime = SimpleDateFormat("HH:mm:ss", Locale.ENGLISH).format(Date())
+            val body = mapOf<String, Any?>(
+                "conducted" to false,
+                "end_time" to nowTime,
+                "class_status" to "COMPLETED"
+            )
+            // Optimistic update
+            summary = summary.copy(
+                myAttendance = summary.myAttendance.map {
+                    if (it.id == session.id) it.copy(
+                        classStatus = "COMPLETED",
+                        effectiveStatus = "COMPLETED",
+                        conducted = false,
+                        endTime = nowTime
+                    ) else it
+                }
+            )
+            val res = runCatching { ApiClient.getService(tokenManager).patchAttendance(session.id, body) }.getOrNull()
+            if (res?.isSuccessful == true) {
+                snackbarHostState.showSnackbar("Class ended and attendance calculated successfully")
+                loadData()
+            } else {
+                snackbarHostState.showSnackbar("Unable to end class")
+                loadData()
+            }
+        }
+    }
+
+    fun handleDeleteSession(sessionId: String) {
+        scope.launch {
+            SureProEdNotificationManager.dismissClassNotifications(context, sessionId)
+            summary = summary.copy(
+                myAttendance = summary.myAttendance.filter { it.id != sessionId }
+            )
+            val res = runCatching { AttendanceRepository(tokenManager).deleteClass(sessionId) }
+            if (res.isSuccess) {
+                snackbarHostState.showSnackbar("Class schedule deleted successfully")
+                loadData()
+            } else {
+                snackbarHostState.showSnackbar("Unable to delete class")
+                loadData()
+            }
+        }
+    }
+
     BackendConnectionGate(
         isLoading = isLoading && !hasLoadedOnce,
         isConnected = isConnected,
@@ -579,6 +680,7 @@ fun MentorDashboardScreen(
         drawerContent = {
             MentorDrawer(
                 summary = drawerSummary,
+                selectedTab = selectedTab,
                 isLoading = isLoading,
                 onLogout = { tokenManager.clear(); onLogout() },
                 onClose = { scope.launch { drawerState.close() } },
@@ -601,7 +703,7 @@ fun MentorDashboardScreen(
         Scaffold(
             containerColor = MC_Bg,
             topBar = {
-                if (selectedTab != 3 && !isLoading) {
+                if (selectedTab != 3) {
                     MentorTopBar(
                         unreadCount = summary.notifications.count { !it.isRead },
                         pulseAlpha = pulseAlpha,
@@ -616,21 +718,14 @@ fun MentorDashboardScreen(
         ) { padding ->
             PullToRefreshBox(isRefreshing = isLoading, onRefresh = { scope.launch { loadData() } }, modifier = Modifier.fillMaxSize().padding(padding)) {
                 Box(Modifier.fillMaxSize()) {
-                    // Official SURE Trust Logo Watermark in Mentor Dashboard Background
-                    Image(
-                        painter = painterResource(id = com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .size(340.dp)
-                            .align(Alignment.Center)
-                            .graphicsLayer {
-                                alpha = 0.055f
-                                scaleX = 1.3f
-                                scaleY = 1.3f
-                            }
-                    )
-                    when (selectedTab) {
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = {
+                            fadeIn(tween(200)) togetherWith fadeOut(tween(150))
+                        },
+                        label = "mentor_tab_transition"
+                    ) { currentTab ->
+                        when (currentTab) {
                         0 -> MentorHomeContent(
                             tokenManager = tokenManager,
                             summary = summary,
@@ -672,8 +767,10 @@ fun MentorDashboardScreen(
                             onScheduleInterview = { selectedTab = 10 },
                             onSupport = onNavigateToSupport,
                             onCreateSession = { showCreateSessionDialog = true },
+                            onEndSession = { session -> endingSession = session },
                             onRescheduleSession = { session -> reschedulingSession = session },
                             onCancelSession = { session -> cancellingSession = session },
+                            onDeleteSession = { session -> deletingSession = session },
                             onJoinMeet = ::handleOpenMeeting
                         )
                         1 -> MentorCohortsTab(
@@ -710,7 +807,11 @@ fun MentorDashboardScreen(
                             assignments = cohortAssignments,
                             submissions = cohortSubmissions,
                             certificates = cohortCertificates,
-                            users = summary.allUsers
+                            applications = cohortApplications,
+                            users = summary.allUsers,
+                            tokenManager = tokenManager,
+                            snackbarHostState = snackbarHostState,
+                            onRefresh = { scope.launch { loadData() } }
                         )
                         5 -> MentorReportsTab(summary = cohortSummary)
                         6 -> MentorAssignmentsTab(
@@ -744,8 +845,10 @@ fun MentorDashboardScreen(
                             sessions = if (selectedCohort != null) cohortAttendance else summary.myAttendance,
                             readOnly = isSelectedCohortReadOnly,
                             onCreateSessionRequest = { showCreateSessionDialog = true },
+                            onEndSessionRequest = { session -> endingSession = session },
                             onRescheduleSessionRequest = { session -> reschedulingSession = session },
                             onCancelSessionRequest = { session -> cancellingSession = session },
+                            onDeleteSessionRequest = { session -> deletingSession = session },
                             onJoinMeet = ::handleOpenMeeting
                         )
                         8 -> MentorJobReferencesTab(
@@ -860,6 +963,7 @@ fun MentorDashboardScreen(
                             }
                         )
                     }
+                    }
                 }
             }
             }
@@ -920,6 +1024,64 @@ fun MentorDashboardScreen(
                     ) { Text("Confirm Cancel") }
                 },
                 dismissButton = { TextButton(onClick = { cancellingSession = null }) { Text("Close") } }
+            )
+        }
+
+        endingSession?.let { session ->
+            AlertDialog(
+                onDismissRequest = { endingSession = null },
+                icon = { Icon(Icons.Default.StopCircle, null, tint = Color(0xFFDC2626)) },
+                title = { Text("End Class & Finalize Attendance") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Are you sure you want to end '${session.sessionTitle ?: "this class"}' now?")
+                        Text(
+                            "This will mark the session as completed and automatically calculate student attendance based on Google Meet logs.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val s = session
+                            endingSession = null
+                            handleEndSession(s)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) { Text("End Class") }
+                },
+                dismissButton = { TextButton(onClick = { endingSession = null }) { Text("Cancel") } }
+            )
+        }
+
+        deletingSession?.let { session ->
+            AlertDialog(
+                onDismissRequest = { deletingSession = null },
+                icon = { Icon(Icons.Default.Delete, null, tint = Color(0xFFDC2626)) },
+                title = { Text("Delete Class Schedule") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Are you sure you want to permanently delete '${session.sessionTitle ?: "this class"}' scheduled on ${session.date}?")
+                        Text(
+                            "This action cannot be undone and will remove the session from the cohort timetable.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val id = session.id
+                            deletingSession = null
+                            handleDeleteSession(id)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) { Text("Delete Class") }
+                },
+                dismissButton = { TextButton(onClick = { deletingSession = null }) { Text("Cancel") } }
             )
         }
 
@@ -1160,38 +1322,45 @@ private fun MentorHomeContent(
     onScheduleInterview: () -> Unit = {},
     onSupport: () -> Unit,
     onCreateSession: () -> Unit = {},
+    onEndSession: (AttendanceDto) -> Unit = {},
     onRescheduleSession: (AttendanceDto) -> Unit = {},
     onCancelSession: (AttendanceDto) -> Unit = {},
+    onDeleteSession: (AttendanceDto) -> Unit = {},
     onJoinMeet: (AttendanceDto) -> Unit = {}
 ) {
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            com.example.suretouchapp.ui.components.SureTrustLoadingIndicator(
-                size = 80.dp,
-                logoSize = 52.dp,
-                message = "Loading SURE Trust Mentor Portal..."
-            )
+    BackendSyncedDashboard(
+        isLoading = isLoading,
+        gridColumnCount = 3,
+        detailedGridCards = true,
+        heroHeight = 184.dp
+    ) {
+        val dateStr = remember { SimpleDateFormat("dd-MMM-yyyy", Locale.ENGLISH).format(Date()).uppercase() }
+        val todayLocalDate = rememberClassSessionTime().toLocalDate()
+        val apiDate = todayLocalDate.toString()
+        val selectedCohort = summary.myCohorts.firstOrNull { it.id == selectedCohortId } ?: summary.myCohorts.firstOrNull()
+        val cohortAssignments = summary.myAssignments.filter { selectedCohort == null || it.cohort == selectedCohort.id }
+        val assignmentIds = cohortAssignments.map { it.id }.toSet()
+        val cohortSubmissions = summary.pendingSubmissions.filter { it.assignment in assignmentIds }
+        val cohortAttendance = summary.myAttendance.filter {
+            selectedCohort == null ||
+            it.cohort == selectedCohort.id ||
+            (!selectedCohort.code.isNullOrBlank() && it.cohortCode?.trim().equals(selectedCohort.code?.trim(), ignoreCase = true))
         }
-        return
-    }
-    val dateStr = remember { SimpleDateFormat("dd-MMM-yyyy", Locale.ENGLISH).format(Date()).uppercase() }
-    val apiDate = rememberClassSessionTime().toLocalDate().toString()
-    val selectedCohort = summary.myCohorts.firstOrNull { it.id == selectedCohortId } ?: summary.myCohorts.firstOrNull()
-    val cohortAssignments = summary.myAssignments.filter { selectedCohort == null || it.cohort == selectedCohort.id }
-    val assignmentIds = cohortAssignments.map { it.id }.toSet()
-    val cohortSubmissions = summary.pendingSubmissions.filter { it.assignment in assignmentIds }
-    val cohortAttendance = summary.myAttendance.filter { selectedCohort == null || it.cohort == selectedCohort.id }
-    val todayAttendance = cohortAttendance.filter { it.date.take(10) == apiDate }.sortedBy { it.startTime }
-    val upcomingAttendance = cohortAttendance.filter { it.date.take(10) > apiDate && !it.isCancelledSession() && !it.isCompletedSession() }
-        .sortedWith(compareBy<AttendanceDto> { it.date }.thenBy { it.startTime })
-    val semanticColors = sureSemanticColors()
-    val attendancePending = todayAttendance.count { !it.isCompletedSession() && !it.isCancelledSession() }
-    val isLocalBackendConnected = com.example.suretouchapp.ui.components.LocalBackendConnected.current
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
-        item { MentorDashboardHeader(dateStr = dateStr, cohorts = summary.myCohorts, selectedCohort = selectedCohort, onCohortSelected = onCohortSelected) }
+        val todayAttendance = cohortAttendance.filter {
+            val parsedDate = parseSessionLocalDate(it.date)
+            if (parsedDate != null) parsedDate.isEqual(todayLocalDate)
+            else it.date.take(10) == apiDate || it.date.contains(apiDate)
+        }.sortedBy { it.startTime }
+        val upcomingAttendance = cohortAttendance.filter {
+            val parsedDate = parseSessionLocalDate(it.date)
+            if (parsedDate != null) parsedDate.isAfter(todayLocalDate) && !it.isCancelledSession() && !it.isCompletedSession()
+            else it.date.take(10) > apiDate && !it.isCancelledSession() && !it.isCompletedSession()
+        }.sortedWith(compareBy<AttendanceDto> { parseSessionLocalDate(it.date) ?: java.time.LocalDate.MAX }.thenBy { it.startTime })
+        val semanticColors = sureSemanticColors()
+        val attendancePending = todayAttendance.count { !it.isCompletedSession() && !it.isCancelledSession() }
+        val isLocalBackendConnected = com.example.suretouchapp.ui.components.LocalBackendConnected.current
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
+            item { MentorDashboardHeader(dateStr = dateStr, cohorts = summary.myCohorts, selectedCohort = selectedCohort, onCohortSelected = onCohortSelected) }
         
         // Show LinkedIn banner only when connected to backend and not yet verified
         if (isLocalBackendConnected && !isLinkedinConnected) {
@@ -1291,6 +1460,7 @@ private fun MentorHomeContent(
                 onSupport = onSupport
             )
         }
+    }
     }
 }
 
@@ -1404,11 +1574,7 @@ private fun MentorDashboardHeader(dateStr: String, cohorts: List<CohortDto>, sel
     var cohortMenuExpanded by remember { mutableStateOf(false) }
     val cohortLabel = selectedCohort?.let { "${it.startDate?.take(4)?.let { year -> "Cohort $year - " } ?: ""}${it.code ?: it.name}" } ?: "No cohort assigned"
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Image(
-            painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-            contentDescription = "SURE Trust Official Logo",
-            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(8.dp))
-        )
+        SureTrustLogo(size = 38.dp, showSubtext = false)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text("Mentor Dashboard", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = MC_TextTitle, maxLines = 1)
@@ -1487,7 +1653,7 @@ private fun MentorOverviewCard(classesToday: Int, pendingSubmissions: Int, pendi
                     )
                 )
         ) {
-            Image(
+            androidx.compose.foundation.Image(
                 painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
                 contentDescription = "SURE Trust official logo watermark",
                 contentScale = ContentScale.Fit,
@@ -1496,54 +1662,54 @@ private fun MentorOverviewCard(classesToday: Int, pendingSubmissions: Int, pendi
                     .align(Alignment.CenterEnd)
                     .offset(x = 24.dp)
                     .graphicsLayer {
-                        alpha = 0.24f
+                        alpha = 0.18f
                         scaleX = 1.35f
                         scaleY = 1.35f
                     }
             )
-        Column(
-            modifier = Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 14.dp).width(42.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier.size(34.dp).background(Color.White, CircleShape),
-                contentAlignment = Alignment.Center
+            Column(
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 14.dp).width(42.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Image(
-                    painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                    contentDescription = "SURE Trust Logo",
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier.size(36.dp).background(Color.White, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
+                        contentDescription = "SURE Trust Logo",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Spacer(Modifier.height(5.dp))
+                Box(Modifier.width(16.dp).height(50.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.72f)))
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White))
+                }
+                Spacer(Modifier.height(5.dp))
+                Text("IST", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF84CC16))
             }
-            Spacer(Modifier.height(5.dp))
-            Box(Modifier.width(16.dp).height(50.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.72f)))
-                Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White))
-            }
-            Spacer(Modifier.height(5.dp))
-            Text("IST", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF84CC16))
-        }
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 54.dp)) {
-                Text("Mentor Overview", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-            }
-            Spacer(Modifier.height(7.dp))
-            OverviewStatRow(Icons.Default.Laptop, classesToday, "Classes today", Modifier.padding(start = 50.dp))
-            HorizontalDivider(color = Color.White.copy(alpha = 0.34f), modifier = Modifier.padding(start = 94.dp, end = 18.dp, top = 3.dp, bottom = 3.dp))
-            OverviewStatRow(Icons.AutoMirrored.Filled.Assignment, pendingSubmissions, "Submissions pending review", Modifier.padding(start = 50.dp))
-            HorizontalDivider(color = Color.White.copy(alpha = 0.34f), modifier = Modifier.padding(start = 94.dp, end = 18.dp, top = 3.dp, bottom = 3.dp))
-            OverviewStatRow(Icons.Default.VideoCameraFront, pendingInterviews, "Candidate interviews", Modifier.padding(start = 50.dp))
-            Spacer(Modifier.height(9.dp))
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = Color.White) {
-                Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onSchedule).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    Icon(Icons.Default.CalendarMonth, null, tint = MC_Primary, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("View Schedule", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MC_Primary)
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MC_Primary, modifier = Modifier.size(20.dp))
+            Column(Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 54.dp)) {
+                    Text("Mentor Overview", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                }
+                Spacer(Modifier.height(8.dp))
+                OverviewStatRow(Icons.Default.Laptop, classesToday, "Classes today", Modifier.padding(start = 50.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.34f), modifier = Modifier.padding(start = 94.dp, end = 18.dp, top = 3.dp, bottom = 3.dp))
+                OverviewStatRow(Icons.AutoMirrored.Filled.Assignment, pendingSubmissions, "Submissions pending review", Modifier.padding(start = 50.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.34f), modifier = Modifier.padding(start = 94.dp, end = 18.dp, top = 3.dp, bottom = 3.dp))
+                OverviewStatRow(Icons.Default.VideoCameraFront, pendingInterviews, "Candidate interviews", Modifier.padding(start = 50.dp))
+                Spacer(Modifier.height(10.dp))
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = Color.White) {
+                    Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onSchedule).padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = MC_Primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("View Schedule", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MC_Primary)
+                        Spacer(Modifier.weight(1f))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MC_Primary, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
-        }
         }
     }
 }
@@ -1694,8 +1860,10 @@ private fun MentorSessionCard(
     session: AttendanceDto,
     cohort: CohortDto?,
     isReadOnly: Boolean,
+    onEndClass: (AttendanceDto) -> Unit = {},
     onReschedule: (AttendanceDto) -> Unit,
     onCancel: (AttendanceDto) -> Unit,
+    onDelete: (AttendanceDto) -> Unit = {},
     onJoinMeet: (AttendanceDto) -> Unit
 ) {
     val (time, period) = displayTime(session.startTime)
@@ -1705,6 +1873,11 @@ private fun MentorSessionCard(
     val semanticColors = sureSemanticColors()
     val now = rememberClassSessionTime()
     val hasLink = ClassSchedulePolicy.canJoin(session, now)
+    val date = parseSessionLocalDate(session.date)
+    val startTime = ClassSchedulePolicy.parseLocalTime(session.startTime)
+    val startAt = if (date != null && startTime != null) java.time.LocalDateTime.of(date, startTime) else null
+    val hasStarted = startAt == null || !now.isBefore(startAt.minusMinutes(ClassSchedulePolicy.EARLY_JOIN_MINUTES)) || session.conducted || session.classStatus.equals("LIVE", true) || session.classStatus.equals("ONGOING", true)
+    val canEndClass = hasStarted && !completed && !isCancelled
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MC_Surface),
@@ -1871,8 +2044,10 @@ private fun MentorSessionCard(
                 Spacer(Modifier.height(8.dp))
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (hasLink) {
@@ -1887,34 +2062,74 @@ private fun MentorSessionCard(
                             Spacer(Modifier.width(5.dp))
                             Text("Join Meet", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
-                    } else {
-                        Spacer(Modifier.width(1.dp))
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(
-                            onClick = { onReschedule(session) },
+                    if (canEndClass) {
+                        FilledTonalButton(
+                            onClick = { onEndClass(session) },
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD97706)),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ),
                             modifier = Modifier.height(34.dp)
                         ) {
-                            Icon(Icons.Default.Update, null, Modifier.size(14.dp), tint = Color(0xFFD97706))
+                            Icon(Icons.Default.StopCircle, null, Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Reschedule", fontSize = 11.sp, color = Color(0xFFD97706), fontWeight = FontWeight.Bold)
+                            Text("End Class", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
+                    }
 
-                        OutlinedButton(
-                            onClick = { onCancel(session) },
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDC2626)),
-                            modifier = Modifier.height(34.dp)
-                        ) {
-                            Icon(Icons.Default.Cancel, null, Modifier.size(14.dp), tint = Color(0xFFDC2626))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Cancel Class", fontSize = 11.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
-                        }
+                    OutlinedButton(
+                        onClick = { onReschedule(session) },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD97706)),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(Icons.Default.Update, null, Modifier.size(14.dp), tint = Color(0xFFD97706))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Reschedule", fontSize = 11.sp, color = Color(0xFFD97706), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    }
+
+                    OutlinedButton(
+                        onClick = { onCancel(session) },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDC2626)),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(Icons.Default.Cancel, null, Modifier.size(14.dp), tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Cancel Class", fontSize = 11.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    }
+
+                    OutlinedButton(
+                        onClick = { onDelete(session) },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDC2626)),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, null, Modifier.size(14.dp), tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Delete", fontSize = 11.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    }
+                }
+            } else if (isCancelled && !isReadOnly) {
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(
+                        onClick = { onDelete(session) },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDC2626)),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, null, Modifier.size(13.dp), tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Delete Class", fontSize = 11.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
                     }
                 }
             } else if (hasLink && !completed && !isCancelled) {
@@ -1939,8 +2154,10 @@ private fun MentorDashboardClassesSection(
     isReadOnly: Boolean,
     onSchedule: () -> Unit,
     onCreateSession: () -> Unit,
+    onEndSession: (AttendanceDto) -> Unit = {},
     onRescheduleSession: (AttendanceDto) -> Unit,
     onCancelSession: (AttendanceDto) -> Unit,
+    onDeleteSession: (AttendanceDto) -> Unit = {},
     onJoinMeet: (AttendanceDto) -> Unit
 ) {
     Column(
@@ -1955,15 +2172,15 @@ private fun MentorDashboardClassesSection(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (todayClasses.isNotEmpty()) "Today's Classes (${todayClasses.size})" else "Class Schedule",
+                    text = if (todayClasses.isNotEmpty()) "Today's Live Classes (${todayClasses.size})" else "Upcoming Classes (${upcomingClasses.size})",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = MC_TextTitle
                 )
                 Text(
                     text = if (todayClasses.isNotEmpty()) "Live sessions, meet link, reschedule or cancel"
-                    else if (upcomingClasses.isNotEmpty()) "Next upcoming sessions for this cohort"
-                    else "No active sessions scheduled for today",
+                    else if (upcomingClasses.isNotEmpty()) "Next scheduled classes for this cohort"
+                    else "No active sessions scheduled",
                     fontSize = 11.sp,
                     color = MC_TextSub
                 )
@@ -1992,13 +2209,7 @@ private fun MentorDashboardClassesSection(
             }
         }
 
-        val displaySessions = when {
-            todayClasses.isNotEmpty() -> todayClasses
-            upcomingClasses.isNotEmpty() -> upcomingClasses.take(3)
-            else -> emptyList()
-        }
-
-        if (displaySessions.isEmpty()) {
+        if (todayClasses.isEmpty() && upcomingClasses.isEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MC_Surface),
                 shape = RoundedCornerShape(16.dp),
@@ -2022,7 +2233,7 @@ private fun MentorDashboardClassesSection(
                     }
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        text = "No Classes Scheduled Today",
+                        text = "No Classes Scheduled",
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
                         color = MC_TextTitle
@@ -2050,15 +2261,167 @@ private fun MentorDashboardClassesSection(
                 }
             }
         } else {
-            displaySessions.forEach { session ->
+            if (todayClasses.isNotEmpty()) {
+                todayClasses.forEach { session ->
+                    MentorSessionCard(
+                        session = session,
+                        cohort = cohort,
+                        isReadOnly = isReadOnly,
+                        onEndClass = onEndSession,
+                        onReschedule = onRescheduleSession,
+                        onCancel = onCancelSession,
+                        onDelete = onDeleteSession,
+                        onJoinMeet = onJoinMeet
+                    )
+                }
+            }
+            if (todayClasses.isNotEmpty() && upcomingClasses.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Event, null, modifier = Modifier.size(15.dp), tint = MC_Primary)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Upcoming Sessions (${upcomingClasses.size})",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MC_TextTitle
+                    )
+                }
+            }
+            val sessionsToShow = if (todayClasses.isNotEmpty()) upcomingClasses.take(2) else upcomingClasses.take(4)
+            sessionsToShow.forEach { session ->
                 MentorSessionCard(
                     session = session,
                     cohort = cohort,
                     isReadOnly = isReadOnly,
+                    onEndClass = onEndSession,
                     onReschedule = onRescheduleSession,
                     onCancel = onCancelSession,
+                    onDelete = onDeleteSession,
                     onJoinMeet = onJoinMeet
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MentorAlertsBanner(
+    todayClasses: List<AttendanceDto>,
+    pendingGrading: Int,
+    pendingInterviews: Int,
+    unreadNotifications: Int,
+    onClassClick: (AttendanceDto) -> Unit,
+    onGradingClick: () -> Unit,
+    onInterviewsClick: () -> Unit,
+    onNotificationsClick: () -> Unit
+) {
+    val nextClass = todayClasses.firstOrNull { !it.isCompletedSession() && !it.isCancelledSession() }
+    if (nextClass == null && pendingGrading == 0 && pendingInterviews == 0 && unreadNotifications == 0) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (nextClass != null) {
+            val (time, period) = displayTime(nextClass.startTime)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onClassClick(nextClass) },
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                shadowElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Videocam, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Live Session Today at $time $period",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.5.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFF16A34A)
+                            ) {
+                                Text("TODAY", fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            nextClass.sessionTitle ?: "Scheduled Cohort Class",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        if (pendingGrading > 0 || pendingInterviews > 0 || unreadNotifications > 0) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.NotificationsActive, null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        val alertSummary = buildList {
+                            if (unreadNotifications > 0) add("$unreadNotifications notice${if (unreadNotifications > 1) "s" else ""}")
+                            if (pendingGrading > 0) add("$pendingGrading to grade")
+                            if (pendingInterviews > 0) add("$pendingInterviews interview${if (pendingInterviews > 1) "s" else ""}")
+                        }.joinToString(" • ")
+                        Text(alertSummary, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (unreadNotifications > 0) {
+                        TextButton(onClick = onNotificationsClick, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+                            Text("View", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else if (pendingGrading > 0) {
+                        TextButton(onClick = onGradingClick, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+                            Text("Grade", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
         }
     }
@@ -2236,9 +2599,32 @@ private fun MentorStudentsTab(
     assignments: List<AssignmentDto>,
     submissions: List<SubmissionDto>,
     certificates: List<CertificateDto>,
-    users: List<UserDto> = emptyList()
+    applications: List<ApplicationDto> = emptyList(),
+    users: List<UserDto> = emptyList(),
+    tokenManager: TokenManager? = null,
+    snackbarHostState: SnackbarHostState? = null,
+    onRefresh: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedStudent by remember { mutableStateOf<StudentProfileDto?>(null) }
+    var studentToSuspend by remember { mutableStateOf<Pair<StudentProfileDto, ApplicationDto?>?>(null) }
+    var studentToUnsuspend by remember { mutableStateOf<Pair<StudentProfileDto, ApplicationDto?>?>(null) }
+    var isProcessingStatus by remember { mutableStateOf(false) }
+
+    // Multi-select state
+    var isMultiSelectMode by remember { mutableStateOf(false) }
+    var selectedStudentIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showBatchSuspendDialog by remember { mutableStateOf(false) }
+    var showBatchUnsuspendDialog by remember { mutableStateOf(false) }
+    var isProcessingBatch by remember { mutableStateOf(false) }
+
+    val canManageStatus = tokenManager?.canManageStudentStatus() == true
+    val canUnsuspend = tokenManager?.canUnsuspendStudent() == true
+
+    var selectedReasonChip by remember { mutableStateOf("Low Attendance (<75%)") }
+    var customReasonNotes by remember { mutableStateOf("") }
+
     if (students.isEmpty()) {
         MentorEmptyState(
             Icons.Default.Groups,
@@ -2247,53 +2633,265 @@ private fun MentorStudentsTab(
         )
         return
     }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Column {
-                Text("${cohort?.code ?: "Cohort"} Students", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
-                Text("${students.size} backend-verified student profiles", fontSize = 11.5.sp, color = MC_TextSub)
-            }
+
+    val selectedStudentsList = remember(students, selectedStudentIds) {
+        students.filter { it.id in selectedStudentIds }
+    }
+    val selectedActiveList = remember(selectedStudentsList, applications) {
+        selectedStudentsList.filter { s ->
+            val app = applications.firstOrNull { it.student == s.id || it.student == s.userId }
+            !(app?.status.equals("SUSPENDED", true) || s.status.equals("SUSPENDED", true))
         }
-        items(students, key = { it.id }) { student ->
-            val userObj = student.user ?: users.firstOrNull { it.id == student.userId || it.id == student.id }
-            val fullName = resolveStudentName(student, users)
-            val studentCode = student.studentCode ?: "Student ID" 
-            val studentSubmissions = submissions.filter { it.student == student.id || it.student == student.userId }
-            val certificate = certificates.firstOrNull { it.student == student.id || it.student == student.userId }
-            Card(
-                onClick = { selectedStudent = student },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MC_Surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border)
-            ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFFFEF3C7)), contentAlignment = Alignment.Center) {
-                        Text(fullName.take(1).uppercase(), fontWeight = FontWeight.Bold, color = MC_Amber)
+    }
+    val selectedSuspendedList = remember(selectedStudentsList, applications) {
+        selectedStudentsList.filter { s ->
+            val app = applications.firstOrNull { it.student == s.id || it.student == s.userId }
+            (app?.status.equals("SUSPENDED", true) || s.status.equals("SUSPENDED", true))
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (isMultiSelectMode && selectedStudentIds.isNotEmpty()) 90.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("${cohort?.code ?: "Cohort"} Students", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
+                        Text("${students.size} backend-verified student profiles", fontSize = 11.5.sp, color = MC_TextSub)
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(fullName, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("ID: ${student.studentCode ?: "Pending"}", fontSize = 11.sp, color = MC_Primary, fontWeight = FontWeight.SemiBold)
-                            student.cohortCode?.let {
-                                Text(" · Cohort $it", fontSize = 11.sp, color = MC_TextSub)
-                            }
-                        }
-                        student.college?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 11.sp, color = MC_TextSub, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                        if (studentSubmissions.isNotEmpty() || certificate != null) {
+                    if (canManageStatus && students.isNotEmpty()) {
+                        FilledTonalButton(
+                            onClick = {
+                                isMultiSelectMode = !isMultiSelectMode
+                                if (!isMultiSelectMode) selectedStudentIds = emptySet()
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = if (isMultiSelectMode) MC_Primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (isMultiSelectMode) MC_Primary else MC_TextTitle
+                            ),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                if (isMultiSelectMode) Icons.Default.Close else Icons.Default.DoneAll,
+                                null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
                             Text(
-                                listOfNotNull(
-                                    studentSubmissions.takeIf { it.isNotEmpty() }?.let { list -> "${list.count { submission -> submission.evaluated }} graded" },
-                                    certificate?.status?.let { "Certificate ${it.lowercase()}" }
-                                ).joinToString(" · "),
-                                fontSize = 10.5.sp,
-                                color = MC_Teal,
-                                fontWeight = FontWeight.Medium
+                                if (isMultiSelectMode) "Done" else "Multi-Select",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
-                    Icon(Icons.Default.ChevronRight, null, tint = MC_TextSub)
+                }
+            }
+
+            if (isMultiSelectMode) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MC_Primary.copy(alpha = 0.1f),
+                            modifier = Modifier.clickable {
+                                val allActiveIds = students.filter { s ->
+                                    val app = applications.firstOrNull { it.student == s.id || it.student == s.userId }
+                                    !(app?.status.equals("SUSPENDED", true) || s.status.equals("SUSPENDED", true))
+                                }.map { it.id }.toSet()
+                                selectedStudentIds = allActiveIds
+                            }
+                        ) {
+                            Text(
+                                "Select Active (${students.count { s -> val a = applications.firstOrNull { it.student == s.id || it.student == s.userId }; !(a?.status.equals("SUSPENDED", true) || s.status.equals("SUSPENDED", true)) }})",
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MC_Primary
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF16A34A).copy(alpha = 0.12f),
+                            modifier = Modifier.clickable {
+                                val allSuspendedIds = students.filter { s ->
+                                    val app = applications.firstOrNull { it.student == s.id || it.student == s.userId }
+                                    (app?.status.equals("SUSPENDED", true) || s.status.equals("SUSPENDED", true))
+                                }.map { it.id }.toSet()
+                                selectedStudentIds = allSuspendedIds
+                            }
+                        ) {
+                            Text(
+                                "Select Suspended (${students.count { s -> val a = applications.firstOrNull { it.student == s.id || it.student == s.userId }; (a?.status.equals("SUSPENDED", true) || s.status.equals("SUSPENDED", true)) }})",
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF16A34A)
+                            )
+                        }
+
+                        if (selectedStudentIds.isNotEmpty()) {
+                            TextButton(
+                                onClick = { selectedStudentIds = emptySet() },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("Clear", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+
+            items(students, key = { it.id }) { student ->
+                val userObj = student.user ?: users.firstOrNull { it.id == student.userId || it.id == student.id }
+                val fullName = resolveStudentName(student, users)
+                val studentCode = student.studentCode ?: "Student ID" 
+                val studentSubmissions = submissions.filter { it.student == student.id || it.student == student.userId }
+                val certificate = certificates.firstOrNull { it.student == student.id || it.student == student.userId }
+                val studentApp = applications.firstOrNull { it.student == student.id || it.student == student.userId }
+                val isSuspended = studentApp?.status.equals("SUSPENDED", ignoreCase = true) || student.status.equals("SUSPENDED", ignoreCase = true)
+                val isSelected = student.id in selectedStudentIds
+
+                Card(
+                    onClick = {
+                        if (isMultiSelectMode) {
+                            selectedStudentIds = if (isSelected) selectedStudentIds - student.id else selectedStudentIds + student.id
+                        } else {
+                            selectedStudent = student
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (isSelected) MC_Primary.copy(alpha = 0.08f) else MC_Surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) MC_Primary else MC_Border)
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (isMultiSelectMode) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { checked ->
+                                    selectedStudentIds = if (checked) selectedStudentIds + student.id else selectedStudentIds - student.id
+                                },
+                                colors = CheckboxDefaults.colors(checkedColor = MC_Primary)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                        }
+                        Box(Modifier.size(42.dp).clip(CircleShape).background(if (isSuspended) Color(0xFFFEE2E2) else Color(0xFFFEF3C7)), contentAlignment = Alignment.Center) {
+                            Text(fullName.take(1).uppercase(), fontWeight = FontWeight.Bold, color = if (isSuspended) Color(0xFFDC2626) else MC_Amber)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(fullName, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("ID: ${student.studentCode ?: "Pending"}", fontSize = 11.sp, color = MC_Primary, fontWeight = FontWeight.SemiBold)
+                                student.cohortCode?.let {
+                                    Text(" · Cohort $it", fontSize = 11.sp, color = MC_TextSub)
+                                }
+                                if (isSuspended) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFDC2626).copy(alpha = 0.12f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDC2626).copy(alpha = 0.4f))
+                                    ) {
+                                        Text(
+                                            text = "SUSPENDED",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFFDC2626),
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            student.college?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 11.sp, color = MC_TextSub, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            if (studentSubmissions.isNotEmpty() || certificate != null) {
+                                Text(
+                                    listOfNotNull(
+                                        studentSubmissions.takeIf { it.isNotEmpty() }?.let { list -> "${list.count { submission -> submission.evaluated }} graded" },
+                                        certificate?.status?.let { "Certificate ${it.lowercase()}" }
+                                    ).joinToString(" · "),
+                                    fontSize = 10.5.sp,
+                                    color = MC_Teal,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        Icon(if (isMultiSelectMode) (if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked) else Icons.Default.ChevronRight, null, tint = if (isSelected) MC_Primary else MC_TextSub)
+                    }
+                }
+            }
+        }
+
+        // Bottom Batch Floating Action Bar
+        if (isMultiSelectMode && selectedStudentIds.isNotEmpty()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp),
+                shadowElevation = 8.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MC_Border)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("${selectedStudentIds.size} Selected", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = MC_TextTitle)
+                        Text(
+                            "${selectedActiveList.size} active · ${selectedSuspendedList.size} suspended",
+                            fontSize = 11.sp,
+                            color = MC_TextSub
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (selectedSuspendedList.isNotEmpty() && canUnsuspend) {
+                            Button(
+                                onClick = { showBatchUnsuspendDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                enabled = !isProcessingBatch
+                            ) {
+                                Icon(Icons.Default.LockOpen, null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Unsuspend (${selectedSuspendedList.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (selectedActiveList.isNotEmpty() && canManageStatus) {
+                            Button(
+                                onClick = {
+                                    selectedReasonChip = "Low Attendance (<75%)"
+                                    customReasonNotes = ""
+                                    showBatchSuspendDialog = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                enabled = !isProcessingBatch
+                            ) {
+                                Icon(Icons.Default.Block, null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Suspend (${selectedActiveList.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2304,14 +2902,17 @@ private fun MentorStudentsTab(
         val fullName = resolveStudentName(student, users)
         val studentSubmissions = submissions.filter { it.student == student.id || it.student == student.userId }
         val certificate = certificates.firstOrNull { it.student == student.id || it.student == student.userId }
+        val currentApp = applications.firstOrNull { it.student == student.id || it.student == student.userId }
+        val isSuspended = currentApp?.status.equals("SUSPENDED", ignoreCase = true) || student.status.equals("SUSPENDED", ignoreCase = true)
+
         AlertDialog(
             onDismissRequest = { selectedStudent = null },
             icon = {
                 Box(
-                    Modifier.size(58.dp).clip(CircleShape).background(MC_ActivePill),
+                    Modifier.size(58.dp).clip(CircleShape).background(if (isSuspended) Color(0xFFFEE2E2) else MC_ActivePill),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(fullName.take(2).uppercase(), fontWeight = FontWeight.ExtraBold, color = MC_Primary, fontSize = 20.sp)
+                    Text(fullName.take(2).uppercase(), fontWeight = FontWeight.ExtraBold, color = if (isSuspended) Color(0xFFDC2626) else MC_Primary, fontSize = 20.sp)
                 }
             },
             title = {
@@ -2328,7 +2929,7 @@ private fun MentorStudentsTab(
                     MentorStudentDetailRow("Cohort", student.cohortCode ?: cohort?.code)
                     MentorStudentDetailRow("Email", student.user?.email)
                     MentorStudentDetailRow("Phone", student.phone)
-                    MentorStudentDetailRow("Status", student.status)
+                    MentorStudentDetailRow("Status", if (isSuspended) "SUSPENDED" else student.status)
                     MentorStudentDetailRow("Certificate", certificate?.status ?: certificate?.certificateNumber)
                     MentorStudentDetailRow("College", student.collegeName)
                     MentorStudentDetailRow("Qualification", student.qualification)
@@ -2338,23 +2939,48 @@ private fun MentorStudentsTab(
                         "Location",
                         listOfNotNull(student.city, student.state, student.country).joinToString(", ").ifBlank { null }
                     )
-                    student.bio?.takeIf { it.isNotBlank() }?.let {
-                        HorizontalDivider(color = MC_Border)
-                        Text(it, fontSize = 12.sp, color = MC_TextSub, lineHeight = 17.sp)
+                    MentorStudentDetailRow("Tagline", student.tagline)
+                    MentorStudentDetailRow("Bio", student.bio)
+                    if (student.skills.isNotEmpty()) {
+                        MentorStudentDetailRow("Skills", student.skills.joinToString(", "))
                     }
-                    HorizontalDivider(color = MC_Border)
-                    Text("Assignment marks", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
+                    if (student.languages.isNotEmpty()) {
+                        MentorStudentDetailRow("Languages", student.languages.joinToString(", "))
+                    }
+                    if (student.hobbies.isNotEmpty()) {
+                        MentorStudentDetailRow("Hobbies", student.hobbies.joinToString(", "))
+                    }
+                    MentorStudentDetailRow("LinkedIn", student.linkedinUrl)
+                    MentorStudentDetailRow("GitHub", student.githubUrl)
+                    MentorStudentDetailRow("Portfolio", student.portfolioUrl)
+
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Assignments (${studentSubmissions.size})",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MC_TextTitle
+                    )
                     if (studentSubmissions.isEmpty()) {
-                        Text("No submissions recorded for this cohort.", fontSize = 11.5.sp, color = MC_TextSub)
+                        Text("No submissions yet.", fontSize = 11.5.sp, color = MC_TextSub)
                     } else {
                         studentSubmissions.forEach { submission ->
                             val assignment = assignments.firstOrNull { it.id == submission.assignment }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(assignment?.title ?: "Assignment", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = MC_TextTitle)
                                     Text(
-                                        if (submission.evaluated) "Evaluated" else "Awaiting evaluation",
-                                        fontSize = 10.sp,
+                                        assignment?.title ?: "Assignment #${submission.assignment?.take(6) ?: "N/A"}",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MC_TextTitle
+                                    )
+                                    Text(
+                                        if (submission.evaluated) "Graded" else "Pending evaluation",
+                                        fontSize = 10.5.sp,
                                         color = if (submission.evaluated) MC_Teal else MC_Amber
                                     )
                                 }
@@ -2370,7 +2996,465 @@ private fun MentorStudentsTab(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { selectedStudent = null }) { Text("Close") }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (tokenManager != null) {
+                        if (isSuspended && canUnsuspend) {
+                            Button(
+                                onClick = {
+                                    studentToUnsuspend = student to currentApp
+                                    selectedStudent = null
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.LockOpen, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Unsuspend", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else if (!isSuspended && canManageStatus) {
+                            Button(
+                                onClick = {
+                                    studentToSuspend = student to currentApp
+                                    selectedReasonChip = "Low Attendance (<75%)"
+                                    customReasonNotes = ""
+                                    selectedStudent = null
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Block, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Suspend Student", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Spacer(Modifier.width(1.dp))
+                        }
+                    } else {
+                        Spacer(Modifier.width(1.dp))
+                    }
+                    TextButton(onClick = { selectedStudent = null }) { Text("Close") }
+                }
+            }
+        )
+    }
+
+    // --- BATCH SUSPEND DIALOG ---
+    if (showBatchSuspendDialog && canManageStatus) {
+        val reasons = listOf(
+            "Low Attendance (<75%)",
+            "Incomplete Module Assignments",
+            "Violation of Code of Conduct",
+            "Prolonged Inactivity",
+            "Requested by Academic Trustee"
+        )
+        AlertDialog(
+            onDismissRequest = { if (!isProcessingBatch) showBatchSuspendDialog = false },
+            icon = {
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape).background(Color(0xFFFEE2E2)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Block, null, tint = Color(0xFFDC2626), modifier = Modifier.size(26.dp))
+                }
+            },
+            title = {
+                Text("Suspend ${selectedActiveList.size} Student(s)", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Are you sure you want to suspend the ${selectedActiveList.size} selected active student(s)? They will lose cohort access until reinstated.",
+                        fontSize = 12.5.sp,
+                        color = MC_TextSub
+                    )
+                    Text("Select Primary Reason:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        reasons.forEach { reason ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (selectedReasonChip == reason) MC_Primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (selectedReasonChip == reason) MC_Primary else Color.Transparent),
+                                modifier = Modifier.fillMaxWidth().clickable { selectedReasonChip = reason }
+                            ) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(
+                                        selected = selectedReasonChip == reason,
+                                        onClick = { selectedReasonChip = reason },
+                                        colors = RadioButtonDefaults.colors(selectedColor = MC_Primary)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(reason, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = customReasonNotes,
+                        onValueChange = { customReasonNotes = it },
+                        label = { Text("Detailed Reason / Notes (Optional)") },
+                        placeholder = { Text("e.g. Batch suspension due to attendance audit") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        minLines = 2,
+                        maxLines = 4
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val finalReason = if (customReasonNotes.isNotBlank()) {
+                            "$selectedReasonChip: ${customReasonNotes.trim()}"
+                        } else selectedReasonChip
+
+                        if (tokenManager != null) {
+                            scope.launch {
+                                isProcessingBatch = true
+                                var successCount = 0
+                                val api = ApiClient.getService(tokenManager)
+                                for (student in selectedActiveList) {
+                                    val app = applications.firstOrNull { it.student == student.id || it.student == student.userId }
+                                    val appId = app?.id ?: student.id
+                                    val res = runCatching {
+                                        val direct = api.suspendApplication(appId, mapOf("reason" to finalReason))
+                                        if (!direct.isSuccessful) {
+                                            api.patchApplication(appId, mapOf("status" to "SUSPENDED", "suspension_reason" to finalReason))
+                                        } else direct
+                                    }.getOrNull()
+                                    if (res?.isSuccessful == true) {
+                                        successCount++
+                                        val sName = resolveStudentName(student, users)
+                                        SureProEdNotificationManager.showStudentSuspendedNotification(
+                                            context, sName, cohort?.code, finalReason
+                                        )
+                                    }
+                                }
+                                isProcessingBatch = false
+                                showBatchSuspendDialog = false
+                                selectedStudentIds = emptySet()
+                                isMultiSelectMode = false
+                                snackbarHostState?.showSnackbar("Successfully suspended $successCount of ${selectedActiveList.size} student(s).")
+                                onRefresh()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = !isProcessingBatch
+                ) {
+                    if (isProcessingBatch) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text("Confirm Suspension (${selectedActiveList.size})", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showBatchSuspendDialog = false },
+                    enabled = !isProcessingBatch
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // --- BATCH UNSUSPEND DIALOG ---
+    if (showBatchUnsuspendDialog && canUnsuspend) {
+        AlertDialog(
+            onDismissRequest = { if (!isProcessingBatch) showBatchUnsuspendDialog = false },
+            icon = {
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape).background(Color(0xFFDCFCE7)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.LockOpen, null, tint = Color(0xFF16A34A), modifier = Modifier.size(26.dp))
+                }
+            },
+            title = {
+                Text("Unsuspend ${selectedSuspendedList.size} Student(s)", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Are you sure you want to unsuspend and reinstate ${selectedSuspendedList.size} student(s)?")
+                    Text(
+                        "Their status will be restored to active learning in ${cohort?.code ?: "the cohort"}.",
+                        fontSize = 12.sp,
+                        color = MC_TextSub
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (tokenManager != null) {
+                            scope.launch {
+                                isProcessingBatch = true
+                                var successCount = 0
+                                val api = ApiClient.getService(tokenManager)
+                                for (student in selectedSuspendedList) {
+                                    val app = applications.firstOrNull { it.student == student.id || it.student == student.userId }
+                                    val appId = app?.id ?: student.id
+                                    val res = runCatching {
+                                        api.unsuspendApplication(
+                                            appId,
+                                            mapOf("reason" to "Batch unsuspended by mentor")
+                                        )
+                                    }.getOrNull()
+                                    if (res?.isSuccessful == true) {
+                                        successCount++
+                                        val sName = resolveStudentName(student, users)
+                                        SureProEdNotificationManager.showStudentUnsuspendedNotification(
+                                            context, sName, cohort?.code
+                                        )
+                                    }
+                                }
+                                isProcessingBatch = false
+                                showBatchUnsuspendDialog = false
+                                selectedStudentIds = emptySet()
+                                isMultiSelectMode = false
+                                snackbarHostState?.showSnackbar("Successfully unsuspended $successCount of ${selectedSuspendedList.size} student(s).")
+                                onRefresh()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = !isProcessingBatch
+                ) {
+                    if (isProcessingBatch) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text("Confirm Reinstatement (${selectedSuspendedList.size})", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showBatchUnsuspendDialog = false },
+                    enabled = !isProcessingBatch
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // --- SUSPEND DIALOG WITH CUSTOM REASONS ---
+    studentToSuspend?.let { (student, app) ->
+        val fullName = resolveStudentName(student, users)
+        val reasons = listOf(
+            "Low Attendance (<75%)",
+            "Incomplete Module Assignments",
+            "Violation of Code of Conduct",
+            "Prolonged Inactivity",
+            "Requested by Academic Trustee"
+        )
+        AlertDialog(
+            onDismissRequest = { if (!isProcessingStatus) studentToSuspend = null },
+            icon = {
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape).background(Color(0xFFFEE2E2)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Block, null, tint = Color(0xFFDC2626), modifier = Modifier.size(26.dp))
+                }
+            },
+            title = {
+                Text("Suspend Student", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Are you sure you want to suspend $fullName from ${cohort?.code ?: "this cohort"}?",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text("Select Suspension Reason:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MC_TextTitle)
+                    
+                    reasons.forEach { reason ->
+                        val isSelected = selectedReasonChip == reason
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) Color(0xFFFEE2E2) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) Color(0xFFDC2626) else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedReasonChip = reason }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { selectedReasonChip = reason },
+                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFDC2626))
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    reason,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color(0xFF991B1B) else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = customReasonNotes,
+                        onValueChange = { customReasonNotes = it },
+                        label = { Text("Detailed Reason / Notes (Optional)") },
+                        placeholder = { Text("e.g. Missed 4 consecutive classes without notice") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        minLines = 2,
+                        maxLines = 4
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val finalReason = if (customReasonNotes.isNotBlank()) {
+                            "$selectedReasonChip: ${customReasonNotes.trim()}"
+                        } else selectedReasonChip
+
+                        if (tokenManager != null) {
+                            scope.launch {
+                                isProcessingStatus = true
+                                val appId = app?.id ?: student.id
+                                val res = runCatching {
+                                    val api = ApiClient.getService(tokenManager)
+                                    val direct = api.suspendApplication(appId, mapOf("reason" to finalReason))
+                                    if (!direct.isSuccessful) {
+                                        api.patchApplication(appId, mapOf("status" to "SUSPENDED", "suspension_reason" to finalReason))
+                                    } else direct
+                                }.getOrNull()
+                                isProcessingStatus = false
+                                studentToSuspend = null
+                                if (res?.isSuccessful == true) {
+                                    SureProEdNotificationManager.showStudentSuspendedNotification(
+                                        context, fullName, cohort?.code, finalReason
+                                    )
+                                    snackbarHostState?.showSnackbar("$fullName has been suspended.")
+                                    onRefresh()
+                                } else {
+                                    snackbarHostState?.showSnackbar("Failed to suspend student. Please try again.")
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = !isProcessingStatus
+                ) {
+                    if (isProcessingStatus) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text("Confirm Suspension", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { studentToSuspend = null },
+                    enabled = !isProcessingStatus
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // --- UNSUSPEND DIALOG ---
+    studentToUnsuspend?.let { (student, app) ->
+        val fullName = resolveStudentName(student, users)
+        AlertDialog(
+            onDismissRequest = { if (!isProcessingStatus) studentToUnsuspend = null },
+            icon = {
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape).background(Color(0xFFDCFCE7)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.LockOpen, null, tint = Color(0xFF16A34A), modifier = Modifier.size(26.dp))
+                }
+            },
+            title = {
+                Text("Unsuspend Student", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Are you sure you want to unsuspend $fullName?")
+                    Text(
+                        "Their application will be reinstated and restored to active learning in ${cohort?.code ?: "the cohort"}.",
+                        fontSize = 12.sp,
+                        color = MC_TextSub
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (tokenManager != null) {
+                            scope.launch {
+                                isProcessingStatus = true
+                                val appId = app?.id ?: student.id
+                                val res = runCatching {
+                                    ApiClient.getService(tokenManager).unsuspendApplication(
+                                        appId,
+                                        mapOf("reason" to "Unsuspended by mentor")
+                                    )
+                                }.getOrNull()
+                                isProcessingStatus = false
+                                studentToUnsuspend = null
+                                if (res?.isSuccessful == true) {
+                                    SureProEdNotificationManager.showStudentUnsuspendedNotification(
+                                        context, fullName, cohort?.code
+                                    )
+                                    snackbarHostState?.showSnackbar("$fullName has been unsuspended and reinstated.")
+                                    onRefresh()
+                                } else {
+                                    snackbarHostState?.showSnackbar("Failed to unsuspend student. Please try again.")
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = !isProcessingStatus
+                ) {
+                    if (isProcessingStatus) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text("Confirm Reinstatement", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { studentToUnsuspend = null },
+                    enabled = !isProcessingStatus
+                ) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -2557,8 +3641,10 @@ private fun MentorScheduleTab(
     sessions: List<AttendanceDto>,
     readOnly: Boolean,
     onCreateSessionRequest: () -> Unit,
+    onEndSessionRequest: (AttendanceDto) -> Unit = {},
     onRescheduleSessionRequest: (AttendanceDto) -> Unit,
     onCancelSessionRequest: (AttendanceDto) -> Unit,
+    onDeleteSessionRequest: (AttendanceDto) -> Unit = {},
     onJoinMeet: (AttendanceDto) -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2609,14 +3695,16 @@ private fun MentorScheduleTab(
                 }
             }
         } else {
-            items(sessions.sortedWith(compareByDescending<AttendanceDto> { it.date }.thenByDescending { it.startTime }), key = { it.id }) { session ->
+            items(sessions.sortedWith(compareByDescending<AttendanceDto> { parseSessionLocalDate(it.date) ?: java.time.LocalDate.MIN }.thenByDescending { it.startTime }), key = { it.id }) { session ->
                 val cohort = cohorts.firstOrNull { it.id == session.cohort }
                 MentorSessionCard(
                     session = session,
                     cohort = cohort,
                     isReadOnly = readOnly,
+                    onEndClass = onEndSessionRequest,
                     onReschedule = onRescheduleSessionRequest,
                     onCancel = onCancelSessionRequest,
+                    onDelete = onDeleteSessionRequest,
                     onJoinMeet = onJoinMeet
                 )
             }
@@ -3451,11 +4539,12 @@ private fun MentorEmptyState(icon: ImageVector, title: String, subtitle: String)
 }
 
 // ============================================================
-// SIDE DRAWER — Exact match to reference design
+// SIDE DRAWER — Exact match to Student Dashboard style
 // ============================================================
 @Composable
 private fun MentorDrawer(
     summary: MentorSummary,
+    selectedTab: Int = 0,
     isLoading: Boolean,
     onLogout: () -> Unit,
     onClose: () -> Unit,
@@ -3470,306 +4559,227 @@ private fun MentorDrawer(
     onSupport: () -> Unit
 ) {
     var showLogoutConfirmation by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     val mentorInitials = remember(summary.name) {
         summary.name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
             .take(2).joinToString("") { it.first().uppercase() }.ifBlank { "M" }
     }
 
-    data class DrawerItem(
+    data class MentorDrawerItemSpec(
+        val title: String,
         val icon: ImageVector,
-        val label: String,
-        val subtitle: String,
-        val iconTint: Color,
-        val iconBg: Color,
+        val isSelected: Boolean = false,
+        val badgeCount: Int = 0,
         val onClick: () -> Unit
     )
-    data class DrawerSection(val title: String, val items: List<DrawerItem>)
 
-    val sections = listOf(
-        DrawerSection("MAIN", listOf(
-            DrawerItem(Icons.Default.Home, "Dashboard", "Overview & analytics",
-                Color(0xFF5B4FCF), Color(0xFFEDE9FE)) { onSelectTab(0) },
-            DrawerItem(Icons.Default.Groups, "My Cohorts", "Manage your cohorts",
-                Color(0xFF0284C7), Color(0xFFE0F2FE)) { onSelectTab(1) }
-        )),
-        DrawerSection("TEACHING", listOf(
-            DrawerItem(Icons.Default.VideoCameraFront, "Candidate Interviews", "Prescreen candidates & post marks",
-                Color(0xFF8B5CF6), Color(0xFFF5F3FF)) { onClose(); onInterviews() },
-            DrawerItem(Icons.AutoMirrored.Filled.Assignment, "Assignments", "Create & manage assignments",
-                Color(0xFF0D9488), Color(0xFFCCFBF1)) { onClose(); onAssignments() },
-                    DrawerItem(Icons.Default.Grade, "Grade Submissions", "Review & grade student work",
-                Color(0xFFD97706), Color(0xFFFEF3C7)) { onSelectTab(2) },
-            DrawerItem(Icons.Default.CalendarMonth, "Class Timetable", "Create & manage schedule",
-                Color(0xFFDC2626), Color(0xFFFEE2E2)) { onClose(); onSchedule() },
-            DrawerItem(Icons.Default.EventAvailable, "Attendance", "Mark & track attendance",
-                Color(0xFF059669), Color(0xFFD1FAE5)) { onClose(); onAttendance() }
-        )),
-        DrawerSection("COMMUNICATION", listOf(
-            DrawerItem(Icons.Default.Campaign, "Announcements", "Send updates to students",
-                Color(0xFF7C3AED), Color(0xFFF3E8FF)) { onClose(); onNotices() },
-            DrawerItem(Icons.Default.SupportAgent, "Request Form", "Request admin assistance",
-                Color(0xFFB45309), Color(0xFFFFE4E6)) { onClose(); onSupport() },
-            DrawerItem(Icons.AutoMirrored.Filled.Logout, "Log out", "Sign out of your mentor account",
-                Color(0xFFE11D48), Color(0xFFFFE4E6)) { showLogoutConfirmation = true }
-        ))
-    )
+    val menuItems = remember(summary, selectedTab) {
+        listOf(
+            MentorDrawerItemSpec("Home / Dashboard", Icons.Default.Home, isSelected = selectedTab == 0) {
+                onClose()
+                onSelectTab(0)
+            },
+            MentorDrawerItemSpec("My Cohorts & Modules", Icons.Default.Groups, isSelected = selectedTab == 1, badgeCount = summary.myCohorts.size) {
+                onClose()
+                onSelectTab(1)
+            },
+            MentorDrawerItemSpec("Class Timetable & Schedule", Icons.Default.CalendarMonth, isSelected = selectedTab == 7, badgeCount = summary.myAttendance.size) {
+                onClose()
+                onSchedule()
+            },
+            MentorDrawerItemSpec("Assignments Management", Icons.AutoMirrored.Filled.Assignment, isSelected = selectedTab == 6, badgeCount = summary.myAssignments.size) {
+                onClose()
+                onAssignments()
+            },
+            MentorDrawerItemSpec("Review & Grade Submissions", Icons.Default.Grade, isSelected = selectedTab == 2, badgeCount = summary.pendingGrading) {
+                onClose()
+                onSelectTab(2)
+            },
+            MentorDrawerItemSpec("Candidate Interviews", Icons.Default.VideoCameraFront, isSelected = selectedTab == 10, badgeCount = summary.pendingInterviews) {
+                onClose()
+                onInterviews()
+            },
+            MentorDrawerItemSpec("Attendance Records", Icons.Default.HowToReg) {
+                onClose()
+                onAttendance()
+            },
+            MentorDrawerItemSpec("Announcements & Notices", Icons.Default.Campaign) {
+                onClose()
+                onNotices()
+            },
+            MentorDrawerItemSpec("Feedback & Support", Icons.Default.RateReview) {
+                onClose()
+                onSupport()
+            }
+        )
+    }
+
+    val filteredMenuItems = remember(searchQuery, menuItems) {
+        if (searchQuery.isBlank()) menuItems
+        else menuItems.filter { it.title.contains(searchQuery, ignoreCase = true) }
+    }
 
     ModalDrawerSheet(
-        drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
-        drawerContainerColor = MC_Surface,
-        modifier = Modifier.fillMaxHeight()
+        modifier = Modifier.width(310.dp),
+        drawerContainerColor = MaterialTheme.colorScheme.surface
     ) {
-        // Gradient Header
-        Box(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(Color(0xFF3B0764), Color(0xFF5B21B6), Color(0xFF7C3AED)),
-                        start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                        end = androidx.compose.ui.geometry.Offset(
-                            Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY
-                        )
-                    )
-                )
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
         ) {
-            Image(
-                painter = painterResource(com.example.suretouchapp.R.drawable.sure_trust_official_logo),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(210.dp)
-                    .align(Alignment.CenterEnd)
-                    .offset(x = 24.dp)
-                    .graphicsLayer {
-                        alpha = 0.14f
-                        scaleX = 1.32f
-                        scaleY = 1.32f
-                        shape = MC_LogoDiamond
-                        clip = true
-                    }
-            )
-
-            if (isLoading) {
-                ShimmerSweep(Modifier.matchParentSize())
-            }
-
-            // Decorative dots pattern (top right, like reference)
-            Column(
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                repeat(3) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        repeat(3) {
-                            Box(
-                                Modifier.size(5.dp).clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.25f))
-                            )
-                        }
-                    }
-                }
-            }
-
-            Column(
+            // 1. Drawer Header Profile Card (Gradient Background matching StudentDrawer)
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, top = 36.dp, bottom = 18.dp)
-            ) {
-                // Settings gear top-right + avatar row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // Avatar + green dot
-                    Box(contentAlignment = Alignment.BottomEnd) {
-                        Box(
-                            modifier = Modifier
-                                .size(78.dp)
-                                .shadow(8.dp, CircleShape)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(Color.White, Color(0xFFEDE9FE))
-                                    )
-                                )
-                                .border(3.dp, Color.White.copy(alpha = 0.82f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                mentorInitials,
-                                fontSize = 25.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF5B21B6),
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                        // Green online indicator
-                        Box(
-                            modifier = Modifier
-                                .size(21.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF22C55E))
-                                .border(3.dp, Color(0xFF5B21B6), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = "Online",
-                                tint = Color.White,
-                                modifier = Modifier.size(10.dp)
-                            )
-                        }
-                    }
-                    // Settings icon — navigates to Profile/Settings screen
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // Name
-                Text(
-                    summary.name,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 20.sp,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(Modifier.height(5.dp))
-
-                // MENTOR chip
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color.White.copy(alpha = 0.18f),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp, Color.White.copy(alpha = 0.3f)
-                    )
-                ) {
-                    Text(
-                        "MENTOR",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(5.dp))
-
-                // Email
-                if (summary.email.isNotBlank()) {
-                    Text(
-                        summary.email,
-                        fontSize = 11.5.sp,
-                        color = Color.White.copy(alpha = 0.72f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                // Stats row: Cohorts | Students | Pending Tasks
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    DrawerStatChipNew(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Default.Groups,
-                        value = "${summary.myCohorts.size}",
-                        label = "Cohorts"
-                    )
-                    DrawerStatChipNew(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Default.School,
-                        value = "${summary.totalStudents}",
-                        label = "Students"
-                    )
-                    DrawerStatChipNew(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.AutoMirrored.Filled.Assignment,
-                        value = "${summary.pendingGrading}",
-                        label = "Pending Tasks"
-                    )
-                }
-            }
-        }
-
-        // â”€â”€ SCROLLABLE NAV ITEMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        androidx.compose.foundation.lazy.LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 14.dp)
-        ) {
-            sections.forEach { section ->
-                item {
-                    Text(
-                        section.title,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF5B4FCF),
-                        letterSpacing = 1.5.sp,
-                        modifier = Modifier.padding(
-                            start = 20.dp, end = 20.dp, top = 14.dp, bottom = 4.dp
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(SurePurplePrimary, SurePurpleDark)
                         )
                     )
-                }
-                section.items.forEach { item ->
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(onClick = item.onClick)
-                                .padding(horizontal = 16.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Colored icon box
-                            Box(
-                                modifier = Modifier
-                                    .size(50.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(item.iconBg),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    item.icon, null,
-                                    tint = item.iconTint,
-                                    modifier = Modifier.size(25.dp)
-                                )
-                            }
-                            Spacer(Modifier.width(16.dp))
-                            // Title + subtitle
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    item.label,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MC_TextTitle
-                                )
-                                Text(
-                                    item.subtitle,
-                                    fontSize = 12.sp,
-                                    color = MC_TextSub,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Icon(
-                                Icons.Default.ChevronRight, null,
-                                tint = MC_TextSub.copy(alpha = 0.4f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                    .padding(vertical = 24.dp, horizontal = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .border(3.dp, SureLimeSecondary, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            mentorInitials,
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF5B21B6)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = summary.name.ifBlank { "Lead Mentor" },
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    Text(
+                        text = "LEAD MENTOR • VERIFIED",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SureLimeSecondary
+                    )
+
+                    if (summary.email.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = summary.email,
+                            fontSize = 11.5.sp,
+                            color = Color.White.copy(alpha = 0.85f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 2. Drawer Search Bar matching StudentDrawer
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search quick access") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = SureFormDefaults.outlinedTextFieldColors()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 3. Navigation Items matching StudentDrawer interaction, typography & colors
+            filteredMenuItems.forEach { item ->
+                NavigationDrawerItem(
+                    label = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                item.title,
+                                fontWeight = if (item.isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                fontSize = 14.5.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (item.badgeCount > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (item.isSelected) Color.White.copy(alpha = 0.24f) else MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        "${item.badgeCount}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (item.isSelected) Color.White else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    icon = {
+                        Icon(
+                            item.icon,
+                            contentDescription = item.title,
+                            tint = if (item.isSelected) Color.White else MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    selected = item.isSelected,
+                    onClick = item.onClick,
+                    colors = NavigationDrawerItemDefaults.colors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedIconColor = Color.White,
+                        selectedTextColor = Color.White,
+                        unselectedContainerColor = Color.Transparent,
+                        unselectedIconColor = MaterialTheme.colorScheme.primary,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 4. Logout Button (Red Pill Button identical to StudentDrawer)
+            Button(
+                onClick = { showLogoutConfirmation = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .height(48.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("LOGOUT", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // â”€â”€ LOG OUT ROW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // ── SURE PROED FOOTER ─ clearly visible ──────────────
         if (showLogoutConfirmation) {
             AlertDialog(
                 onDismissRequest = { showLogoutConfirmation = false },

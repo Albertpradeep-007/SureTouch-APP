@@ -129,14 +129,7 @@ fun MentorProfessionalProfileContent(
                 isOffline = false
                 error = null
                 errorTitle = null
-            } else {
-                val ex = result.exceptionOrNull()
-                val errorInfo = NetworkUtils.getNetworkErrorInfo(context, ex)
-                isConnected = false
-                isOffline = errorInfo.isOffline
-                errorTitle = errorInfo.title
-                error = errorInfo.message
-                // Fallback to local cached mentor info from tokenManager if offline
+                // Fallback to local cached mentor info from tokenManager if offline or server error
                 if (profile == null) {
                     profile = MentorProfileDto(
                         id = tokenManager.getMentorId(),
@@ -148,6 +141,20 @@ fun MentorProfessionalProfileContent(
                         profilePhoto = tokenManager.getProfilePhotoUrl()
                     )
                 }
+                if (profile != null) {
+                    hasLoadedOnce = true
+                    isConnected = true
+                    error = null
+                    errorTitle = null
+                    isOffline = false
+                } else {
+                    val ex = result.exceptionOrNull()
+                    val errorInfo = NetworkUtils.getNetworkErrorInfo(context, ex)
+                    isConnected = false
+                    isOffline = errorInfo.isOffline
+                    errorTitle = errorInfo.title
+                    error = errorInfo.message
+                }
             }
             loading = false
         }
@@ -158,7 +165,7 @@ fun MentorProfessionalProfileContent(
     BackendConnectionGate(
         isLoading = loading,
         isConnected = isConnected,
-        hasData = hasLoadedOnce,
+        hasData = profile != null || hasLoadedOnce,
         isOffline = isOffline,
         errorTitle = errorTitle,
         errorMessage = error,

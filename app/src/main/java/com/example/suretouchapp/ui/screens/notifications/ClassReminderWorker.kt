@@ -18,12 +18,23 @@ class ClassReminderWorker(context: Context, params: WorkerParameters) : Coroutin
         return try {
             val response = ApiClient.getService(tokens).getAttendanceById(id)
             if (!response.isSuccessful) {
-                if (response.code() >= 500 && runAttemptCount < 3) Result.retry() else Result.success()
+                if (response.code() == 404) {
+                    SureProEdNotificationManager.dismissClassNotifications(applicationContext, id)
+                    Result.success()
+                } else if (response.code() >= 500 && runAttemptCount < 3) {
+                    Result.retry()
+                } else {
+                    Result.success()
+                }
             } else {
                 val session = response.body() ?: return Result.success()
+                if (session.isCancelledSession() || session.classStatus.equals("CANCELLED", true) || session.effectiveStatus.equals("CANCELLED", true)) {
+                    SureProEdNotificationManager.dismissClassNotifications(applicationContext, id)
+                    return Result.success()
+                }
                 val start = SureProEdNotificationManager.parseClassStartTimeMillis(session.date, session.startTime)
                 val joinWindowMillis = ClassSchedulePolicy.EARLY_JOIN_MINUTES * 60 * 1000L
-                if (!session.isCancelledSession() && start != null && start - System.currentTimeMillis() in 0..joinWindowMillis) {
+                if (start != null && start - System.currentTimeMillis() in 0..joinWindowMillis) {
                     tokens.withCurrentSession(account) {
                         SureProEdNotificationManager.showUpcomingClassReminder(applicationContext, id,
                             session.sessionTitle ?: "Live Class", session.startTime ?: "Soon", session.meetingLink)

@@ -736,6 +736,7 @@ fun AddRecurringScheduleDialog(
                                     isSubmitting = false
                                     return@launch
                                 }
+                                val isLstOrTraining = classType == ClassTypeOption.LST
                                 val sessionPayload = mutableMapOf<String, Any?>(
                                     "title" to sessionTitle,
                                     "class_type" to classType.value,
@@ -743,7 +744,11 @@ fun AddRecurringScheduleDialog(
                                     "start_time" to startTime.take(5),
                                     "end_time" to endTime.take(5),
                                     "class_status" to "SCHEDULED",
-                                    "conducted" to false
+                                    "conducted" to false,
+                                    "send_email" to isLstOrTraining,
+                                    "notify_email" to isLstOrTraining,
+                                    "send_mail" to isLstOrTraining,
+                                    "notify_students" to isLstOrTraining
                                 )
                                 if (selectedCohort != null && selectedCohort!!.id.isNotBlank()) {
                                     sessionPayload["cohort"] = selectedCohort!!.id

@@ -52,6 +52,7 @@ object SureProEdNotificationManager {
     private const val KEY_15M_REMINDER_IDS = "reminder_15m_class_ids"
     private const val KEY_DELIVERED_CANCELLED_IDS = "delivered_cancelled_ids"
     private const val KEY_DELIVERED_RESCHEDULED_IDS = "delivered_rescheduled_ids"
+    private const val KEY_TRACKED_CLASS_IDS = "tracked_class_ids"
     private const val KEY_DIRECT_CLASS_PUSH_IDS = "direct_class_push_ids"
     private const val KEY_DIRECT_CLASS_EVENT_KEYS = "direct_class_event_keys"
     private const val KEY_TRAY_ID_PREFIX = "tray_id_"
@@ -316,6 +317,76 @@ object SureProEdNotificationManager {
         notifyIfAllowed(context, ("grade_" + id).hashCode(), builder.build())
     }
 
+    fun showStudentSuspendedNotification(context: Context, studentName: String, cohortCode: String?, reason: String) {
+        createChannels(context)
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val titleText = "⚠️ Student Suspended: $studentName"
+        val cohortInfo = if (!cohortCode.isNullOrBlank()) "Cohort $cohortCode • " else ""
+        val messageText = "${cohortInfo}Reason: $reason"
+
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            ("suspension_" + studentName + System.currentTimeMillis()).hashCode(),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val largeLogo = BitmapFactory.decodeResource(context.resources, R.drawable.sure_trust_official_logo)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ANNOUNCEMENTS)
+            .setSmallIcon(R.drawable.ic_sureproed_notification)
+            .setLargeIcon(largeLogo)
+            .setColor(0xFFDC2626.toInt())
+            .setContentTitle(titleText)
+            .setContentText(messageText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
+            .setSubText("SURE Trust • Student Status")
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setSound(defaultSoundUri)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+
+        notifyIfAllowed(context, ("suspension_" + studentName).hashCode(), builder.build())
+    }
+
+    fun showStudentUnsuspendedNotification(context: Context, studentName: String, cohortCode: String?) {
+        createChannels(context)
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val titleText = "✅ Student Reinstated: $studentName"
+        val cohortInfo = if (!cohortCode.isNullOrBlank()) "Cohort $cohortCode • " else ""
+        val messageText = "${cohortInfo}Student has been unsuspended and restored to active cohort learning."
+
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            ("unsuspension_" + studentName + System.currentTimeMillis()).hashCode(),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val largeLogo = BitmapFactory.decodeResource(context.resources, R.drawable.sure_trust_official_logo)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ANNOUNCEMENTS)
+            .setSmallIcon(R.drawable.ic_sureproed_notification)
+            .setLargeIcon(largeLogo)
+            .setColor(0xFF16A34A.toInt())
+            .setContentTitle(titleText)
+            .setContentText(messageText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
+            .setSubText("SURE Trust • Student Status")
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setSound(defaultSoundUri)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+
+        notifyIfAllowed(context, ("unsuspension_" + studentName).hashCode(), builder.build())
+    }
+
     fun syncUnread(context: Context, notifications: List<NotificationDto>, completeSnapshot: Boolean = false) {
         val manager = com.example.suretouchapp.data.api.TokenManager(context)
         val session = manager.getSessionId()
@@ -389,6 +460,15 @@ object SureProEdNotificationManager {
         val delivered15mReminders = prefs.getStringSet(KEY_15M_REMINDER_IDS, emptySet()).orEmpty().toMutableSet()
         val deliveredCancelled = prefs.getStringSet(KEY_DELIVERED_CANCELLED_IDS, emptySet()).orEmpty().toMutableSet()
         val deliveredRescheduled = prefs.getStringSet(KEY_DELIVERED_RESCHEDULED_IDS, emptySet()).orEmpty().toMutableSet()
+        val previouslyTracked = prefs.getStringSet(KEY_TRACKED_CLASS_IDS, emptySet()).orEmpty().toMutableSet()
+        val currentSessionIds = sessions.map { it.id }.filter { it.isNotBlank() }.toSet()
+
+        // Clean up any deleted classes that are no longer in the server schedule
+        val deletedSessionIds = previouslyTracked - currentSessionIds
+        for (deletedId in deletedSessionIds) {
+            dismissClassNotifications(context, deletedId)
+        }
+
         val now = System.currentTimeMillis()
         for (session in sessions) {
             val status = (session.effectiveStatus ?: session.classStatus)?.trim()?.uppercase(Locale.US)
@@ -396,13 +476,10 @@ object SureProEdNotificationManager {
             val isCancelled = session.isCancelledSession() || status == "CANCELLED"
             val isRescheduled = status == "RESCHEDULED"
 
+            // When a class is cancelled, purge any notifications and cancel alarms immediately.
+            // Do NOT broadcast cancellation or reminder notifications.
             if (isCancelled) {
-                cancelClassAlarm(context, session.id)
-                val cancelKey = "${session.id}_cancelled_$sessionVersion"
-                if (cancelKey !in deliveredCancelled) {
-                    showClassCancelledNotification(context, session)
-                    deliveredCancelled += cancelKey
-                }
+                dismissClassNotifications(context, session.id)
                 continue
             }
 
@@ -449,6 +526,7 @@ object SureProEdNotificationManager {
         }
 
         prefs.edit()
+            .putStringSet(KEY_TRACKED_CLASS_IDS, currentSessionIds.take(300).toSet())
             .putStringSet(KEY_SCHEDULED_CLASS_IDS, deliveredSchedules.toList().takeLast(200).toSet())
             .putStringSet(KEY_15M_REMINDER_IDS, delivered15mReminders.toList().takeLast(200).toSet())
             .putStringSet(KEY_DELIVERED_CANCELLED_IDS, deliveredCancelled.toList().takeLast(200).toSet())
@@ -784,12 +862,54 @@ object SureProEdNotificationManager {
         notifyIfAllowed(context, ("class_state_" + id).hashCode(), notification)
     }
 
-    private fun cancelClassAlarm(context: Context, id: String) {
-        val pending = PendingIntent.getBroadcast(context, id.hashCode(),
-            Intent(context, ClassScheduleAlarmReceiver::class.java),
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) ?: return
-        (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)?.cancel(pending)
-        pending.cancel()
+    fun cancelClassAlarm(context: Context, id: String) {
+        try {
+            val pending = PendingIntent.getBroadcast(
+                context, id.hashCode(),
+                Intent(context, ClassScheduleAlarmReceiver::class.java),
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            if (pending != null) {
+                (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)?.cancel(pending)
+                pending.cancel()
+            }
+            androidx.work.WorkManager.getInstance(context).cancelAllWorkByTag("class-reminder-$id")
+        } catch (_: Exception) {}
+    }
+
+    fun dismissClassNotifications(context: Context, id: String) {
+        cancelClassAlarm(context, id)
+        try {
+            val system = NotificationManagerCompat.from(context)
+            listOf(
+                "scheduled_",
+                "cancelled_",
+                "rescheduled_",
+                "reminder_15m_",
+                "live_push_",
+                "class_state_"
+            ).forEach { prefix ->
+                system.cancel((prefix + id).hashCode())
+            }
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val deliveredSchedules = prefs.getStringSet(KEY_SCHEDULED_CLASS_IDS, emptySet()).orEmpty().toMutableSet()
+            val delivered15mReminders = prefs.getStringSet(KEY_15M_REMINDER_IDS, emptySet()).orEmpty().toMutableSet()
+            val deliveredCancelled = prefs.getStringSet(KEY_DELIVERED_CANCELLED_IDS, emptySet()).orEmpty().toMutableSet()
+            val deliveredRescheduled = prefs.getStringSet(KEY_DELIVERED_RESCHEDULED_IDS, emptySet()).orEmpty().toMutableSet()
+            val directPushes = prefs.getStringSet(KEY_DIRECT_CLASS_PUSH_IDS, emptySet()).orEmpty().toMutableSet()
+            deliveredSchedules.removeAll { it.startsWith(id) }
+            delivered15mReminders.removeAll { it.startsWith(id) }
+            deliveredCancelled.removeAll { it.startsWith(id) }
+            deliveredRescheduled.removeAll { it.startsWith(id) }
+            directPushes.removeAll { it.startsWith(id) }
+            prefs.edit()
+                .putStringSet(KEY_SCHEDULED_CLASS_IDS, deliveredSchedules)
+                .putStringSet(KEY_15M_REMINDER_IDS, delivered15mReminders)
+                .putStringSet(KEY_DELIVERED_CANCELLED_IDS, deliveredCancelled)
+                .putStringSet(KEY_DELIVERED_RESCHEDULED_IDS, deliveredRescheduled)
+                .putStringSet(KEY_DIRECT_CLASS_PUSH_IDS, directPushes)
+                .apply()
+        } catch (_: Exception) {}
     }
 
     fun parseClassStartTimeMillis(dateStr: String?, timeStr: String?): Long? {

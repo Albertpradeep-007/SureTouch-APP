@@ -285,6 +285,69 @@ class TokenManager internal constructor(
         "COMPANY", "RECRUITER", "EMPLOYER", "HR"
     )
 
+    fun saveUserPermissions(permissions: Collection<String>) = synchronized(sessionLock) {
+        val clean = permissions.map { it.trim().lowercase(Locale.US) }.filter { it.isNotBlank() }.toSet()
+        prefs.edit().putStringSet("user_permissions", clean).apply()
+    }
+
+    fun getUserPermissions(): Set<String> = synchronized(sessionLock) {
+        prefs.getStringSet("user_permissions", emptySet()) ?: emptySet()
+    }
+
+    fun canManageStudentStatus(): Boolean {
+        val role = getUserRole().uppercase(Locale.US)
+        // Students are strictly barred from managing status/suspension
+        if (role == "STUDENT") return false
+        return role in setOf(
+            "MENTOR", "VOLUNTEER", "VOLUNTEER_TRUSTEE", "VOLUNTEER TRUSTEE", "TRUSTEE", "ADMIN", "STAFF"
+        )
+    }
+
+    fun canUnsuspendStudent(): Boolean {
+        val role = getUserRole().uppercase(Locale.US)
+        // Students can NEVER unsuspend themselves or others under any circumstances
+        if (role == "STUDENT") return false
+        val perms = getUserPermissions()
+        val isPrevented = perms.any { perm ->
+            val p = perm.lowercase(Locale.US)
+            p == "prevent_unsuspend" ||
+            p == "prevent_unsuspension" ||
+            p == "prevent_from_unsuspend" ||
+            p == "cannot_unsuspend" ||
+            p == "no_unsuspend" ||
+            p == "deny_unsuspend" ||
+            p == "block_unsuspend" ||
+            p == "disallow_unsuspend" ||
+            (p.contains("prevent") && p.contains("unsuspend")) ||
+            (p.contains("deny") && p.contains("unsuspend")) ||
+            (p.contains("block") && p.contains("unsuspend"))
+        }
+        if (isPrevented) {
+            return false
+        }
+        return canManageStudentStatus()
+    }
+
+    fun canSuspendStudent(): Boolean {
+        val role = getUserRole().uppercase(Locale.US)
+        if (role == "STUDENT") return false
+        val perms = getUserPermissions()
+        val isPrevented = perms.any { perm ->
+            val p = perm.lowercase(Locale.US)
+            p == "prevent_suspend" ||
+            p == "prevent_suspension" ||
+            p == "cannot_suspend" ||
+            p == "no_suspend" ||
+            (p.contains("prevent") && p.contains("suspend") && !p.contains("unsuspend")) ||
+            (p.contains("deny") && p.contains("suspend") && !p.contains("unsuspend")) ||
+            (p.contains("block") && p.contains("suspend") && !p.contains("unsuspend"))
+        }
+        if (isPrevented) {
+            return false
+        }
+        return canManageStudentStatus()
+    }
+
     fun clearAll() = logout()
 
     fun saveStudentProfileDetails(
