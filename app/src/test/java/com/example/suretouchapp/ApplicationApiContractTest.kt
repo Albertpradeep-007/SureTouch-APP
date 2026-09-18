@@ -109,6 +109,24 @@ class ApplicationApiContractTest {
     }
 
     @Test
+    fun changePasswordMatchesBackendContract() {
+        val json = gson.toJsonTree(
+            com.example.suretouchapp.data.model.ChangePasswordRequest(
+                oldPassword = "OldPass123",
+                newPassword = "NewPass456",
+                confirmPassword = "NewPass456"
+            )
+        ).asJsonObject
+
+        assertEquals("OldPass123", json["old_password"].asString)
+        assertEquals("NewPass456", json["new_password"].asString)
+        assertEquals("NewPass456", json["confirm_password"].asString)
+        assertEquals(false, json.has("oldPassword"))
+        assertEquals(false, json.has("newPassword"))
+        assertEquals(false, json.has("confirmPassword"))
+    }
+
+    @Test
     fun volunteerProfileReadsProductionBackendShape() {
         val profile = gson.fromJson(
             """{

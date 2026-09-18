@@ -126,6 +126,11 @@ object ApiClient {
                     if (response.retryCount() >= 2 || isPublicPath(path)) {
                         return@authenticator null
                     }
+                    val originalError = runCatching { response.peekBody(1024).string() }.getOrNull().orEmpty()
+                    if (originalError.contains("password_changed") || originalError.contains("password change", ignoreCase = true)) {
+                        tokenManager.logoutIfCurrentSession(sessionId)
+                        return@authenticator null
+                    }
                     synchronized(refreshLock) {
                         val (storedRefreshToken, latestAccessToken) = tokenManager.withCurrentSession(sessionId) {
                             tokenManager.getRefreshToken() to tokenManager.getAccessToken()

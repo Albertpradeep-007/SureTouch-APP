@@ -884,6 +884,23 @@ fun AuthScreen(
                                                 errorMessage = "Password must be at least 8 characters long."
                                                 return@OutlinedButton
                                             }
+                                            if (!cleanPass.any { it.isUpperCase() }) {
+                                                errorMessage = "Password must contain at least one uppercase letter (A-Z)."
+                                                return@OutlinedButton
+                                            }
+                                            if (!cleanPass.any { it.isLowerCase() }) {
+                                                errorMessage = "Password must contain at least one lowercase letter (a-z)."
+                                                return@OutlinedButton
+                                            }
+                                            if (!cleanPass.any { it.isDigit() }) {
+                                                errorMessage = "Password must contain at least one number (0-9)."
+                                                return@OutlinedButton
+                                            }
+                                            val specialSymbols = "!@#$%^&*()_+-=[]{};':\"\\|,.<>/?~`"
+                                            if (!cleanPass.any { it in specialSymbols }) {
+                                                errorMessage = "Password must contain at least one special character (!@#$%^&*)."
+                                                return@OutlinedButton
+                                            }
                                             if (cleanPass != cleanConfirm) {
                                                 errorMessage = "Passwords do not match. Please recheck confirm password."
                                                 return@OutlinedButton
@@ -1092,6 +1109,13 @@ fun AuthScreen(
                                 onValueChange = { regPassword = it },
                                 label = { Text("Password *") },
                                 placeholder = { Text("••••••••") },
+                                supportingText = {
+                                    Text(
+                                        text = "Min 8 chars, uppercase, lowercase, number & symbol.",
+                                        fontSize = 11.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                                    )
+                                },
                                 visualTransformation = if (isRegPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Password,

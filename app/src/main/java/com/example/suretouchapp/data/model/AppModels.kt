@@ -793,3 +793,15 @@ data class AppVersionInfoDto(
     @SerializedName("file_size_bytes") val fileSizeBytes: Long = 0L,
     @SerializedName("published_at") val publishedAt: String = ""
 )
+
+data class ChangePasswordRequest(
+    @SerializedName("old_password") val oldPassword: String,
+    @SerializedName("new_password") val newPassword: String,
+    @SerializedName("confirm_password") val confirmPassword: String? = null
+)
+
+data class ChangePasswordResponse(
+    val detail: String? = null,
+    val access: String? = null,
+    val refresh: String? = null
+)

@@ -30,6 +30,9 @@ interface ApiService {
     @POST("users/forgot_password_confirm/")
     suspend fun confirmPasswordReset(@Body request: ForgotPasswordConfirmRequest): Response<PasswordResetResponse>
 
+    @POST("users/change-password/")
+    suspend fun changePassword(@Body request: ChangePasswordRequest): Response<ChangePasswordResponse>
+
     @Multipart @PATCH("users/me/") suspend fun uploadCurrentUserMedia(@Part image: MultipartBody.Part): Response<UserResponse>
     @PATCH("users/me/") suspend fun patchCurrentUser(@Body body: ApiBody): Response<UserResponse>
     @GET("users/me/") suspend fun getCurrentUser(): Response<UserResponse>

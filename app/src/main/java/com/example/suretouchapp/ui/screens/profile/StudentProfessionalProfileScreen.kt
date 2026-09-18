@@ -161,6 +161,7 @@ private fun StudentProfileContent(
     var isPhotoUploading by remember { mutableStateOf(false) }
     var isResumeUploading by remember { mutableStateOf(false) }
     var isLinkedInConnecting by remember { mutableStateOf(false) }
+    var showChangePasswordDialog by remember { mutableStateOf(false) }
 
     // Accurate Student Profile Data Resolution
     val apiName = listOfNotNull(profile?.user?.firstName, profile?.user?.lastName).joinToString(" ").trim()
@@ -467,21 +468,41 @@ private fun StudentProfileContent(
                                 }
                             }
 
-                            Surface(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .clickable { showEditSheet = true },
-                                shape = CircleShape,
-                                color = Color.Black.copy(alpha = 0.40f)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = "Edit Profile",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Surface(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .clickable { showChangePasswordDialog = true },
+                                    shape = CircleShape,
+                                    color = Color.Black.copy(alpha = 0.40f)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = "Change Password",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .clickable { showEditSheet = true },
+                                    shape = CircleShape,
+                                    color = Color.Black.copy(alpha = 0.40f)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit Profile",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1453,6 +1474,17 @@ private fun StudentProfileContent(
                 documentUrl = resumeUrl ?: "",
                 documentTitle = resumeName.ifBlank { "Student_Resume_CV.pdf" },
                 onDismiss = { showInAppResumeViewer = false }
+            )
+        }
+
+        if (showChangePasswordDialog) {
+            com.example.suretouchapp.ui.components.ChangePasswordDialog(
+                tokenManager = tokenManager,
+                onDismiss = { showChangePasswordDialog = false },
+                onSuccess = { msg ->
+                    showChangePasswordDialog = false
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
             )
         }
     }

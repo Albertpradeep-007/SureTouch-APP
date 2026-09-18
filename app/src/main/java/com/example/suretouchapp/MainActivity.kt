@@ -305,6 +305,41 @@ fun AppNavigation(
         }
     }
 
+    // Real-time active session validation pulse for logged-in users.
+    // When a password is changed on another device (Phone A), Phone B's session pulse
+    // immediately receives HTTP 401 password_changed and kicks the user to login.
+    val currentLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(currentLifecycleOwner, tokenManager) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && tokenManager.isLoggedIn()) {
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    runCatching {
+                        com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager)
+                            .verifyCurrentAccount()
+                    }
+                }
+            }
+        }
+        currentLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            currentLifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(tokenManager.getSessionId()) {
+        while (tokenManager.isLoggedIn()) {
+            kotlinx.coroutines.delay(12_000)
+            if (tokenManager.isLoggedIn()) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        com.example.suretouchapp.data.repository.AccountSessionRepository(tokenManager)
+                            .verifyCurrentAccount()
+                    }
+                }
+            }
+        }
+    }
+
     LaunchedEffect(notificationRequestId, noticesRequestId, assignmentsRequestId, liveClassRequestId) {
         if (tokenManager.hasVerifiedIdentity()) {
             if (liveClassRequestId > 0) {
