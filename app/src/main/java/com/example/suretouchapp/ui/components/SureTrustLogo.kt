@@ -3,6 +3,7 @@ package com.example.suretouchapp.ui.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,7 +27,7 @@ fun SureTrustLogo(
 ) {
     Surface(
         shape = shape,
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = elevation,
         modifier = modifier.size(size)
     ) {

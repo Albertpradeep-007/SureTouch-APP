@@ -1,7 +1,11 @@
 package com.example.suretouchapp.ui.screens.auth
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -10,14 +14,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.suretouchapp.data.api.ApiClient
 import com.example.suretouchapp.data.api.TokenManager
 import com.example.suretouchapp.data.model.*
+import com.example.suretouchapp.ui.theme.SureFormDefaults
 import kotlinx.coroutines.launch
 import retrofit2.Response
 import java.util.Locale
@@ -91,130 +98,338 @@ internal fun ForgotPasswordSheet(
 
     ModalBottomSheet(
         onDismissRequest = { if (!busy) onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.outlineVariant) }
     ) {
         Column(
-            Modifier.fillMaxWidth().heightIn(max = 640.dp).navigationBarsPadding().imePadding()
-                .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 640.dp)
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        when (step) { ResetStep.EMAIL -> "Reset password"; ResetStep.ACCOUNT -> "Choose your account"; ResetStep.CODE -> "Set a new password" },
-                        style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold
+            // Header Row with Icon and Close Button
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (step == ResetStep.CODE) Icons.Default.MarkEmailRead else Icons.Default.LockReset,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                IconButton(onClick = onDismiss, enabled = !busy) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Close password reset",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Title & Subtitle
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    when (step) {
+                        ResetStep.EMAIL -> "Reset password"
+                        ResetStep.ACCOUNT -> "Choose your account"
+                        ResetStep.CODE -> "Set a new password"
+                    },
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    when (step) {
+                        ResetStep.EMAIL -> "Enter your registered email address and we'll send you a 6-digit OTP to reset your password."
+                        ResetStep.ACCOUNT -> "This email has more than one role. Choose your account."
+                        ResetStep.CODE -> "Enter the code sent to your account’s email."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Step Indicator Badge
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
                     )
                     Text(
-                        when (step) {
-                            ResetStep.EMAIL -> "Use the email linked to your account."
-                            ResetStep.ACCOUNT -> "This email has more than one role."
-                            ResetStep.CODE -> "Enter the code sent to your account’s email."
+                        text = when (step) {
+                            ResetStep.EMAIL -> "Step 1 of 2: Registered Email"
+                            ResetStep.ACCOUNT -> "Step 1b: Select Account Role"
+                            ResetStep.CODE -> "Step 2 of 2: Verify Code & Set Password"
                         },
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onDismiss, enabled = !busy) { Icon(Icons.Default.Close, "Close password reset") }
             }
 
             if (step != ResetStep.EMAIL) {
-                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(Icons.Default.Email, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(email, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                email,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Medium
+                            )
                             if (role != null && step == ResetStep.CODE) {
-                                Text("${accountRoleLabel(role!!)} account", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                Text(
+                                    "${accountRoleLabel(role!!)} account",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
-                        TextButton(onClick = { step = ResetStep.EMAIL; role = null; roles = emptyList(); otp = ""; error = null }, enabled = !busy) { Text("Change") }
+                        TextButton(
+                            onClick = { step = ResetStep.EMAIL; role = null; roles = emptyList(); otp = ""; error = null },
+                            enabled = !busy
+                        ) {
+                            Text("Change", color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
 
             error?.let {
-                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
-                    Text(it, Modifier.fillMaxWidth().padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
 
             when (step) {
                 ResetStep.EMAIL -> {
                     OutlinedTextField(
-                        value = email, onValueChange = { email = it; role = null; error = null }, enabled = !busy,
-                        label = { Text("Email address") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        value = email,
+                        onValueChange = { email = it; role = null; error = null },
+                        enabled = !busy,
+                        label = { Text("Email address") },
+                        placeholder = { Text("e.g. yourname@example.com") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Email, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = SureFormDefaults.outlinedTextFieldColors(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
                     )
-                    Button(onClick = { requestCode(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                        if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Continue")
+                    Button(
+                        onClick = { requestCode(null) },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+                        if (busy) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Text("Continue", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
                     }
                 }
                 ResetStep.ACCOUNT -> {
                     roles.forEach { option ->
                         OutlinedButton(
-                            onClick = { requestCode(option) }, enabled = !busy,
-                            shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
-                            contentPadding = PaddingValues(16.dp)
+                            onClick = { requestCode(option) },
+                            enabled = !busy,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+                            contentPadding = PaddingValues(16.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
-                            Icon(if (option == "STUDENT") Icons.Default.School else Icons.Default.Groups, null)
+                            Icon(if (option == "STUDENT") Icons.Default.School else Icons.Default.Groups, null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                                Text(accountRoleLabel(option), fontWeight = FontWeight.SemiBold)
+                                Text(accountRoleLabel(option), fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                                 Text(
                                     if (option == "STUDENT") "Courses, attendance and grades" else "Your staff workspace",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Icon(Icons.Default.ChevronRight, null)
+                            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    Text("Choose a role to send its reset code. Other accounts stay unchanged.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(
+                        "Choose a role to send its reset code. Other accounts stay unchanged.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
                 }
                 ResetStep.CODE -> {
                     OutlinedTextField(
-                        value = otp, onValueChange = { otp = it.filter(Char::isDigit).take(6); error = null },
-                        label = { Text("6-digit code") }, enabled = !busy, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth()
+                        value = otp,
+                        onValueChange = { otp = it.filter(Char::isDigit).take(6); error = null },
+                        label = { Text("6-digit code") },
+                        placeholder = { Text("123456") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Pin, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        enabled = !busy,
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = SureFormDefaults.outlinedTextFieldColors(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
-                        value = password, onValueChange = { password = it; error = null }, enabled = !busy,
-                        label = { Text("New password") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        value = password,
+                        onValueChange = { password = it; error = null },
+                        enabled = !busy,
+                        label = { Text("New password") },
+                        placeholder = { Text("At least 8 characters") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = SureFormDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = { IconButton(onClick = { visible = !visible }) { Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show or hide password") } },
+                        trailingIcon = {
+                            IconButton(onClick = { visible = !visible }) {
+                                Icon(
+                                    if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = "Show or hide password",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                     )
                     OutlinedTextField(
-                        value = confirmation, onValueChange = { confirmation = it; error = null }, enabled = !busy,
-                        label = { Text("Confirm new password") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        value = confirmation,
+                        onValueChange = { confirmation = it; error = null },
+                        enabled = !busy,
+                        label = { Text("Confirm new password") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = SureFormDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                     )
-                    Text("Use at least 8 characters with uppercase, lowercase, a number and a symbol.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = {
-                        when {
-                            otp.length != 6 -> error = "Enter the 6-digit code from your email."
-                            password.length < 8 -> error = "Use a password with at least 8 characters."
-                            password != confirmation -> error = "The passwords do not match."
-                            else -> {
-                                busy = true; error = null
-                                scope.launch {
-                                    try {
-                                        val response = confirmReset(ForgotPasswordConfirmRequest(email, otp, password, role))
-                                        if (response.isSuccessful) onSuccess(email, role)
-                                        else error = resetError(response.errorBody()?.string().orEmpty(), "The code is invalid or expired. Request a new code.")
-                                    } catch (_: Exception) { error = "Could not connect. Please try again." }
-                                    finally { busy = false }
+                    Text(
+                        "Use at least 8 characters with uppercase, lowercase, a number and a symbol.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = {
+                            when {
+                                otp.length != 6 -> error = "Enter the 6-digit code from your email."
+                                password.length < 8 -> error = "Use a password with at least 8 characters."
+                                password != confirmation -> error = "The passwords do not match."
+                                else -> {
+                                    busy = true; error = null
+                                    scope.launch {
+                                        try {
+                                            val response = confirmReset(ForgotPasswordConfirmRequest(email, otp, password, role))
+                                            if (response.isSuccessful) onSuccess(email, role)
+                                            else error = resetError(response.errorBody()?.string().orEmpty(), "The code is invalid or expired. Request a new code.")
+                                        } catch (_: Exception) { error = "Could not connect. Please try again." }
+                                        finally { busy = false }
+                                    }
                                 }
                             }
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+                        if (busy) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Text("Reset password", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
-                    }, enabled = !busy, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                        if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Reset password")
                     }
-                    TextButton(onClick = { requestCode(role) }, enabled = !busy && countdown == 0, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text(if (countdown > 0) "Resend code in ${countdown}s" else "Resend code")
+                    TextButton(
+                        onClick = { requestCode(role) },
+                        enabled = !busy && countdown == 0,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text(if (countdown > 0) "Resend code in ${countdown}s" else "Resend code", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
